@@ -51,6 +51,12 @@ export interface ProductForm {
   description: string;
   preparation_type: PreparationType;
   image_url: string;
+  /**
+   * Imagen que el formulario mostraba al abrirse (spec 088): `null` si el producto no tenía
+   * ninguna. Solo se usa al editar; el backend ignora en silencio una imagen enviada si esta
+   * base no coincide con la vigente (formulario desactualizado).
+   */
+  image_url_base?: string | null;
 }
 
 /** `POST /products` (`ProductCreate`). */
@@ -75,6 +81,12 @@ export interface ProductUpdatePayload {
   description?: string | null;
   preparation_type?: PreparationType;
   image_url?: string | null;
+  /**
+   * Imagen que el formulario mostraba al abrirse (spec 088, FR-002). Se envía siempre al
+   * guardar una edición (`null` explícito si el producto no tenía imagen: "no enviada" y `null`
+   * son distintos para el backend); `image_url` solo viaja si la imagen realmente cambió.
+   */
+  image_url_base?: string | null;
   active?: boolean;
   available?: boolean;
   tracks_inventory?: boolean;
@@ -354,6 +366,12 @@ export interface ProductDraft {
   description: string;
   preparation_type: PreparationType;
   image_url: string;
+  /**
+   * Imagen vigente del producto al cargar el formulario (spec 088), o `null` si no tenía. No se
+   * modifica al subir una imagen nueva: es lo que el backend compara para detectar un
+   * formulario desactualizado. `null` en un producto nuevo (no aplica).
+   */
+  image_url_base: string | null;
   active: boolean;
   hasSizes: boolean;
   /**
