@@ -685,6 +685,55 @@ describe('ProductFormComponent', () => {
     await savePromise;
   });
 
+  // ── Imagen base (spec 088, FR-002, A-92) ────────────────────────────────
+
+  const savedProduct = (id: string) => ({
+    id, category_id: 'c1', name: 'Cono doble', description: null,
+    preparation_type: 'prepared', image_url: null, active: true, available: true,
+    tracks_inventory: true, created_at: '2026-08-19T00:00:00', variants: [],
+  });
+
+  it('al guardar sin tocar la imagen no se envía image_url y sí la base (null si no había imagen)', async () => {
+    await createEdit('p9', true); // el producto de prueba no tiene imagen
+    expect(component.draft().image_url_base).toBeNull();
+
+    const savePromise = component.save();
+    const req = http.expectOne(`${PRODUCTS}/p9`);
+    expect(req.request.body.image_url).toBeNull();
+    expect('image_url_base' in req.request.body).toBe(true);
+    expect(req.request.body.image_url_base).toBeNull();
+    req.flush(savedProduct('p9'));
+    await savePromise;
+  });
+
+  it('con una imagen ya cargada, guardar sin tocarla no la reenvía: solo viaja la base', async () => {
+    await createEdit('p9', true);
+    const asset = 'https://assets.skeilopos.com/acme/products/vigente.png';
+    // Lo que produce `getProductDraft` para un producto que ya tenía imagen.
+    component.draft.update((d) => ({ ...d, image_url: asset, image_url_base: asset }));
+
+    const savePromise = component.save();
+    const req = http.expectOne(`${PRODUCTS}/p9`);
+    expect(req.request.body.image_url).toBeNull();
+    expect(req.request.body.image_url_base).toBe(asset);
+    req.flush(savedProduct('p9'));
+    await savePromise;
+  });
+
+  it('con una imagen nueva viajan image_url (la nueva) y la base (la vigente al abrir)', async () => {
+    await createEdit('p9', true);
+    const asset = 'https://assets.skeilopos.com/acme/products/vigente.png';
+    const nueva = 'https://pub-x.r2.dev/acme/products/nueva.png';
+    component.draft.update((d) => ({ ...d, image_url: nueva, image_url_base: asset }));
+
+    const savePromise = component.save();
+    const req = http.expectOne(`${PRODUCTS}/p9`);
+    expect(req.request.body.image_url).toBe(nueva);
+    expect(req.request.body.image_url_base).toBe(asset);
+    req.flush(savedProduct('p9'));
+    await savePromise;
+  });
+
   it('encender tamaños preselecciona Grande/Mediana/Pequeña si el catálogo las tiene', async () => {
     await createNew();
     component.toggleHasSizes();
