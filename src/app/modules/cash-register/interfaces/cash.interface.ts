@@ -98,18 +98,6 @@ export interface ShiftReport {
   close_note?: string | null;
 }
 
-/** `PartialCountResponse` — arqueo parcial (RF-046). */
-export interface PartialCount {
-  id: string;
-  cash_shift_id: string;
-  counted_amount: string;
-  expected_amount: string;
-  difference: string;
-  note?: string | null;
-  user_name?: string | null;
-  counted_at: string;
-}
-
 /** Respuesta paginada genérica del backend (`Page[T]`). */
 export interface Page<T> {
   items: T[];

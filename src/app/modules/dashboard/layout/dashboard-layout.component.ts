@@ -50,6 +50,23 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
       <app-confirm-dialog />
     </div>
   `,
+  // spec 087 (FR-002, A-87): el shell (sidebar/header) no tenía ningún
+  // tratamiento de impresión -- el `@media print` de cash-report.component.ts
+  // solo oculta sus propios controles, nunca el shell que lo envuelve. Se
+  // oculta aquí, condicionado a `body.printing-cash-report` (fijada por
+  // `cash-session.store.ts::imprimirReporte()` justo antes de `window.print()`
+  // y retirada en `afterprint`), para no afectar la impresión de otras
+  // pantallas que ya usan `window.print()` (p. ej. `table-qr-sheet.component.ts`).
+  styles: [
+    `
+      @media print {
+        :host-context(body.printing-cash-report) app-sidebar,
+        :host-context(body.printing-cash-report) app-header {
+          display: none;
+        }
+      }
+    `,
+  ],
 })
 export class DashboardLayoutComponent implements OnInit, OnDestroy {
   readonly layoutService = inject(LayoutService);
