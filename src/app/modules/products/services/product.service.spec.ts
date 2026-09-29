@@ -52,6 +52,7 @@ function draft(partial: Partial<ProductDraft> = {}): ProductDraft {
     description: '',
     preparation_type: 'prepared',
     image_url: '',
+    image_url_base: null,
     active: true,
     hasSizes: false,
     tracks_inventory: false,
@@ -165,6 +166,76 @@ describe('ProductService', () => {
       // ningún observer activo al que refrescar — invalidar una query inactiva
       // no dispara petición alguna.
       expect(await promise).toBe(PID);
+    });
+
+    // spec 088 (FR-002, A-92): la imagen base viaja siempre; la imagen solo si cambió.
+    describe('imagen base (spec 088)', () => {
+      const ASSET = 'https://assets.skeilopos.com/acme/products/vigente.png';
+      const NUEVA = 'https://pub-x.r2.dev/acme/products/nueva.png';
+
+      async function patchBody(partial: Partial<ProductDraft>) {
+        const promise = service.saveProduct(draft(partial));
+        const req = http.expectOne(`${PRODUCTS}/${PID}`);
+        expect(req.request.method).toBe('PATCH');
+        const body = req.request.body;
+        req.flush({ ...productResponse(), variants: [] });
+        await promise;
+        return body;
+      }
+
+      it('sin tocar la imagen: envía la base y NO reenvía image_url', async () => {
+        const body = await patchBody({ image_url: ASSET, image_url_base: ASSET });
+        expect(body.image_url_base).toBe(ASSET);
+        expect(body.image_url).toBeNull();
+      });
+
+      it('con imagen nueva: envía image_url y la base (la imagen vigente al abrir)', async () => {
+        const body = await patchBody({ image_url: NUEVA, image_url_base: ASSET });
+        expect(body.image_url).toBe(NUEVA);
+        expect(body.image_url_base).toBe(ASSET);
+      });
+
+      it('producto que no tenía imagen: la base viaja como null explícito', async () => {
+        const body = await patchBody({ image_url: '', image_url_base: null });
+        expect('image_url_base' in body).toBe(true);
+        expect(body.image_url_base).toBeNull();
+        expect(body.image_url).toBeNull();
+      });
+
+      it('producto sin imagen que sube la primera: image_url con base null', async () => {
+        const body = await patchBody({ image_url: NUEVA, image_url_base: null });
+        expect(body.image_url).toBe(NUEVA);
+        expect(body.image_url_base).toBeNull();
+      });
+
+      it('un producto nuevo no envía base y sí su imagen', async () => {
+        const promise = service.saveProduct(draft({ id: null, image_url: NUEVA }));
+        const req = http.expectOne(PRODUCTS);
+        expect(req.request.method).toBe('POST');
+        expect(req.request.body.image_url).toBe(NUEVA);
+        expect('image_url_base' in req.request.body).toBe(false);
+        req.flush({ ...productResponse(), variants: [] });
+        await promise;
+      });
+
+      it('getProductDraft guarda la imagen cargada como base', async () => {
+        const promise = service.getProductDraft(PID);
+        http.expectOne(`${PRODUCTS}/${PID}`).flush({ ...productResponse(), image_url: ASSET });
+        await tick();
+        http.expectOne(`${PRODUCTS}/${PID}/variants`).flush([]);
+        const result = await promise;
+        expect(result!.image_url).toBe(ASSET);
+        expect(result!.image_url_base).toBe(ASSET);
+      });
+
+      it('getProductDraft de un producto sin imagen deja la base en null', async () => {
+        const promise = service.getProductDraft(PID);
+        http.expectOne(`${PRODUCTS}/${PID}`).flush(productResponse());
+        await tick();
+        http.expectOne(`${PRODUCTS}/${PID}/variants`).flush([]);
+        const result = await promise;
+        expect(result!.image_url_base).toBeNull();
+      });
     });
 
     it('traduce el 409 de nombre tomado por una desactivada en un mensaje accionable', async () => {

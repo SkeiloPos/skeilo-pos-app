@@ -239,12 +239,17 @@ export class ProductService {
   }
 
   async updateProduct(id: string, form: ProductForm): Promise<boolean> {
+    const base = form.image_url_base ?? null;
     const payload: ProductUpdatePayload = {
       category_id: form.category_id,
       name: form.name,
       description: form.description || null,
       preparation_type: form.preparation_type,
-      image_url: form.image_url || null,
+      // spec 088: solo se reenvía la imagen si cambió respecto de la que el formulario vio
+      // (reenviar la imagen sin tocar es lo que un formulario desactualizado usaba para
+      // deshacer una imagen más nueva); siempre viaja la base.
+      image_url: form.image_url && form.image_url !== base ? form.image_url : null,
+      image_url_base: base,
     };
     const ok = await this.run(() =>
       this.http.patch<ProductResponse>(`${this.productsUrl}/${id}`, payload),
@@ -414,6 +419,9 @@ export class ProductService {
       description: product.description ?? '',
       preparation_type: product.preparation_type,
       image_url: product.image_url ?? '',
+      // spec 088: la imagen vigente al abrir el formulario, para detectar un formulario
+      // desactualizado; no cambia al subir una imagen nueva.
+      image_url_base: product.image_url ?? null,
       active: product.active,
       hasSizes: variantDrafts.length > 1,
       tracks_inventory: product.tracks_inventory,
@@ -548,13 +556,25 @@ export class ProductService {
   }
 
   private toProductPayload(draft: ProductDraft): ProductCreatePayload & ProductUpdatePayload {
-    return {
+    const common = {
       category_id: draft.category_id,
       name: draft.name.trim(),
       description: draft.description.trim() || null,
       preparation_type: draft.preparation_type,
-      image_url: draft.image_url || null,
       tracks_inventory: draft.tracks_inventory,
+    };
+    // Producto nuevo: no hay imagen vigente que comparar, así que no hay base.
+    if (!draft.id) return { ...common, image_url: draft.image_url || null };
+
+    // spec 088 (FR-002): al editar, `image_url` solo viaja si la imagen cambió respecto de la que
+    // el formulario mostraba al abrirse (nunca se reenvía la imagen sin tocar) y la base viaja
+    // siempre — `null` explícito si el producto no tenía imagen, que el backend distingue de
+    // "no enviada". Si otro usuario ya cambió la imagen, el backend ignora la de este formulario.
+    const base = draft.image_url_base ?? null;
+    return {
+      ...common,
+      image_url: draft.image_url && draft.image_url !== base ? draft.image_url : null,
+      image_url_base: base,
     };
   }
 
@@ -564,7 +584,9 @@ export class ProductService {
    * Uploads a product image directly to R2: asks the backend for a presigned
    * PUT URL scoped to the tenant, then PUTs the file straight to R2 (bytes
    * never go through our API). Deleting the previous image is handled by the
-   * backend automatically when `image_url` changes on PATCH /products/{id}.
+   * backend automatically when `image_url` changes on PATCH /products/{id} (spec 088:
+   * only if the form's `image_url_base` still matches the current image, the new file
+   * exists and no other row uses the previous one).
    */
   async uploadProductImage(file: File): Promise<string> {
     const presign = await firstValueFrom(

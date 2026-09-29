@@ -881,6 +881,7 @@ export class ProductFormComponent implements OnInit, OnDestroy {
       description: '',
       preparation_type: 'prepared',
       image_url: '',
+      image_url_base: null,
       active: true,
       hasSizes: false,
       tracks_inventory: false,
@@ -1280,6 +1281,9 @@ export class ProductFormComponent implements OnInit, OnDestroy {
       this.service.otherError.set(null);
       try {
         const url = await this.service.uploadProductImage(file);
+        // spec 088: solo cambia `image_url`; `image_url_base` sigue siendo la imagen vigente al
+        // abrir el formulario, para que el servicio sepa que la imagen cambió y el backend
+        // detecte un formulario desactualizado.
         this.draft.update((d) => ({ ...d, image_url: url }));
         this.clearPendingImage();
       } catch {
