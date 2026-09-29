@@ -107,6 +107,18 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
       </div>
     </div>
   `,
+  styles: [
+    `
+      @media print {
+        :host {
+          display: block;
+        }
+        @page {
+          margin: 10mm;
+        }
+      }
+    `,
+  ],
 })
 export class CashReportComponent {
   readonly store = inject(CashSessionStore);

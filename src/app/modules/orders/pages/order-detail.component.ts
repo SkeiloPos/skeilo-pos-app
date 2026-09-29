@@ -59,7 +59,10 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           <div class="px-5 py-3 grid grid-cols-2 gap-4 border-b border-gray-100 text-sm">
             <div>
               <p class="text-xs text-gray-400">Comensal</p>
-              <p class="font-medium text-gray-700">{{ order()!.customer_name ?? '—' }}</p>
+              <!-- spec 087 (FR-004, A-88): destacado -- "Cliente sin nombre"
+                   solo para pedidos históricos anteriores a esta spec
+                   (customer_name nulo/vacío), nunca migrados. -->
+              <p class="font-bold text-[15px] text-gray-900">{{ order()!.customer_name?.trim() || 'Cliente sin nombre' }}</p>
             </div>
             <div>
               <p class="text-xs text-gray-400">Creada</p>

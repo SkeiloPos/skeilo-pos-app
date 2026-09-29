@@ -122,17 +122,15 @@ describe('ManualOrderPageComponent', () => {
     ) as HTMLElement;
   }
 
+  /** spec 087 (FR-005, A-88): los 3 tabs tratan "Cliente" igual -- un input
+   *  simple, siempre editable, directo hermano de su `<label>` (sin toggle de
+   *  solo-lectura ni botón de edición, retirados con el auto-relleno
+   *  "Consumidor final"). */
   function campoCliente(): HTMLInputElement {
-    return clienteHeading().nextElementSibling!.querySelector('input') as HTMLInputElement;
+    return clienteHeading().nextElementSibling as HTMLInputElement;
   }
 
-  function botonEditarCliente(): HTMLButtonElement {
-    return clienteHeading().nextElementSibling!.querySelector('button') as HTMLButtonElement;
-  }
-
-  function editarCliente(texto: string): void {
-    botonEditarCliente().click();
-    fixture.detectChanges();
+  function escribirCliente(texto: string): void {
     const input = campoCliente();
     input.value = texto;
     input.dispatchEvent(new Event('input'));
@@ -256,6 +254,7 @@ describe('ManualOrderPageComponent', () => {
     fixture.detectChanges();
 
     botonTipoOrden('Para llevar').click();
+    store.customerName.set('Ana Torres');
     store.addDraftFromSelection({
       product: { id: 'p1', name: 'Mango Tropical' } as never,
       variant: { id: 'v1', price: 5000 } as never,
@@ -288,7 +287,7 @@ describe('ManualOrderPageComponent', () => {
     expect(botonConfirmar().disabled).toBe(true);
   });
 
-  it('al seleccionar "Para Llevar", el campo Cliente muestra "Consumidor final" por defecto (FR-010)', async () => {
+  it('al seleccionar "Para Llevar", el campo Cliente queda vacío y editable, sin valor por defecto (spec 087, FR-005/A-88 -- reemplaza el auto-relleno "Consumidor final" de spec 054)', async () => {
     createComponent(null);
     fixture.detectChanges();
     await Promise.resolve();
@@ -297,8 +296,8 @@ describe('ManualOrderPageComponent', () => {
     botonTipoOrden('Para llevar').click();
     fixture.detectChanges();
 
-    expect(campoCliente().value).toBe('Consumidor final');
-    expect(campoCliente().readOnly).toBe(true);
+    expect(campoCliente().value).toBe('');
+    expect(campoCliente().readOnly).toBe(false);
   });
 
   // ── spec 056: "Domicilio" habilitada con sus propios campos ──────────────
@@ -908,6 +907,7 @@ describe('ManualOrderPageComponent', () => {
     fixture.detectChanges();
     await Promise.resolve();
     http.expectOne(`${API}/table-sessions`).flush([]);
+    store.customerName.set('Ana Torres');
 
     store.addDraftFromSelection({
       product: { id: 'p1', name: 'Mango Tropical' } as never,
@@ -979,7 +979,11 @@ describe('ManualOrderPageComponent', () => {
     expect(createSpy).not.toHaveBeenCalled();
   });
 
-  it('el campo Cliente muestra "Consumidor final" por defecto, en solo lectura (spec 054, US1, FR-001/FR-002)', async () => {
+  // spec 087 (FR-005, A-88): reemplaza el auto-relleno "Consumidor final" +
+  // toggle de solo-lectura de spec 054 -- el campo Cliente ahora es siempre
+  // editable, sin valor por defecto, y bloquea "Crear pedido" si queda vacío.
+
+  it('el campo Cliente empieza vacío y editable, sin ningún valor por defecto (spec 087, FR-005/A-88)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -988,11 +992,11 @@ describe('ManualOrderPageComponent', () => {
     fixture.detectChanges();
 
     const input = campoCliente();
-    expect(input.value).toBe('Consumidor final');
-    expect(input.readOnly).toBe(true);
+    expect(input.value).toBe('');
+    expect(input.readOnly).toBe(false);
   });
 
-  it('el botón de edición vuelve editable el campo Cliente (spec 054, US2, FR-003)', async () => {
+  it('escribir en el campo Cliente actualiza el nombre directamente, sin ningún botón de edición (spec 087, FR-005/A-88)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1000,45 +1004,32 @@ describe('ManualOrderPageComponent', () => {
     http.expectOne(`${API}/table-sessions`).flush([]);
     fixture.detectChanges();
 
-    botonEditarCliente().click();
-    fixture.detectChanges();
-
-    expect(campoCliente().readOnly).toBe(false);
-  });
-
-  it('editar y perder el foco actualiza el nombre del cliente y cierra la edición (spec 054, US2, FR-004)', async () => {
-    createComponent('t1');
-    tableService.tables.set([table({ id: 't1', number: 3 })]);
-    fixture.detectChanges();
-    await Promise.resolve();
-    http.expectOne(`${API}/table-sessions`).flush([]);
-    fixture.detectChanges();
-
-    editarCliente('María Pérez');
-    campoCliente().dispatchEvent(new Event('blur'));
-    fixture.detectChanges();
+    escribirCliente('María Pérez');
 
     expect(campoCliente().value).toBe('María Pérez');
-    expect(campoCliente().readOnly).toBe(true);
+    expect(store.customerName()).toBe('María Pérez');
   });
 
-  it('si se deja vacío al perder el foco, el campo Cliente vuelve a "Consumidor final" (spec 054, US2, FR-005)', async () => {
+  it('"Crear pedido" está deshabilitado sin nombre de cliente, aunque haya productos y mesa (spec 087, FR-005/A-88)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
     await Promise.resolve();
     http.expectOne(`${API}/table-sessions`).flush([]);
+
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Mango Tropical' } as never,
+      variant: { id: 'v1', price: 5000 } as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
     fixture.detectChanges();
 
-    editarCliente('');
-    campoCliente().dispatchEvent(new Event('blur'));
-    fixture.detectChanges();
-
-    expect(campoCliente().value).toBe('Consumidor final');
-    expect(campoCliente().readOnly).toBe(true);
+    expect(botonConfirmar().disabled).toBe(true);
   });
 
-  it('al confirmar sin editar, se envía "Consumidor final" como customer_name (spec 054, US3, FR-006)', async () => {
+  it('confirmar sin nombre de cliente muestra el mensaje de error inline y no crea el pedido (spec 087, FR-005/A-88)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1058,19 +1049,15 @@ describe('ManualOrderPageComponent', () => {
     const createSpy = vi
       .spyOn(diningSessionService, 'createManualOrder')
       .mockResolvedValue({ id: 'o9' } as DiningOrder);
-    vi.spyOn(store, 'reload').mockResolvedValue(undefined);
-    vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
-    const confirmButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.includes('Crear pedido'),
-    ) as HTMLButtonElement;
-    confirmButton.click();
-    await Promise.resolve();
+    await fixture.componentInstance.confirm();
+    fixture.detectChanges();
 
-    expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ customer_name: 'Consumidor final' }));
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('El nombre del cliente es obligatorio.');
   });
 
-  it('al confirmar tras editar, se envía el nombre editado como customer_name (spec 054, US3, FR-006)', async () => {
+  it('al confirmar con un nombre diligenciado, se envía ese nombre como customer_name (spec 087, FR-005/A-88)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1084,11 +1071,7 @@ describe('ManualOrderPageComponent', () => {
       quantity: 1,
       notes: null,
     });
-    fixture.detectChanges();
-
-    editarCliente('María Pérez');
-    campoCliente().dispatchEvent(new Event('blur'));
-    fixture.detectChanges();
+    escribirCliente('María Pérez');
 
     const diningSessionService = TestBed.inject(DiningSessionService);
     const createSpy = vi
@@ -1104,41 +1087,6 @@ describe('ManualOrderPageComponent', () => {
     await Promise.resolve();
 
     expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ customer_name: 'María Pérez' }));
-  });
-
-  it('confirmar con el campo Cliente vacío en modo edición (sin perder el foco) igual envía "Consumidor final" (spec 054, US3, FR-005)', async () => {
-    createComponent('t1');
-    tableService.tables.set([table({ id: 't1', number: 3 })]);
-    fixture.detectChanges();
-    await Promise.resolve();
-    http.expectOne(`${API}/table-sessions`).flush([]);
-
-    store.addDraftFromSelection({
-      product: { id: 'p1', name: 'Mango Tropical' } as never,
-      variant: { id: 'v1', price: 5000 } as never,
-      options: [],
-      quantity: 1,
-      notes: null,
-    });
-    fixture.detectChanges();
-
-    editarCliente('');
-    // Sin blur: el mesero confirma mientras el campo sigue en modo edición y vacío.
-
-    const diningSessionService = TestBed.inject(DiningSessionService);
-    const createSpy = vi
-      .spyOn(diningSessionService, 'createManualOrder')
-      .mockResolvedValue({ id: 'o9' } as DiningOrder);
-    vi.spyOn(store, 'reload').mockResolvedValue(undefined);
-    vi.spyOn(router, 'navigate').mockResolvedValue(true);
-
-    const confirmButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.includes('Crear pedido'),
-    ) as HTMLButtonElement;
-    confirmButton.click();
-    await Promise.resolve();
-
-    expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ customer_name: 'Consumidor final' }));
   });
 
   // ── Rediseño responsive (create-order/code.html): una sola tarjeta a la
@@ -1399,6 +1347,9 @@ describe('ManualOrderPageComponent — desglose del borrador (spec 073, US5)', (
     router = TestBed.inject(Router);
     TestBed.inject(HttpTestingController); // se drena implícitamente (mock de draftPreview)
     vi.spyOn(store, 'init').mockResolvedValue(undefined);
+    // spec 087 (FR-005, A-88): customer_name ahora es obligatorio -- este
+    // describe prueba el desglose de totales, no la validación del nombre.
+    store.customerName.set('Ana Torres');
   }
 
   function addCono(qty: number): void {
@@ -1495,5 +1446,126 @@ describe('ManualOrderPageComponent — desglose del borrador (spec 073, US5)', (
 
     expect(createSpy).not.toHaveBeenCalled();
     expect(draftSpy).toHaveBeenCalled();
+  });
+});
+
+// ── spec 087, FR-016 (US10): TOTAL ORDEN sobre el conjunto vigente completo ──
+describe('ManualOrderPageComponent — TOTAL ORDEN con ítems guardados (spec 087, US10)', () => {
+  let fixture: ComponentFixture<ManualOrderPageComponent>;
+  let store: PosTerminalStore;
+  let api: DiningSessionService;
+
+  function preview(subtotal: string, discount: string, total: string): CheckoutPreview {
+    return { subtotal, discount, delivery_fee: '0', total, promotion_evaluated_at: '2026-09-29T10:00:00Z' };
+  }
+
+  function setup(): void {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ManualOrderPageComponent],
+      providers: [
+        provideRouter([]),
+        swPushStub,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({}), queryParamMap: convertToParamMap({}) } },
+        },
+      ],
+    });
+    fixture = TestBed.createComponent(ManualOrderPageComponent);
+    store = fixture.componentInstance.store;
+    api = TestBed.inject(DiningSessionService);
+    TestBed.inject(HttpTestingController);
+    vi.spyOn(store, 'init').mockResolvedValue(undefined);
+    store.customerName.set('Ana Torres');
+  }
+
+  function pedido(items: Array<Record<string, unknown>>): DiningOrder {
+    return {
+      id: 'o1',
+      channel: 'POS',
+      status: 'abierta',
+      created_at: '2026-09-29T10:00:00',
+      dining_table_id: 't1',
+      items: items.map((it, i) => ({
+        id: `o1-i${i}`, product_variant_id: 'v1', quantity: 1, unit_price: '8000',
+        estado_cocina: 'listo', ...it,
+      })),
+    } as unknown as DiningOrder;
+  }
+
+  async function asentar(): Promise<void> {
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r));
+    fixture.detectChanges();
+  }
+
+  const texto = (): string => fixture.nativeElement.textContent as string;
+
+  it('tras guardar un ítem nuevo, el TOTAL ORDEN refleja el total del preview del conjunto completo, no el subtotal local', async () => {
+    setup();
+    const spy = vi.spyOn(api, 'draftPreview').mockResolvedValue(preview('16000', '4000', '12000'));
+    store.orders.set([pedido([{ quantity: 2 }])]);
+    store.selectedOrderId.set('o1');
+    await asentar();
+
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls.at(-1)![0].items).toEqual([
+      { product_variant_id: 'v1', quantity: 2, options: [] },
+    ]);
+    // 12.000 viene del backend (con promoción); el subtotal local sería 16.000 sin descuento.
+    expect(texto()).toContain('12.000');
+    expect(texto()).toContain('Descuento');
+  });
+
+  it('al anular un ítem guardado, el total desciende sin recargar', async () => {
+    setup();
+    vi.spyOn(api, 'draftPreview').mockImplementation(async (payload) => {
+      const total = payload.items.reduce((s, i) => s + (i.quantity ?? 1) * 8000, 0);
+      return preview(String(total), '0', String(total));
+    });
+    store.orders.set([pedido([{}, { id: 'o1-i1' }])]);
+    store.selectedOrderId.set('o1');
+    await asentar();
+    expect(texto()).toContain('16.000');
+
+    store.orders.set([pedido([{}, { id: 'o1-i1', estado_cocina: 'anulado' }])]);
+    await asentar();
+
+    expect(texto()).not.toContain('16.000');
+    expect(texto()).toContain('8.000');
+  });
+
+  it('con cero ítems vigentes el total mostrado es $0, no el anterior', async () => {
+    setup();
+    vi.spyOn(api, 'draftPreview').mockResolvedValue(preview('8000', '0', '8000'));
+    store.orders.set([pedido([{}])]);
+    store.selectedOrderId.set('o1');
+    await asentar();
+    expect(texto()).toContain('8.000');
+
+    store.orders.set([pedido([{ estado_cocina: 'anulado' }])]);
+    await asentar();
+
+    expect(store.draftPreview()).toBeNull();
+    expect(store.totals().total).toBe(0);
+    expect(texto()).not.toContain('8.000');
+  });
+
+  it('los combos se suman a su precio de combo al total del preview (que no los cubre)', async () => {
+    setup();
+    vi.spyOn(api, 'draftPreview').mockResolvedValue(preview('8000', '0', '8000'));
+    store.orders.set([
+      pedido([{}, { id: 'o1-c0', product_variant_id: 'v-combo', combo_id: 'combo-1', unit_price: '5000' }]),
+    ]);
+    store.selectedOrderId.set('o1');
+    await asentar();
+
+    expect(store.combosSubtotal()).toBe(5000);
+    expect(texto()).toContain('13.000');
   });
 });

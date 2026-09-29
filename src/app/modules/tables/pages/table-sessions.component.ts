@@ -78,8 +78,14 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
       <!-- Sub-barra: pestañas de tipo de orden + resumen de salón. Se oculta
            en la vista de detalle de pedido (a pedido del usuario, el detalle
            no necesita las pestañas de tipo ni el CTA de "Crear pedido nuevo",
-           ya tiene su propio botón de volver). -->
-      @if (!showingDetail()) {
+           ya tiene su propio botón de volver) -- EXCEPTO cuando la mesa
+           seleccionada ya tiene un pedido abierto (spec 087, FR-007, A-88):
+           ahí se mantiene visible para permitir un segundo pedido en
+           paralelo sobre la misma mesa (goToNewOrder() ya apunta a esta
+           mesa vía newOrderTableId(), que cae a selectedTableId() aunque
+           esté ocupada). Un pedido "Para llevar"/"Domicilio" sin mesa
+           (selectedTableId() nulo) conserva el comportamiento previo. -->
+      @if (!showingDetail() || store.selectedTableId()) {
         <div
           class="bg-white border-b border-[#e5e7eb] px-3 sm:px-4 py-2 sm:py-0 sm:h-14 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0"
         >

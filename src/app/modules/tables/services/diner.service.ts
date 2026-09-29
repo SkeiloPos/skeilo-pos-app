@@ -382,7 +382,11 @@ export class DinerService {
         image_url: (p['image_url'] as string) ?? null,
         variants: ((p['variants'] as Record<string, unknown>[]) ?? []).map((v) => ({
           id: v['id'] as string,
-          name: v['name'] as string,
+          // spec 084 (A-79): el backend nombra la variante con `presentation_name`
+          // (no manda `name`). Sin esto la fila del modal solo mostraba la promoción
+          // (spec 087, FR-014). `?? name` solo por compatibilidad con un backend viejo.
+          name: (v['presentation_name'] ?? v['name']) as string,
+          presentation_id: v['presentation_id'] as string | undefined,
           price: Number(v['price']),
           discounted_price: v['discounted_price'] != null ? Number(v['discounted_price']) : null,
           discount_kind: (v['discount_kind'] as string) ?? null,

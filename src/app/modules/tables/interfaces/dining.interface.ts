@@ -82,6 +82,13 @@ export interface DiningOrderItemOption {
   id: string;
   option_id: string;
   quantity: number;
+  /**
+   * Nombre de la opción y de su grupo, resueltos por el backend en lectura
+   * (spec 087, FR-015/A-89). Respaldo cuando la opción ya no está en el menú
+   * vigente; opcionales porque un pedido recién creado puede traerlos en `null`.
+   */
+  name?: string | null;
+  group_name?: string | null;
 }
 
 /** One line of an order response (`OrderItemResponse`). Amounts are strings. */
@@ -219,6 +226,10 @@ export interface DiningOrder {
   delivery_phone?: string | null;
   delivery_fee?: number | null;
   notes?: string | null;
+  /** spec 087 (FR-006): número de pedido de mesa, estable dentro del turno de
+   *  caja en que se creó. `null` para TAKEAWAY/DELIVERY y para pedidos
+   *  anteriores a esta spec. */
+  table_order_number?: number | null;
   created_at: string;
   items?: DiningOrderItem[];
   /** `null` si nunca se inició ningún intento de pago (spec 024). */

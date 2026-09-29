@@ -72,7 +72,7 @@ describe('DinerService', () => {
         products: [{
           id: 'p1', name: 'Banana Split Especial', description: null, image_url: null,
           variants: [{
-            id: 'v1', name: 'Pequeña', price: '15000.00',
+            id: 'v1', presentation_id: 'pr1', presentation_name: 'Pequeña', price: '15000.00',
             discounted_price: null, discount_kind: null,
             promotion: {
               condition_text: 'Llevando 2 Pequeña pagas $7.000',
@@ -95,6 +95,29 @@ describe('DinerService', () => {
     expect(promo?.unit_equivalent).toBe(3500);
     expect(promo?.value).toBe(7000);
     expect(promo?.min_qty).toBe(2);
+  });
+
+  it('el nombre de la variante sale de `presentation_name` (spec 084 A-79; spec 087, FR-014) -- sin él el modal solo mostraba la promoción', async () => {
+    const promise = service.resolveByToken('signed.jwt');
+    const req = http.expectOne(`${API}/menu/qr-token/signed.jwt`);
+    req.flush({
+      table: { id: 't1', number: 5, name: 'Terraza' },
+      business: { name: 'Heladería', logo_url: null },
+      menu: [{
+        id: 'c1', name: 'Granizados',
+        products: [{
+          id: 'p1', name: 'Granizado del diablo', description: null, image_url: null,
+          variants: [
+            { id: 'v1', presentation_id: 'pr-grande', presentation_name: 'Grande', price: '16000.00' },
+            { id: 'v2', presentation_id: 'pr-mediano', presentation_name: 'Mediano', price: '11000.00' },
+          ],
+        }],
+      }],
+    });
+
+    const variants = (await promise).categories[0].products[0].variants;
+    expect(variants.map((v) => v.name)).toEqual(['Grande', 'Mediano']);
+    expect(variants.map((v) => v.presentation_id)).toEqual(['pr-grande', 'pr-mediano']);
   });
 
   it('abre sesión y persiste el session_token', async () => {
