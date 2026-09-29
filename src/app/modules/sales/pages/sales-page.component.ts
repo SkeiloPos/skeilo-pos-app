@@ -176,6 +176,9 @@ const STATUS_CHIP_CLASSES: Record<SaleStatus, string> = {
               @if (+r.tax > 0) { <div class="flex justify-between text-gray-500"><span>Impuesto</span><span>$ {{ +r.tax | number: '1.2-2' }}</span></div> }
               @if (+r.tip > 0) { <div class="flex justify-between text-gray-500"><span>Propina</span><span>$ {{ +r.tip | number: '1.2-2' }}</span></div> }
               <div class="flex justify-between font-bold text-base"><span>Total</span><span>$ {{ +r.total | number: '1.2-2' }}</span></div>
+              @if (hasCashComponent(r)) {
+                <div class="flex justify-between text-gray-500"><span>Cambio</span><span>$ {{ +(r.change_given ?? 0) | number: '1.2-2' }}</span></div>
+              }
             </div>
             @if (r.payments && r.payments.length > 0) {
               <div class="border-t border-gray-100 pt-2">
@@ -244,6 +247,16 @@ export class SalesPageComponent implements OnInit, OnDestroy {
 
   methodName(id: string): string {
     return this.methods.methods().find((m) => m.id === id)?.name ?? 'Pago';
+  }
+
+  /** spec 087 (FR-013): ¿el pago de esta venta incluyó algún método en
+   *  efectivo? -- gobierna si se muestra "Cambio: $X" (backend ya serializa
+   *  `change_given`, sin cambios de esquema). */
+  hasCashComponent(sale: Sale): boolean {
+    const cashIds = new Set(
+      this.methods.methods().filter((m) => m.is_cash).map((m) => m.id),
+    );
+    return (sale.payments ?? []).some((p) => cashIds.has(p.payment_method_id));
   }
 
   /** Cómo se identifica la venta: por su factura, o por el id si no tiene. */
