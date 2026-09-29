@@ -1,4 +1,4 @@
-import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams, HttpResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { QueryClient } from '@tanstack/angular-query-experimental';
 import { Observable, firstValueFrom } from 'rxjs';
@@ -266,6 +266,14 @@ export class InventoryService {
     return this.submit(() =>
       this.http.post<MovementResponse>(`${this.baseUrl}/items/${id}/adjust`, payload)
     );
+  }
+
+  /** Descarga el respaldo completo del inventario en `.xlsx` (spec 086). */
+  exportItems(): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.baseUrl}/items/export`, {
+      responseType: 'blob',
+      observe: 'response',
+    });
   }
 
   /** Fetch the kardex (movements) of a single item, newest first. */

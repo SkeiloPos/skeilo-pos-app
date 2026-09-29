@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, computed, signal } from '@angular/core';
 import { CartOptionLine } from '../services/pos-terminal.store';
 
@@ -10,10 +11,17 @@ import { CartOptionLine } from '../services/pos-terminal.store';
  * distinguir de qué grupo venía cada una ni qué era nota).
  *
  * Sin ítems `[]` ni nota: no renderiza nada.
+ *
+ * spec 087 (FR-017, D14): la nota por producto se define **una sola vez**
+ * (`#notaTpl`) con un único estilo legible — 16px, semibold, fondo ámbar de
+ * alto contraste (texto `amber-900` sobre `amber-100`, ≈ 9:1, WCAG AA),
+ * multilínea — y se reutiliza en las dos ramas de la plantilla. La nota general
+ * del pedido (`order.notes`) no pasa por este componente.
  */
 @Component({
   selector: 'app-cart-item-options',
   standalone: true,
+  imports: [NgTemplateOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let grupos = optionGroups();
@@ -28,20 +36,21 @@ import { CartOptionLine } from '../services/pos-terminal.store';
           </div>
         }
         @if (notes) {
-          <span
-            class="inline-flex items-center gap-1 bg-[#fffbeb] text-[#b45309] border border-[#fef3c7] text-[11px] px-2 py-0.5 rounded-full italic"
-          >
-            ℹ️ <span class="font-semibold not-italic">Nota:</span> {{ notes }}
-          </span>
+          <ng-container [ngTemplateOutlet]="notaTpl" />
         }
       </div>
     } @else if (notes) {
-      <span
-        class="inline-flex items-center gap-1 bg-[#fffbeb] text-[#b45309] border border-[#fef3c7] text-[11px] px-2 py-0.5 rounded-full italic"
-      >
-        ℹ️ <span class="font-semibold not-italic">Nota:</span> {{ notes }}
-      </span>
+      <ng-container [ngTemplateOutlet]="notaTpl" />
     }
+
+    <ng-template #notaTpl>
+      <span
+        data-testid="item-note"
+        class="block w-full bg-amber-100 text-amber-900 border border-amber-300 text-base font-semibold px-3 py-1.5 rounded-lg whitespace-pre-wrap break-words"
+      >
+        ℹ️ Nota: {{ notes }}
+      </span>
+    </ng-template>
   `,
 })
 export class CartItemOptionsComponent {

@@ -1,10 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CashSessionStore } from '../services/cash-session.store';
-import { CashService } from '../services/cash.service';
-import { ToastService } from '../../../shared/feedback/toast.service';
-import { MoneyInputComponent } from '../../../shared/money-input/money-input.component';
-import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
 /**
  * Dashboard del turno en curso: acciones, banner de efectivo esperado, KPIs y la
@@ -18,7 +13,6 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   selector: 'app-cash-dashboard',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, MoneyInputComponent, IconMiComponent],
   template: `
     <div class="flex-1 w-full max-w-[1240px] mx-auto p-6">
       @if (store.error() && !store.modal()) {
@@ -34,7 +28,6 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           <button (click)="store.openMovimiento('ingreso')" class="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">+ Ingreso</button>
           <button (click)="store.openMovimiento('egreso')" class="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">− Egreso</button>
           <button (click)="store.openMovimiento('retiro')" class="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">↓ Retiro</button>
-          <button (click)="openPartial()" class="px-3 py-2 border border-indigo-200 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-50 transition-colors">Arqueo parcial</button>
           <button (click)="store.openArqueo()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">Cerrar turno</button>
         </div>
       </div>
@@ -155,85 +148,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
         </div>
       }
     </div>
-
-    <!-- Modal arqueo parcial (RF-046) -->
-    @if (showPartial()) {
-      <div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col">
-          <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 class="text-base font-bold text-gray-900">Arqueo parcial</h2>
-            <button type="button" (click)="showPartial.set(false)" class="text-gray-400 hover:text-gray-600">
-              <app-mi-icon name="close" ariaLabel="Cerrar" [size]="20" />
-            </button>
-          </div>
-          <div class="p-6 space-y-3">
-            <p class="text-sm text-gray-500">
-              Conteo intermedio del efectivo sin cerrar el turno. Se compara con el
-              efectivo esperado ({{ store.fmt(store.efectivoEsperado()) }}).
-            </p>
-            <div>
-              <label class="block text-xs font-semibold text-gray-500 mb-1">Efectivo contado</label>
-              <app-money-input [(ngModel)]="partialCounted" />
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-gray-500 mb-1">Observación (opcional)</label>
-              <input [(ngModel)]="partialNote" type="text" maxlength="500"
-                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-            </div>
-            <div class="bg-white rounded-xl border border-gray-100 p-3 flex justify-between items-center">
-              <span class="text-[10px] uppercase tracking-wide text-indigo-600 font-semibold">Diferencia</span>
-              <span class="font-bold" [class]="diffClass()">{{ store.fmt(partialDiff()) }}</span>
-            </div>
-          </div>
-          <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
-            <button type="button" (click)="showPartial.set(false)" class="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100">Cancelar</button>
-            <button type="button" (click)="submitPartial()" [disabled]="partialSubmitting()"
-              class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold">
-              {{ partialSubmitting() ? 'Registrando…' : 'Registrar' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    }
   `,
 })
 export class CashDashboardComponent {
   readonly store = inject(CashSessionStore);
-  private readonly cash = inject(CashService);
-  private readonly toast = inject(ToastService);
-
-  readonly showPartial = signal(false);
-  partialCounted: number | null = 0;
-  partialNote = '';
-  readonly partialSubmitting = signal(false);
-
-  readonly partialDiff = computed(() => Number(this.partialCounted || 0) - this.store.efectivoEsperado());
-
-  diffClass(): string {
-    const d = this.partialDiff();
-    return d === 0 ? 'text-gray-700' : d > 0 ? 'text-emerald-600' : 'text-red-600';
-  }
-
-  openPartial(): void {
-    this.partialCounted = 0;
-    this.partialNote = '';
-    this.showPartial.set(true);
-  }
-
-  async submitPartial(): Promise<void> {
-    const shiftId = this.store.shift()?.id;
-    if (!shiftId) return;
-    this.partialSubmitting.set(true);
-    try {
-      const res = await this.cash.partialCount(shiftId, Number(this.partialCounted || 0), this.partialNote || null);
-      const diff = Number(res.difference);
-      const label = diff === 0 ? 'cuadra' : diff > 0 ? `sobrante ${this.store.fmt(diff)}` : `faltante ${this.store.fmt(-diff)}`;
-      this.toast.success(`Arqueo parcial registrado (${label})`);
-      this.showPartial.set(false);
-    } catch (e) {
-      this.toast.error(this.cash.extractError(e, 'No se pudo registrar el arqueo parcial'));
-    } finally {
-      this.partialSubmitting.set(false);
-    }
-  }
 }

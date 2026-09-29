@@ -429,6 +429,43 @@ describe('ProductSelectComponent — información de promoción (spec 066)', () 
     const lineas = el.textContent?.match(/c\/u/g) ?? [];
     expect(lineas.length).toBe(1);
   });
+
+  // ── spec 087, FR-014 (US8): presentación siempre visible junto a la promoción ──
+
+  it('FR-014: la fila con promoción muestra el nombre de la presentación y la promoción por separado (nunca solo la promoción)', () => {
+    const el = render([variante({ name: 'Pequeño 8oz', promotion: promocion() })]);
+
+    const nombre = el.querySelector('[data-testid="variant-name"]') as HTMLElement;
+    const promo = el.querySelector('[data-testid="variant-promo"]') as HTMLElement;
+    expect(nombre.textContent?.trim()).toBe('Pequeño 8oz');
+    expect(promo.textContent).toContain('c/u');
+    expect(nombre).not.toBe(promo);
+    expect(nombre.contains(promo)).toBe(false);
+  });
+
+  it('FR-014: la fila sin promoción no renderiza el elemento de la etiqueta', () => {
+    const el = render([variante({ name: 'Mediano 12oz' })]);
+
+    expect(el.querySelector('[data-testid="variant-name"]')?.textContent?.trim()).toBe('Mediano 12oz');
+    expect(el.querySelector('[data-testid="variant-promo"]')).toBeNull();
+  });
+
+  it('FR-014: el nombre se ajusta en varias líneas (sin `truncate`) y la etiqueta de promoción baja de línea en vez de truncarse', () => {
+    const el = render([
+      variante({
+        name: 'Presentación familiar extra grande con salsa de la casa',
+        promotion: promocion(),
+      }),
+    ]);
+
+    const nombre = el.querySelector('[data-testid="variant-name"]') as HTMLElement;
+    const promo = el.querySelector('[data-testid="variant-promo"]') as HTMLElement;
+    expect(nombre.classList.contains('truncate')).toBe(false);
+    expect(nombre.classList.contains('break-words')).toBe(true);
+    expect(promo.classList.contains('truncate')).toBe(false);
+    expect(promo.classList.contains('whitespace-normal')).toBe(true);
+    expect(promo.classList.contains('break-words')).toBe(true);
+  });
 });
 
 // ── `[initialSelection]`: precarga para editar una línea ya agregada

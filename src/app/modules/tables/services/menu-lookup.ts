@@ -9,10 +9,11 @@ export interface MenuLookup {
   variantLabel(variantId: string): string;
   optionLabel(optionId: string): string;
   /**
-   * spec 065: `"2x Nombre"` si `quantity > 1`, o `optionLabel(optionId)` sin
-   * cambios si `quantity === 1` (research.md Decisión 9) -- un único
-   * formateador compartido por las seis superficies que muestran opciones
-   * elegidas, para que el formato nunca diverja entre ellas.
+   * spec 087 (FR-012): `"Nombre xN"`, multiplicador siempre visible, incluso
+   * x1 (reemplaza el formato "2x Nombre" que se omitía con `quantity === 1`,
+   * spec 065/research.md Decisión 9) -- un único formateador compartido por
+   * las superficies que muestran opciones elegidas, para que el formato
+   * nunca diverja entre ellas.
    */
   optionLabelWithQuantity(optionId: string, quantity: number): string;
   /**
@@ -73,6 +74,17 @@ function indexOptions(product: MenuCategory['products'][number], maps: MenuLooku
  * producto use por su cuenta. Sin ese separador (variante única), `variant`
  * sale `null`.
  */
+/**
+ * "Nombre xN" (spec 087, FR-012) -- el multiplicador SIEMPRE va, incluso x1
+ * (antes se omitía con `quantity === 1`, contradiciendo FR-012 directamente).
+ * Único formateador compartido por las tres implementaciones independientes
+ * del mismo bug: `optionLabelWithQuantity` (abajo), `chosenNames()`
+ * (`product-select.component.ts`) y `apply()` (`dining-cart.service.ts`).
+ */
+export function formatQuantifiedLabel(name: string, quantity: number): string {
+  return `${name} x${quantity}`;
+}
+
 export function splitVariantLabel(name: string): { product: string; variant: string | null } {
   const sep = ' · ';
   const idx = name.indexOf(sep);
@@ -103,10 +115,7 @@ export function buildMenuLookup(categories: MenuCategory[]): MenuLookup {
   return {
     variantLabel: (id) => maps.labels.get(id) ?? 'Producto',
     optionLabel,
-    optionLabelWithQuantity: (id, quantity) => {
-      const label = optionLabel(id);
-      return quantity > 1 ? `${quantity}x ${label}` : label;
-    },
+    optionLabelWithQuantity: (id, quantity) => formatQuantifiedLabel(optionLabel(id), quantity),
     optionGroupLabel: (id) => maps.optGroupLabels.get(id) ?? null,
     variantPrice: (id) => maps.prices.get(id) ?? 0,
     optionPrice: (id) => maps.optPrices.get(id) ?? 0,

@@ -7,6 +7,7 @@ import { ChosenMenuOption } from '../components/product-select.component';
 import { CartResponse } from '../interfaces/diner.interface';
 import { DinerService } from './diner.service';
 import { effectivePrice } from '../../promotions/services/promotion-pricing.util';
+import { formatQuantifiedLabel } from './menu-lookup';
 
 /** Una línea del carrito, ya resuelta contra el menú para poder pintarla. */
 export interface CartLine {
@@ -181,7 +182,7 @@ export class DiningCartService {
             .map((o) => {
               const name = this.index.options.get(o.option_id);
               if (!name) return null;
-              return o.quantity > 1 ? `${o.quantity}x ${name}` : name;
+              return formatQuantifiedLabel(name, o.quantity);
             })
             .filter((n): n is string => !!n),
           quantity: it.quantity,

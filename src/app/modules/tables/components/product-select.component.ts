@@ -10,6 +10,7 @@ import {
   signal,
 } from '@angular/core';
 import { MoneyPipe } from '../../../shared/money.pipe';
+import { formatQuantifiedLabel } from '../services/menu-lookup';
 import {
   MenuOption,
   MenuOptionGroup,
@@ -116,19 +117,22 @@ export interface ProductSelection {
               <div class="space-y-2.5" role="radiogroup" aria-label="Presentación">
                 @for (v of product.variants; track v.id) {
                   <label
-                    class="relative flex items-center justify-between gap-3 p-3.5 rounded-2xl border-2 transition-colors"
+                    class="relative flex items-start justify-between gap-3 p-3.5 rounded-2xl border-2 transition-colors"
                     [class]="v.available === false
                       ? 'border-gray-100 bg-gray-50 cursor-not-allowed'
                       : variantId() === v.id
                         ? 'border-indigo-600 bg-indigo-50/50 cursor-pointer'
                         : 'border-gray-200 bg-white hover:border-gray-300 cursor-pointer'"
                   >
-                    <span class="flex items-center gap-3 min-w-0">
-                      <input type="radio" name="variant" class="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500 shrink-0"
+                    <span class="flex items-start gap-3 min-w-0">
+                      <input type="radio" name="variant" class="w-4 h-4 mt-0.5 text-indigo-600 border-gray-300 focus:ring-indigo-500 shrink-0"
                         [checked]="variantId() === v.id" [disabled]="v.available === false"
                         (change)="selectVariant(v)" />
                       <span class="min-w-0">
-                        <span class="block text-sm font-semibold text-gray-900 truncate">{{ v.name }}</span>
+                        <!-- spec 087 (FR-014): el nombre de la presentación se ajusta en varias
+                             líneas, nunca se trunca con "…" — la promoción es una etiqueta
+                             secundaria en su propia línea. -->
+                        <span data-testid="variant-name" class="block text-sm font-semibold text-gray-900 break-words">{{ v.name }}</span>
                         <!-- spec 066 (FR-008): condición corta + equivalente por unidad, en
                              tono discreto para no competir con el precio. Texto ya compuesto
                              por el backend. spec 081 (FR-016, corregido): en cuanto la cantidad
@@ -137,7 +141,7 @@ export interface ProductSelection {
                              del paquete, justo al lado. No depende de si se llegó desde
                              "Promociones". -->
                         @if (v.promotion) {
-                          <span class="inline-flex items-center text-[11px] font-medium text-indigo-700 bg-indigo-100/70 px-1.5 py-0.5 rounded mt-0.5">
+                          <span data-testid="variant-promo" class="block w-fit max-w-full whitespace-normal break-words text-[11px] font-medium text-indigo-700 bg-indigo-100/70 px-1.5 py-0.5 rounded mt-0.5">
                             {{ rowPackagePromo(v) ? v.promotion.short_condition : v.promotion.display_text }}
                           </span>
                         }
@@ -738,7 +742,7 @@ export class ProductSelectComponent implements OnInit {
       .map((id) => {
         const name = group.options.find((o) => o.id === id)?.name;
         if (!name) return null;
-        return entry[id] > 1 ? `${entry[id]}x ${name}` : name;
+        return formatQuantifiedLabel(name, entry[id]);
       })
       .filter(Boolean)
       .join(', ');

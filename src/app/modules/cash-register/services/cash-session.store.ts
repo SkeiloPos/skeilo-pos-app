@@ -25,6 +25,8 @@ import {
 } from '../interfaces/cash-session.interface';
 import { CashService } from './cash.service';
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
+import { slugify } from '../../../shared/slug.util';
 
 const REGISTER_STORAGE_KEY = 'cash.register';
 
@@ -58,6 +60,7 @@ export class CashSessionStore {
   private readonly api = inject(CashService);
   private readonly auth = inject(AuthService);
   private readonly tenantDate = inject(TenantDatePipe);
+  private readonly tenantInfo = inject(TenantInfoService);
 
   /** Categorías sugeridas por tipo de movimiento manual. */
   readonly CATS: Record<MovementKind, string[]> = {
@@ -533,7 +536,33 @@ export class CashSessionStore {
     }
   }
 
+  /**
+   * spec 087 (FR-003, A-87): el diálogo de impresión sugiere
+   * `<slug-del-negocio>-<DD-MM-YYYY>.pdf` en vez del título genérico de la
+   * pestaña -- vía `document.title`, que es lo único que un navegador deja
+   * controlar para ese nombre sugerido (no hay API de descarga directa desde
+   * `window.print()`). La fecha es la de **cierre del turno**
+   * (`shift().closed_at`), no la del momento de imprimir/reimprimir.
+   *
+   * `printing-cash-report` en `<body>` (retirada en `afterprint`) es lo que
+   * `dashboard-layout.component.ts` usa para ocultar el sidebar/header solo
+   * durante esta impresión (T036) -- `cash-report.component.ts` ya oculta sus
+   * propios controles vía `print:hidden`, pero no controla el shell.
+   */
   imprimirReporte(): void {
+    const originalTitle = document.title;
+    const fecha = this.tenantDate.transform(this.shift()?.closed_at ?? new Date(), 'dd-MM-yyyy');
+    // Fallback si el nombre del negocio no deja ningún carácter válido (p. ej.
+    // solo símbolos): evita un archivo llamado "-28-09-2026.pdf" (spec 087, FR-003).
+    const negocio = slugify(this.tenantInfo.businessName()) || 'cierre-turno';
+    document.title = `${negocio}-${fecha}`;
+    document.body.classList.add('printing-cash-report');
+    const restaurar = () => {
+      document.title = originalTitle;
+      document.body.classList.remove('printing-cash-report');
+      window.removeEventListener('afterprint', restaurar);
+    };
+    window.addEventListener('afterprint', restaurar);
     window.print();
   }
 

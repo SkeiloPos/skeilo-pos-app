@@ -217,7 +217,15 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               <!-- Spec 045: único contenido de este panel sin pedido -- ya no
                    arma un carrito propio aquí (ese flujo embebido se retiró,
                    spec 036 nota posterior); crear un pedido nuevo se hace en
-                   la vista dedicada (manual-order-page.component.ts). -->
+                   la vista dedicada (manual-order-page.component.ts).
+
+                   spec 087 (FR-007, T045/T046): a propósito se mantiene
+                   acotado a "sin pedido seleccionado" -- el pedido en
+                   paralelo (mesa que YA tiene un pedido abierto) ya se
+                   habilita desde el CTA de la sub-barra
+                   (table-sessions.component.ts), que queda visible en ese
+                   caso; duplicarlo aquí mostraría dos botones "Crear pedido
+                   nuevo" a la vez en la misma pantalla. -->
               <button
                 type="button"
                 (click)="goToNewOrder()"

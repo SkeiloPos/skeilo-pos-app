@@ -599,6 +599,11 @@ describe('PosOrderPanelComponent — cabecera y pestañas (spec 049)', () => {
       status: 'abierta',
       dining_table_id: 't1',
       customer_name: customerName,
+      // spec 087 (FR-006): la pestaña ya no rotula por posición sino por
+      // este número, asignado una sola vez por el backend — se deriva del id
+      // ('o1' -> 1, 'o2' -> 2) para mantener las mismas etiquetas "Pedido N"
+      // que ya esperaban los tests de este describe.
+      table_order_number: Number(id.replace(/\D/g, '')) || null,
       created_at: '2026-08-21T08:10:00',
       paid: false,
       items: [{ id: `${id}-i1`, product_variant_id: 'v1', quantity: 2, unit_price: '4000', estado_cocina: estado }],

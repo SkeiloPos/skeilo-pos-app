@@ -1,4 +1,4 @@
-import { buildMenuLookup } from './menu-lookup';
+import { buildMenuLookup, formatQuantifiedLabel } from './menu-lookup';
 import { MenuCategory } from '../../products/interfaces/product.interface';
 
 function makeCategories(): MenuCategory[] {
@@ -38,15 +38,23 @@ function makeCategories(): MenuCategory[] {
 }
 
 describe('buildMenuLookup — optionLabelWithQuantity', () => {
-  it('quantity=1 devuelve el nombre sin prefijo (idéntico a optionLabel)', () => {
+  // spec 087 (FR-012): reemplaza el formato "Nx Nombre" que se omitía en
+  // x1 (research.md Decisión 9) -- el multiplicador "Nombre xN" ahora
+  // siempre va, incluso x1.
+  it('quantity=1 muestra "Nombre x1" (el multiplicador ya nunca se omite)', () => {
     const lk = buildMenuLookup(makeCategories());
-    expect(lk.optionLabelWithQuantity('o1', 1)).toBe('Bobombún');
-    expect(lk.optionLabelWithQuantity('o1', 1)).toBe(lk.optionLabel('o1'));
+    expect(lk.optionLabelWithQuantity('o1', 1)).toBe('Bobombún x1');
   });
 
-  it('quantity>1 antepone "Nx "', () => {
+  it('quantity>1 pospone " xN"', () => {
     const lk = buildMenuLookup(makeCategories());
-    expect(lk.optionLabelWithQuantity('o1', 2)).toBe('2x Bobombún');
+    expect(lk.optionLabelWithQuantity('o1', 2)).toBe('Bobombún x2');
   });
+});
 
+describe('formatQuantifiedLabel', () => {
+  it('siempre incluye el multiplicador, incluso x1 (spec 087, FR-012)', () => {
+    expect(formatQuantifiedLabel('Bobombún', 1)).toBe('Bobombún x1');
+    expect(formatQuantifiedLabel('Bobombún', 3)).toBe('Bobombún x3');
+  });
 });

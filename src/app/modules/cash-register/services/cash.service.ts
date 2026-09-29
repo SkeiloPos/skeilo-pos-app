@@ -8,7 +8,6 @@ import {
   CashRegister,
   CashShift,
   Page,
-  PartialCount,
   Reconciliation,
   ShiftClosePayload,
   ShiftReport,
@@ -162,16 +161,6 @@ export class CashService {
     };
     if (opts.cashRegisterId) params['cash_register_id'] = opts.cashRegisterId;
     return firstValueFrom(this.http.get<Page<ShiftSummary>>(`${this.baseUrl}/shifts`, { params }));
-  }
-
-  /** Arqueo parcial (RF-046): conteo intermedio sin cerrar el turno. */
-  partialCount(shiftId: string, countedAmount: number, note: string | null): Promise<PartialCount> {
-    return firstValueFrom(
-      this.http.post<PartialCount>(`${this.baseUrl}/shifts/${shiftId}/partial-count`, {
-        counted_amount: countedAmount,
-        note,
-      }),
-    );
   }
 
   /** Extrae un mensaje legible del error HTTP del backend (FastAPI `detail`). */

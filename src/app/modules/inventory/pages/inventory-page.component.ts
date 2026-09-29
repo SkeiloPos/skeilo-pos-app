@@ -108,27 +108,41 @@ type ActiveFilter = '' | 'active' | 'inactive';
           <p class="text-2xl font-bold text-amber-800 mt-1">{{ service.lowStockItems().length }}</p>
         </button>
 
-        <!-- Filters -->
-        <div class="bg-white rounded-xl border border-gray-100 p-4 flex flex-wrap gap-3">
-          <input [ngModel]="searchSignal()" (ngModelChange)="onSearchInput($event)" type="text"
-            placeholder="Buscar por nombre..."
-            class="flex-1 min-w-48 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-          <select [ngModel]="service.itemsType()" (ngModelChange)="onTypeFilterChange($event)"
-            class="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option value="">Todos los tipos</option>
-            <option value="raw_material">Materia prima</option>
-            <option value="packaged">Empacado</option>
-          </select>
-          <select [ngModel]="service.itemsActive()" (ngModelChange)="onActiveFilterChange($event)"
-            class="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option value="">Activos e inactivos</option>
-            <option value="active">Solo activos</option>
-            <option value="inactive">Solo inactivos</option>
-          </select>
-        </div>
-
         <!-- Table -->
-        <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
+          <div class="flex items-center justify-between gap-4 p-4 border-b border-gray-200 bg-gray-50/50 flex-wrap">
+            <div class="relative flex-1 max-w-md">
+              <app-mi-icon name="search" [size]="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input [ngModel]="searchSignal()" (ngModelChange)="onSearchInput($event)" type="text"
+                placeholder="Buscar por nombre..."
+                class="w-full pl-10 pr-3 py-2 bg-white text-slate-800 placeholder-slate-400 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-all">
+            </div>
+            <div class="flex items-center gap-3 flex-wrap">
+              <div class="relative">
+                <select [ngModel]="service.itemsType()" (ngModelChange)="onTypeFilterChange($event)"
+                  class="appearance-none border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium pl-3 pr-8 py-2 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-colors">
+                  <option value="">Todos los tipos</option>
+                  <option value="raw_material">Materia prima</option>
+                  <option value="packaged">Empacado</option>
+                </select>
+                <app-mi-icon name="expand_more" [size]="16" class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400" />
+              </div>
+              <div class="relative">
+                <select [ngModel]="service.itemsActive()" (ngModelChange)="onActiveFilterChange($event)"
+                  class="appearance-none border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium pl-3 pr-8 py-2 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-colors">
+                  <option value="">Activos e inactivos</option>
+                  <option value="active">Solo activos</option>
+                  <option value="inactive">Solo inactivos</option>
+                </select>
+                <app-mi-icon name="expand_more" [size]="16" class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400" />
+              </div>
+              <button type="button" (click)="exportInventory()"
+                class="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors">
+                <app-mi-icon name="download" [size]="16" />
+                Exportar Inventario
+              </button>
+            </div>
+          </div>
           @if (service.isLoading()) {
             <div class="flex items-center justify-center py-12"><p class="text-sm text-gray-400">Cargando insumos...</p></div>
           } @else if (service.items().length === 0) {
@@ -485,6 +499,30 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
 
   toggleLowFilter(): void {
     this.service.setItemsLowStock(!this.service.itemsLowStock());
+  }
+
+  /** Descarga el respaldo completo del inventario en `.xlsx` (spec 086). */
+  exportInventory(): void {
+    this.service.exportItems().subscribe({
+      next: (resp) => {
+        const blob = resp.body;
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = this.exportFilename(resp.headers.get('content-disposition'));
+        a.click();
+        URL.revokeObjectURL(url);
+      },
+      error: () => this.toast.error('No se pudo exportar el inventario'),
+    });
+  }
+
+  private exportFilename(contentDisposition: string | null): string {
+    const match = contentDisposition ? /filename="?([^"]+)"?/.exec(contentDisposition) : null;
+    if (match) return match[1];
+    const today = new Date().toISOString().slice(0, 10);
+    return `inventario_${today}.xlsx`;
   }
   toggleExpanded(id: string): void {
     this.expandedId.update(current => (current === id ? null : id));
