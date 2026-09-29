@@ -30,7 +30,7 @@ import {
 } from '../interfaces/dining.interface';
 import { KITCHEN_NOT_READY, hasPendingKitchenWork } from '../../orders/order-status.util';
 import { ChosenMenuOption, ProductSelection } from '../components/product-select.component';
-import { buildMenuLookup, MenuLookup } from './menu-lookup';
+import { buildMenuLookup, formatQuantifiedLabel, MenuLookup } from './menu-lookup';
 import { TableService } from './table.service';
 import { DiningSessionService } from './dining-session.service';
 import { TableSessionService } from './table-session.service';
@@ -698,8 +698,14 @@ export class PosTerminalStore {
 
   /**
    * Pestañas de pedido (cuando la mesa tiene >1 orden viva). Rotuladas
-   * "Pedido N" por posición (spec 049, FR-009) — el nombre del cliente ya se
-   * muestra una sola vez en la cabecera, no repetido por pestaña.
+   * "Pedido N" con el `table_order_number` que asigna el backend una sola
+   * vez al crear el pedido (spec 087, FR-006/FR-009, A-86) — ya no por
+   * posición en el arreglo (bug: `tableOrders()` hereda el orden descendente
+   * por `created_at` de `GET /orders`, así que el pedido más nuevo aparecía
+   * como "Pedido 1" y desplazaba los números de los demás). Un pedido
+   * histórico sin número (creado antes de esta spec) se rotula solo "Pedido",
+   * sin número. El nombre del cliente ya se muestra una sola vez en la
+   * cabecera, no repetido por pestaña.
    *
    * A pedido del usuario: fuente `tableOrders()` (incluye los pagos QR por
    * confirmar), no `ordersOfTable()` (los excluye a propósito, ver su
@@ -712,11 +718,16 @@ export class PosTerminalStore {
   readonly orderTabs = computed(() => {
     const t = this.selectedTableId();
     if (!t) return [];
-    const list = this.tableOrders(t);
+    const list = [...this.tableOrders(t)].sort((a, b) => {
+      const an = a.table_order_number, bn = b.table_order_number;
+      if (an != null && bn != null) return an - bn;
+      if (an == null && bn == null) return a.created_at.localeCompare(b.created_at);
+      return an == null ? 1 : -1;
+    });
     return list.length > 1
-      ? list.map((o, i) => ({
+      ? list.map((o) => ({
           id: o.id,
-          label: `Pedido ${i + 1}`,
+          label: o.table_order_number != null ? `Pedido ${o.table_order_number}` : 'Pedido',
           pending: o.status === 'recibida' && o.channel === 'QR_MENU',
         }))
       : [];
@@ -935,6 +946,11 @@ export class PosTerminalStore {
    * pedido seleccionado como una tarjeta por cada pedido de la mesa
    * (`ordersView`), reutilizando la misma lógica de combos/descuento por
    * promoción en vez de duplicarla.
+   *
+   * Cada opción guardada resuelve su nombre con el menú vigente y, si ya no
+   * está (producto retirado/desactivado), con el `name`/`group_name` que trae
+   * el backend (spec 087, FR-015/D12): un adicional guardado nunca se pinta
+   * como `" x1"` ni se descarta por no estar en el menú actual.
    */
   private persistedItemsView(order: DiningOrder | null) {
     const lk = this.lookup();
@@ -957,11 +973,14 @@ export class PosTerminalStore {
         qty: i.quantity,
         name: lk.variantLabel(i.product_variant_id),
         options: (i.options ?? [])
-          .map((o): CartOptionLine => ({
-            groupLabel: lk.optionGroupLabel(o.option_id),
-            text: lk.optionLabelWithQuantity(o.option_id, o.quantity ?? 1),
-          }))
-          .filter((o) => o.text),
+          .map((o) => ({ o, name: lk.optionLabel(o.option_id) || o.name || '' }))
+          .filter(({ name }) => !!name)
+          .map(
+            ({ o, name }): CartOptionLine => ({
+              groupLabel: lk.optionGroupLabel(o.option_id) ?? o.group_name ?? null,
+              text: formatQuantifiedLabel(name, o.quantity ?? 1),
+            }),
+          ),
         notes: i.notes || null,
         unitPrice,
         subtotal: unitPrice * i.quantity,
@@ -1067,7 +1086,7 @@ export class PosTerminalStore {
         options: l.options.map(
           (c): CartOptionLine => ({
             groupLabel: c.groupName,
-            text: c.quantity > 1 ? `${c.quantity}x ${c.option.name}` : c.option.name,
+            text: formatQuantifiedLabel(c.option.name, c.quantity),
           }),
         ),
         notes: l.notes || null,
@@ -1081,6 +1100,16 @@ export class PosTerminalStore {
     });
     return [...persisted, ...draft];
   });
+
+  /**
+   * Suma de las líneas de combo (guardadas + borrador), a su precio de combo.
+   * Los combos no pasan por `draft-preview` (D13), así que la pantalla de
+   * pedido manual los suma al `total` del desglose sin descuento promocional
+   * adicional — igual que el cobro (spec 087, FR-016).
+   */
+  readonly combosSubtotal = computed(() =>
+    this.cartView().filter((r) => !!r.comboId).reduce((s, r) => s + r.subtotal, 0),
+  );
 
   readonly cartEmpty = computed(() => this.cartView().length === 0);
   readonly hasDraft = computed(() => this.draftLines().length > 0);
@@ -1470,7 +1499,7 @@ export class PosTerminalStore {
   /**
    * Crea el pedido de mostrador armado en `draftLines`, en una sola llamada
    * (feature 028, T023) — a diferencia de `saveOrder()` (que usa
-   * `addTableItem`, un POST por línea, y descuenta inventario al toque), este
+   * `addOrderItems`, un POST por línea, y descuenta inventario al toque), este
    * pedido se manda con `hold_for_payment: true`: no llega a cocina ni toca
    * inventario hasta que se cobre con `checkoutAndSend()`.
    */
@@ -1524,12 +1553,6 @@ export class PosTerminalStore {
       this.submitting.set(false);
     }
   }
-
-  /** Pista del campo Cliente. No se guarda: solo orienta al cajero. */
-  readonly customerPlaceholder = computed(() => {
-    const table = this.selectedTable();
-    return table ? `Cliente · Mesa ${table.number}` : 'Cliente';
-  });
 
   cancelSelection(): void {
     this.selectedTableId.set(null);
@@ -1718,17 +1741,26 @@ export class PosTerminalStore {
     this.draftLines.update((l) => l.filter((x) => x.key !== key));
   }
 
-  /** Persiste el draft en la orden de la mesa (crea la orden si no existe). */
+  /** Anexa el draft al pedido ya seleccionado (spec 087/A-85 — "Agregar
+   *  producto" ya no crea la orden: opera siempre sobre un `order_id`
+   *  específico, porque una mesa puede tener más de un pedido paralelo). Sin
+   *  un pedido seleccionado, no llama al backend y guía a "Crear pedido
+   *  manual". */
   async saveOrder(): Promise<boolean> {
-    const tableId = this.selectedTableId();
-    if (!tableId || this.draftLines().length === 0) return true;
+    const orderId = this.selectedOrderId();
+    if (this.draftLines().length === 0) return true;
+    if (!orderId) {
+      this.error.set('Selecciona un pedido o usa "Crear pedido manual" para empezar uno.');
+      this.toast.error(this.error()!);
+      return false;
+    }
     this.submitting.set(true);
     this.error.set(null);
     try {
       let order: DiningOrder | null = null;
       for (const l of this.draftLines()) {
-        order = await this.api.addTableItem(
-          tableId,
+        order = await this.api.addOrderItems(
+          orderId,
           l.kind === 'combo'
             ? { combo_id: l.comboId, quantity: l.quantity, notes: l.notes }
             : {
@@ -2053,10 +2085,14 @@ export class PosTerminalStore {
   // ─── Preview del borrador de orden manual (spec 073, US5) ─────────────────────
 
   /**
-   * Desglose del **borrador** de orden manual — `{subtotal, discount,
-   * delivery_fee, total}` que aplicaría al conjunto de productos que el cajero
+   * Desglose del **conjunto vigente** de una orden manual — `{subtotal,
+   * discount, delivery_fee, total}` que aplicaría a los ítems ya guardados del
+   * pedido seleccionado (sin anular, sin combos) más el borrador que el cajero
    * viene armando (`POST /orders/draft-preview`), sin crear ningún pedido.
-   * Se recalcula en cada cambio del borrador (FR-013).
+   * Se recalcula en cada cambio del borrador o de los ítems guardados
+   * (FR-013; spec 087 FR-016/D13 — antes cubría solo el borrador, así que al
+   * guardar el total caía al subtotal local, sin promociones). Los combos
+   * quedan fuera del endpoint: la pantalla los suma aparte (`combosSubtotal`).
    *
    * A diferencia del panel de cobro (FR-007a), si esto falla la pantalla NO se
    * bloquea: muestra el subtotal local con un aviso (`draftPreviewError`) y deja
@@ -2069,13 +2105,27 @@ export class PosTerminalStore {
   /** Cuerpo de `POST /orders/draft-preview` armado desde el borrador actual —
    *  las mismas líneas que `createManualOrderFromDraft()` mandaría al crear. */
   private draftPreviewPayload(): DraftPreviewPayload {
-    const items = this.draftLines()
+    // spec 087, FR-016: primero lo ya guardado (vigente = no anulado y sin
+    // combo), luego el borrador — el backend reevalúa las promociones sobre el
+    // conjunto completo (una promoción `min_qty` depende de la cantidad conjunta).
+    const guardados = (this.selectedOrder()?.items ?? [])
+      .filter((i) => i.estado_cocina !== 'anulado' && !i.combo_id)
+      .map((i) => ({
+        product_variant_id: i.product_variant_id,
+        quantity: i.quantity,
+        options: (i.options ?? []).map((o) => ({
+          option_id: o.option_id,
+          quantity: o.quantity ?? 1,
+        })),
+      }));
+    const borrador = this.draftLines()
       .filter((l) => l.kind === 'product')
       .map((l) => ({
         product_variant_id: l.variant.id,
         quantity: l.quantity,
         options: l.options.map((c) => ({ option_id: c.option.id, quantity: c.quantity })),
       }));
+    const items = [...guardados, ...borrador];
     return {
       items,
       delivery_fee:
@@ -2083,23 +2133,33 @@ export class PosTerminalStore {
     };
   }
 
+  /** Secuencia de la última consulta del desglose: una respuesta (o error) de
+   *  una consulta anterior no debe pisar a la más reciente (spec 087, D13). */
+  private draftPreviewSeq = 0;
+
   async loadDraftPreview(): Promise<void> {
+    const seq = ++this.draftPreviewSeq;
     const payload = this.draftPreviewPayload();
     if (payload.items.length === 0) {
+      // Ningún ítem vigente: total $0, y una respuesta pendiente no reaparece.
       this.draftPreview.set(null);
       this.draftPreviewError.set(false);
+      this.draftPreviewLoading.set(false);
       return;
     }
     this.draftPreviewLoading.set(true);
     this.draftPreviewError.set(false);
     try {
-      this.draftPreview.set(await this.api.draftPreview(payload));
+      const result = await this.api.draftPreview(payload);
+      if (seq === this.draftPreviewSeq) this.draftPreview.set(result);
     } catch {
       // FR-015: sin descuento verificado, pero NO se bloquea la pantalla.
-      this.draftPreview.set(null);
-      this.draftPreviewError.set(true);
+      if (seq === this.draftPreviewSeq) {
+        this.draftPreview.set(null);
+        this.draftPreviewError.set(true);
+      }
     } finally {
-      this.draftPreviewLoading.set(false);
+      if (seq === this.draftPreviewSeq) this.draftPreviewLoading.set(false);
     }
   }
 

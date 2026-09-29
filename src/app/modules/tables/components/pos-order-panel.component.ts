@@ -39,6 +39,20 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           encontrar pagos por confirmar.
         </p>
       </div>
+    } @else if (store.selectedTableId() && !store.selectedOrderId()) {
+      <!-- Spec 087 (FR-008/FR-009, T014): mesa libre seleccionada, sin ningún
+           pedido todavía -- "Agregar producto"/"Guardar pedido" ya no pueden
+           crear la orden implícitamente (A-85), así que ofrecer el catálogo
+           aquí solo llevaría a un guardado que falla. Se guía directo a
+           "Crear pedido manual". -->
+      <div
+        class="flex-1 flex flex-col items-center justify-center text-center text-[#9ca3af] p-6 gap-2"
+      >
+        <app-mi-icon name="receipt_long" [size]="40" />
+        <p class="text-[13px] max-w-xs">
+          Esta mesa todavía no tiene ningún pedido. Usa "Crear pedido manual" para empezar uno.
+        </p>
+      </div>
     } @else {
       <div class="flex flex-col">
         <!-- Header: mesa + estado + cliente en una sola fila, siempre de solo
@@ -66,7 +80,10 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                     >
                   }
                 </div>
-                <span class="block text-[12px] text-[#6b7280]">{{ displayCustomerName() }}</span>
+                <span class="flex items-center gap-1 text-[13px] font-semibold text-[#111827]">
+                  <app-mi-icon name="person" [size]="14" class="text-[#4f46e5] shrink-0" />
+                  {{ displayCustomerName() }}
+                </span>
               </div>
             </div>
 
@@ -365,8 +382,12 @@ export class PosOrderPanelComponent {
 
   readonly cartIsEmpty = computed(() => this.cartItems().length === 0);
 
+  /** spec 087 (FR-004, A-88): el nombre del cliente se destaca en la
+   *  cabecera del pedido -- "Cliente sin nombre" solo para pedidos
+   *  históricos anteriores a esta spec (`customer_name` nulo/vacío), nunca
+   *  migrados. */
   readonly displayCustomerName = computed(
-    () => this.store.customerName() || this.store.customerPlaceholder(),
+    () => this.store.customerName().trim() || 'Cliente sin nombre',
   );
 
   /** Spec 036, US2, escenario 5: mismo criterio que ya usa

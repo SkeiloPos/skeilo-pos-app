@@ -217,11 +217,13 @@ export class DiningSessionService {
 
   // ── Cobro / cierre de comedor (Fase 7) ───────────────────────────────────
 
-  /** Add a single item directly to a table's open order (waiter). Creates the
-   *  order if none and deducts inventory. Returns the updated order. */
-  async addTableItem(tableId: string, item: OrderItemPayload): Promise<DiningOrder> {
+  /** Add a single item directly to a specific order (waiter). The order must
+   *  already exist (spec 087/A-85 — replaces `addTableItem`, which resolved
+   *  the order implicitly by table; parallel orders per table make that
+   *  resolution ambiguous). Deducts inventory. Returns the updated order. */
+  async addOrderItems(orderId: string, item: OrderItemPayload): Promise<DiningOrder> {
     return firstValueFrom(
-      this.http.post<DiningOrder>(`${this.api}/orders/tables/${tableId}/items`, item),
+      this.http.post<DiningOrder>(`${this.api}/orders/${orderId}/items`, item),
     );
   }
 

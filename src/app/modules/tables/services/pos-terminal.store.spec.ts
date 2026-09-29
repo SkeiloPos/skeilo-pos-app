@@ -1536,10 +1536,10 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
     store = TestBed.inject(PosTerminalStore);
   });
 
-  it('orderTabs() rotula "Pedido 1"/"Pedido 2" por posición, no por nombre de cliente', () => {
+  it('orderTabs() rotula "Pedido N" con el table_order_number del backend, no por posición ni por nombre de cliente (spec 087, FR-006/FR-009 -- reemplaza el rotulado por posición, causa del bug de reordenamiento que documentaba este test antes de A-86)', () => {
     store.orders.set([
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', customer_name: 'Ana' },
-      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', customer_name: 'Luis' },
+      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', customer_name: 'Ana', table_order_number: 1 },
+      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', customer_name: 'Luis', table_order_number: 2 },
     ]);
     store.selectedTableId.set('t1');
 
@@ -1549,10 +1549,36 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
     ]);
   });
 
+  it('orderTabs() ordena ascendente por table_order_number, sin importar el orden de llegada (spec 087, FR-006)', () => {
+    store.orders.set([
+      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 2 },
+      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 1 },
+    ]);
+    store.selectedTableId.set('t1');
+
+    expect(store.orderTabs()).toEqual([
+      { id: 'o1', label: 'Pedido 1', pending: false },
+      { id: 'o2', label: 'Pedido 2', pending: false },
+    ]);
+  });
+
+  it('orderTabs() rotula sin número ("Pedido" a secas) un pedido histórico sin table_order_number (spec 087)', () => {
+    store.orders.set([
+      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: null },
+      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 1 },
+    ]);
+    store.selectedTableId.set('t1');
+
+    expect(store.orderTabs()).toEqual([
+      { id: 'o2', label: 'Pedido 1', pending: false },
+      { id: 'o1', label: 'Pedido', pending: false },
+    ]);
+  });
+
   it('orderTabs() marca `pending: true` un pago QR por confirmar, incluido entre las pestañas (a pedido del usuario)', () => {
     store.orders.set([
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
-      { ...order('o2', 'recibida', ['pendiente']), channel: 'QR_MENU', dining_table_id: 't1' },
+      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 1 },
+      { ...order('o2', 'recibida', ['pendiente']), channel: 'QR_MENU', dining_table_id: 't1', table_order_number: 2 },
     ]);
     store.selectedTableId.set('t1');
 
@@ -2261,5 +2287,220 @@ describe('PosTerminalStore.loadCheckoutPreview — spec 073', () => {
     expect(store.checkoutPreviewStale()).toBe(true);
     // No hubo segunda petición al marcar obsoleto.
     http.expectNone(`${API}/orders/o1/checkout-preview`);
+  });
+});
+
+// ── spec 087, FR-015 (US9): adicionales visibles en el panel del pedido ────
+describe('PosTerminalStore — adicionales del panel del pedido (spec 087, FR-015)', () => {
+  let store: PosTerminalStore;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+  });
+
+  function pedidoConOpciones(options: DiningOrderItem['options']): DiningOrder {
+    const base = order('o1', 'abierta', ['listo']);
+    return {
+      ...base,
+      channel: 'POS',
+      dining_table_id: 't1',
+      items: (base.items ?? []).map((i) => ({ ...i, options })),
+    } as DiningOrder;
+  }
+
+  it('un adicional guardado que ya no está en el menú se pinta "Nombre x1" con el name/group_name del backend (no " x1", no omitido)', () => {
+    store.orders.set([
+      pedidoConOpciones([
+        { id: 'oi1', option_id: 'opt-fuera-del-menu', quantity: 1, name: 'Queso extra', group_name: 'Toppings' },
+      ]),
+    ]);
+    store.selectedTableId.set('t1');
+
+    const options = store.ordersView()[0].items[0].options;
+
+    expect(options).toEqual([{ groupLabel: 'Toppings', text: 'Queso extra x1' }]);
+  });
+
+  it('un adicional guardado sin nombre en el menú ni en el backend se omite (nunca un fragmento " x1")', () => {
+    store.orders.set([
+      pedidoConOpciones([{ id: 'oi1', option_id: 'opt-desconocida', quantity: 1 }]),
+    ]);
+    store.selectedTableId.set('t1');
+
+    expect(store.ordersView()[0].items[0].options).toEqual([]);
+  });
+
+  it('un borrador con "Queso extra" x1 y "Choco-chips" x2 se pinta "Queso extra x1" y "Choco-chips x2"', () => {
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Cono' } as never,
+      variant: { id: 'v1', price: 8000 } as never,
+      options: [
+        { option: { id: 'o-queso', name: 'Queso extra' } as never, quantity: 1, groupName: 'Toppings' },
+        { option: { id: 'o-choco', name: 'Choco-chips' } as never, quantity: 2, groupName: 'Toppings' },
+      ],
+      quantity: 1,
+      notes: null,
+    });
+
+    const options = store.cartView()[0].options;
+
+    expect(options.map((o) => o.text)).toEqual(['Queso extra x1', 'Choco-chips x2']);
+    expect(options.every((o) => o.groupLabel === 'Toppings')).toBe(true);
+  });
+
+  it('un ítem sin opciones trae `options` vacío (el panel no pinta contenedor)', () => {
+    store.orders.set([pedidoConOpciones([])]);
+    store.selectedTableId.set('t1');
+
+    expect(store.ordersView()[0].items[0].options).toEqual([]);
+  });
+});
+
+// ── spec 087, FR-016 (US10): TOTAL ORDEN sobre el conjunto vigente completo ──
+describe('PosTerminalStore.loadDraftPreview — conjunto vigente completo (spec 087, FR-016)', () => {
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+  const URL = `${API}/orders/draft-preview`;
+
+  const preview = (total: string) => ({
+    subtotal: total, discount: '0.00', delivery_fee: '0.00', total,
+    promotion_evaluated_at: '2026-09-29T10:00:00Z',
+  });
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  function seleccionarPedidoConItemsGuardados(): void {
+    const base = order('o1', 'abierta', ['listo', 'anulado', 'listo']);
+    store.orders.set([
+      {
+        ...base,
+        channel: 'POS',
+        dining_table_id: 't1',
+        items: [
+          { ...base.items![0], product_variant_id: 'v-guardado', quantity: 2,
+            options: [{ id: 'oi1', option_id: 'opt-1', quantity: 3 }] },
+          { ...base.items![1], product_variant_id: 'v-anulado', quantity: 1 },
+          { ...base.items![2], product_variant_id: 'v-combo', quantity: 1, combo_id: 'combo-1' },
+        ],
+      } as DiningOrder,
+    ]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+  }
+
+  function agregarBorrador(variantId = 'v-nuevo'): void {
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Cono' } as never,
+      variant: { id: variantId, price: 8000 } as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+  }
+
+  it('manda los ítems guardados vigentes (con sus opciones) junto al borrador, sin anulados ni combos', async () => {
+    seleccionarPedidoConItemsGuardados();
+    agregarBorrador();
+
+    const p = store.loadDraftPreview();
+    const req = http.expectOne(URL);
+    req.flush(preview('24000.00'));
+    await p;
+
+    expect(req.request.body.items).toEqual([
+      { product_variant_id: 'v-guardado', quantity: 2, options: [{ option_id: 'opt-1', quantity: 3 }] },
+      { product_variant_id: 'v-nuevo', quantity: 1, options: [] },
+    ]);
+    expect(store.draftPreview()?.total).toBe('24000.00');
+  });
+
+  it('con ítems guardados y el borrador vacío, sigue consultando el endpoint (antes salía con draftPreview = null)', async () => {
+    seleccionarPedidoConItemsGuardados();
+
+    const p = store.loadDraftPreview();
+    const req = http.expectOne(URL);
+    req.flush(preview('16000.00'));
+    await p;
+
+    expect(req.request.body.items).toEqual([
+      { product_variant_id: 'v-guardado', quantity: 2, options: [{ option_id: 'opt-1', quantity: 3 }] },
+    ]);
+    expect(store.draftPreview()?.total).toBe('16000.00');
+  });
+
+  it('dos llamadas solapadas: si la primera responde después, prevalece la segunda', async () => {
+    agregarBorrador();
+    const primera = store.loadDraftPreview();
+    const req1 = http.expectOne(URL);
+    agregarBorrador('v-otro');
+    const segunda = store.loadDraftPreview();
+    const req2 = http.expectOne(URL);
+
+    req2.flush(preview('200.00'));
+    await segunda;
+    req1.flush(preview('100.00'));
+    await primera;
+
+    expect(store.draftPreview()?.total).toBe('200.00');
+    expect(store.draftPreviewLoading()).toBe(false);
+  });
+
+  it('una respuesta obsoleta no apaga el indicador de carga de la llamada más reciente ni la pisa con un error', async () => {
+    agregarBorrador();
+    const primera = store.loadDraftPreview();
+    const req1 = http.expectOne(URL);
+    agregarBorrador('v-otro');
+    const segunda = store.loadDraftPreview();
+    const req2 = http.expectOne(URL);
+
+    req1.flush({ detail: 'boom' }, { status: 500, statusText: 'Error' });
+    await primera;
+
+    expect(store.draftPreviewLoading()).toBe(true);
+    expect(store.draftPreviewError()).toBe(false);
+
+    req2.flush(preview('200.00'));
+    await segunda;
+    expect(store.draftPreview()?.total).toBe('200.00');
+    expect(store.draftPreviewLoading()).toBe(false);
+  });
+
+  it('sin ningún ítem vigente, draftPreview queda null y una respuesta pendiente no reaparece después', async () => {
+    agregarBorrador();
+    const pendiente = store.loadDraftPreview();
+    const req = http.expectOne(URL);
+
+    store.draftLines.set([]);
+    await store.loadDraftPreview();
+    http.expectNone(URL);
+
+    req.flush(preview('8000.00'));
+    await pendiente;
+
+    expect(store.draftPreview()).toBeNull();
+    expect(store.draftPreviewLoading()).toBe(false);
   });
 });

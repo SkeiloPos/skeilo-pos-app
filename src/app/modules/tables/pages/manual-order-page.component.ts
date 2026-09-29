@@ -361,27 +361,16 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                   <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
                     >Cliente</label
                   >
-                  <div
-                    class="relative flex items-center h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] focus-within:border-[#111827] focus-within:bg-white"
-                  >
-                    <input
-                      type="text"
-                      [value]="store.customerName()"
-                      [readOnly]="!editandoCliente()"
-                      (input)="store.customerName.set($any($event.target).value)"
-                      (blur)="onClienteBlur()"
-                      class="w-full bg-transparent border-none p-0 text-[13px] font-medium text-[#111827] focus:outline-none truncate"
-                      [class]="editandoCliente() ? '' : 'text-[#6b7280]'"
-                    />
-                    <button
-                      type="button"
-                      (click)="toggleEditarCliente()"
-                      title="Editar nombre"
-                      class="text-[#6b7280] hover:text-[#4f46e5] transition-colors shrink-0"
-                    >
-                      <app-mi-icon name="edit" ariaLabel="Editar nombre" [size]="16" />
-                    </button>
-                  </div>
+                  <input
+                    type="text"
+                    [value]="store.customerName()"
+                    (input)="store.customerName.set($any($event.target).value)"
+                    placeholder="Ej: Juan Pérez"
+                    class="h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] font-medium focus:outline-none focus:border-[#111827] focus:bg-white"
+                  />
+                  @if (mostrarErrorNombre()) {
+                    <span class="text-[11px] text-[#dc2626]">El nombre del cliente es obligatorio.</span>
+                  }
                 </div>
                 <div class="sm:col-span-5 flex flex-col gap-0.5">
                   <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
@@ -398,35 +387,23 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
             }
 
             @if (store.orderTypeTab() === 'para-llevar') {
-              <!-- Cliente de la orden: "Consumidor final" por defecto (spec
-                   054; también para "Para Llevar", spec 055 FR-010), editable
-                   con el botón de lápiz; nunca se guarda vacío. -->
+              <!-- Cliente de la orden (spec 087, FR-005/A-88): siempre
+                   editable, sin valor por defecto -- igual que "Domicilio",
+                   nunca se guarda vacío. -->
               <div class="flex flex-col gap-0.5">
                 <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
                   >Cliente / Para llevar</label
                 >
-                <div
-                  class="flex items-center h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] focus-within:border-[#111827] focus-within:bg-white"
-                >
-                  <app-mi-icon name="person" [size]="16" class="text-[#4f46e5] mr-1.5 shrink-0" />
-                  <input
-                    type="text"
-                    [value]="store.customerName()"
-                    [readOnly]="!editandoCliente()"
-                    (input)="store.customerName.set($any($event.target).value)"
-                    (blur)="onClienteBlur()"
-                    class="w-full bg-transparent border-none p-0 text-[13px] font-medium text-[#111827] focus:outline-none truncate"
-                    [class]="editandoCliente() ? '' : 'text-[#6b7280]'"
-                  />
-                  <button
-                    type="button"
-                    (click)="toggleEditarCliente()"
-                    title="Editar nombre"
-                    class="text-[#6b7280] hover:text-[#4f46e5] transition-colors shrink-0"
-                  >
-                    <app-mi-icon name="edit" ariaLabel="Editar nombre" [size]="16" />
-                  </button>
-                </div>
+                <input
+                  type="text"
+                  [value]="store.customerName()"
+                  (input)="store.customerName.set($any($event.target).value)"
+                  placeholder="Ej: Juan Pérez"
+                  class="h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] font-medium focus:outline-none focus:border-[#111827] focus:bg-white"
+                />
+                @if (mostrarErrorNombre()) {
+                  <span class="text-[11px] text-[#dc2626]">El nombre del cliente es obligatorio.</span>
+                }
               </div>
             }
 
@@ -449,6 +426,9 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     placeholder="Ej: Juan Pérez"
                     class="h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] font-medium focus:outline-none focus:border-[#111827] focus:bg-white"
                   />
+                  @if (mostrarErrorNombre()) {
+                    <span class="text-[11px] text-[#dc2626]">El nombre del cliente es obligatorio.</span>
+                  }
                 </div>
                 <div class="sm:col-span-5 flex flex-col gap-0.5">
                   <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
@@ -736,13 +716,15 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               @if (store.draftPreview(); as p) {
                 <!-- spec 073, FR-013/FR-014: el desglose (con descuento por
                      promoción) lo calcula el backend sobre el borrador. -->
+                <!-- spec 087, FR-016: los combos no pasan por el endpoint; se
+                     suman a su precio de combo, sin descuento adicional. -->
                 <app-bill-summary
-                  [subtotal]="+p.subtotal"
+                  [subtotal]="+p.subtotal + store.combosSubtotal()"
                   [discount]="+p.discount"
                   [deliveryFee]="+p.delivery_fee"
                   deliveryFeeLabel="Costo de domicilio"
                   [showDeliveryIcon]="true"
-                  [total]="+p.total"
+                  [total]="+p.total + store.combosSubtotal()"
                   totalLabel="TOTAL ORDEN"
                   size="lg"
                 />
@@ -772,10 +754,10 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 [disabled]="
                   store.cartEmpty() ||
                   store.submitting() ||
+                  !store.customerName().trim() ||
                   (store.orderTypeTab() === 'mesas' && !store.selectedTableId()) ||
                   (store.orderTypeTab() === 'domicilios' &&
-                    (!store.customerName().trim() ||
-                      !store.deliveryAddress().trim() ||
+                    (!store.deliveryAddress().trim() ||
                       store.deliveryFee() == null))
                 "
                 class="w-full h-12 bg-[#4f46e5] hover:bg-[#4338ca] active:bg-[#3730a3] text-white font-semibold text-[15px] flex items-center justify-center gap-2 rounded-[6px] disabled:opacity-50 transition-colors"
@@ -836,11 +818,15 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
   );
 
   /**
-   * spec 073, FR-013: recalcula el desglose del borrador (con descuento por
-   * promoción) en cada cambio de línea, tipo de orden o valor del domicilio.
+   * spec 073, FR-013: recalcula el desglose (con descuento por promoción) en
+   * cada cambio de línea, tipo de orden o valor del domicilio. spec 087,
+   * FR-016: también cuando cambia la lista de ítems **guardados** del pedido
+   * (guardar, anular, refresco por sondeo/tiempo real) — el desglose cubre el
+   * conjunto vigente completo, no solo el borrador.
    */
   private readonly _draftPreview = effect(() => {
     this.store.draftLines();
+    this.store.selectedOrder();
     this.store.orderTypeTab();
     this.store.deliveryFee();
     void this.store.loadDraftPreview();
@@ -859,25 +845,26 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
     })),
   );
 
-  /** Modo de edición del campo "Cliente" (spec 054) — estado puramente de
-   *  interacción de esta pantalla, no vive en el store. */
-  readonly editandoCliente = signal(false);
+  /** spec 087 (FR-005, A-88): `customer_name` es obligatorio en los 3 tabs y
+   *  nunca tiene valor por defecto — el mensaje de error inline solo se
+   *  muestra tras un intento de guardar fallido, no desde que se abre la
+   *  pantalla. */
+  readonly intentoGuardar = signal(false);
+  readonly mostrarErrorNombre = computed(
+    () => this.intentoGuardar() && !this.store.customerName().trim(),
+  );
 
   async ngOnInit(): Promise<void> {
     await this.store.init();
     const tableId = this.route.snapshot.paramMap.get('tableId');
     if (tableId) this.selectTable(tableId);
     // spec 078 (US2, research.md D3): tipo preseleccionado desde la pestaña de
-    // origen de la Terminal. Se usa el `setOrderTypeTab()` local (no
-    // `store.setOrderTypeTab()` directo) para que "Cliente" por defecto se
-    // ajuste igual que al cambiar el tipo dentro del formulario. Una sola vez,
-    // antes de `applyDefaultCustomerName()`. Valor ausente / `'mesas'` /
-    // inválido → no hace nada (comportamiento idéntico al de hoy). El tipo
-    // sigue siendo editable en el formulario (FR-011).
+    // origen de la Terminal. Valor ausente / `'mesas'` / inválido → no hace
+    // nada (comportamiento idéntico al de hoy). El tipo sigue siendo editable
+    // en el formulario (FR-011).
     const tipo = this.route.snapshot.queryParamMap.get('tipo');
     if (tipo === 'domicilio') this.setOrderTypeTab('domicilios');
     else if (tipo === 'para-llevar') this.setOrderTypeTab('para-llevar');
-    this.applyDefaultCustomerName();
   }
 
   ngOnDestroy(): void {
@@ -911,42 +898,10 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
     // libre). Un pedido nuevo nunca "edita" uno existente por selección de
     // mesa, así que se limpia de una vez.
     this.store.selectedOrderId.set(null);
-    this.applyDefaultCustomerName();
   }
 
-  /** Spec 055: cambiar a "Para Llevar" también diligencia "Cliente" por
-   *  defecto — a diferencia de `selectTable()`, aquí no hay ningún cambio de
-   *  mesa que dispare `applyDefaultCustomerName()` por su cuenta. "Domicilio"
-   *  (spec 056, FR-003) hace lo opuesto: siempre limpia "Cliente" al entrar,
-   *  para que un "Consumidor final" heredado de "En Mesa"/"Para Llevar" no
-   *  quede colado como si fuera un valor válido ya diligenciado. */
   setOrderTypeTab(tab: 'mesas' | 'para-llevar' | 'domicilios'): void {
     this.store.setOrderTypeTab(tab);
-    if (tab === 'domicilios') {
-      this.store.customerName.set('');
-    } else {
-      this.applyDefaultCustomerName();
-    }
-  }
-
-  toggleEditarCliente(): void {
-    this.editandoCliente.set(true);
-  }
-
-  onClienteBlur(): void {
-    this.editandoCliente.set(false);
-    this.applyDefaultCustomerName();
-  }
-
-  /** Spec 054, FR-005: el nombre de cliente nunca se guarda vacío — EXCEPTO
-   *  en "Domicilio" (spec 056, FR-003), donde el campo es obligatorio y sin
-   *  ningún valor por defecto: sin este corte, el propio `confirm()` lo
-   *  sobrescribiría en silencio justo antes de enviar (research.md D8). */
-  private applyDefaultCustomerName(): void {
-    if (this.store.orderTypeTab() === 'domicilios') return;
-    if (!this.store.customerName().trim()) {
-      this.store.customerName.set('Consumidor final');
-    }
   }
 
   backToTerminal(): void {
@@ -966,7 +921,8 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
   }
 
   async confirm(): Promise<void> {
-    this.applyDefaultCustomerName();
+    this.intentoGuardar.set(true);
+    if (!this.store.customerName().trim()) return;
 
     // spec 073, FR-015a / research.md D11: doble chequeo del total antes de
     // crear el pedido — pero solo si la pantalla venía mostrando un total con
