@@ -54,6 +54,29 @@ describe('PaymentMethodService', () => {
     expect(await p).toBe(true);
   });
 
+  it('update transmite payment_info_base tal cual junto con payment_info (spec 088)', async () => {
+    const info = { celular: '3009999999', qr: 'https://assets.skeilopos.com/acme/payment-methods/qr.png' };
+    const infoBase = { celular: '3001234567', qr: 'https://assets.skeilopos.com/acme/payment-methods/qr.png' };
+    const p = service.update('pm2', { payment_info: info, payment_info_base: infoBase });
+    const req = http.expectOne(`${base}/pm2`);
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ payment_info: info, payment_info_base: infoBase });
+    req.flush({ id: 'pm2', name: 'Nequi', is_cash: false, active: true });
+    await tick();
+    http.expectOne(base).flush([]);
+    expect(await p).toBe(true);
+  });
+
+  it('update sin base no inventa un payment_info_base (toggleActive no lo envía)', async () => {
+    const p = service.update('pm2', { active: false });
+    const req = http.expectOne(`${base}/pm2`);
+    expect('payment_info_base' in req.request.body).toBe(false);
+    req.flush({ id: 'pm2', name: 'Nequi', is_cash: false, active: false });
+    await tick();
+    http.expectOne(base).flush([]);
+    await p;
+  });
+
   it('loads only the methods available for checkout (spec 032, FR-012)', async () => {
     const p = service.loadAvailableForCheckout();
     const req = http.expectOne((r) => r.url === base && r.params.get('available') === 'true');

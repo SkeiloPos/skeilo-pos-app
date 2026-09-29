@@ -41,6 +41,13 @@ export interface PaymentMethodCreatePayload {
  * método desactivado, conservando el `payment_info` si no se manda uno nuevo (spec 032, FR-017). */
 export interface PaymentMethodUpdatePayload {
   payment_info?: Record<string, string> | null;
+  /**
+   * `payment_info` que el formulario mostraba al abrirse (spec 088, FR-002). Una imagen (QR)
+   * enviada en `payment_info` solo cuenta como cambio si su valor base coincide con el vigente;
+   * si otra sesión ya la cambió, el backend conserva la vigente y guarda el resto de los campos.
+   * El QR sin tocar **sí** se sigue enviando dentro de `payment_info` (omitirlo lo eliminaría).
+   */
+  payment_info_base?: Record<string, string> | null;
   active?: boolean;
 }
 

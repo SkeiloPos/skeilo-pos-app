@@ -255,6 +255,8 @@ export class PaymentMethodsPageComponent implements OnInit {
 
   /** Fila existente que se está editando/completando; `null` = activación nueva. */
   private editingMethod: PaymentMethod | null = null;
+  /** spec 088: `payment_info` que el formulario de edición mostró al abrirse (`payment_info_base`). */
+  private fieldsBase: Record<string, string> | null = null;
   /** Entrada de catálogo elegida (nueva activación) o resuelta desde `catalog_id` (edición). */
   private selectedCatalogOption: CatalogPaymentMethodOption | null = null;
 
@@ -301,6 +303,7 @@ export class PaymentMethodsPageComponent implements OnInit {
 
   selectCatalogOption(option: CatalogPaymentMethodOption): void {
     this.editingMethod = null;
+    this.fieldsBase = null;
     this.selectedCatalogOption = option;
     this.activeFields.set(option.fields);
     this.fieldValues.set({});
@@ -315,6 +318,8 @@ export class PaymentMethodsPageComponent implements OnInit {
       this.catalogSvc.options().find((o) => o.id === method.catalog_id) ?? null;
     this.activeFields.set(this.selectedCatalogOption?.fields ?? []);
     this.fieldValues.set({ ...(method.payment_info ?? {}) });
+    // spec 088: copia de lo que el formulario vio al abrirse; se envía como `payment_info_base`.
+    this.fieldsBase = { ...(method.payment_info ?? {}) };
     this.svc.error.set(null);
     this.showFieldsForm.set(true);
   }
@@ -346,6 +351,7 @@ export class PaymentMethodsPageComponent implements OnInit {
   closeFieldsForm(): void {
     this.showFieldsForm.set(false);
     this.editingMethod = null;
+    this.fieldsBase = null;
     this.selectedCatalogOption = null;
     this.activeFields.set([]);
     this.fieldValues.set({});
@@ -359,8 +365,13 @@ export class PaymentMethodsPageComponent implements OnInit {
 
   async submitFields(): Promise<void> {
     const paymentInfo = this.buildPaymentInfo();
+    // Al editar viaja `payment_info` completo (el QR sin tocar incluido: omitirlo lo eliminaría)
+    // más `payment_info_base` (spec 088): lo que el formulario vio al abrirse.
     const ok = this.editingMethod
-      ? await this.svc.update(this.editingMethod.id, { payment_info: paymentInfo })
+      ? await this.svc.update(this.editingMethod.id, {
+          payment_info: paymentInfo,
+          payment_info_base: this.fieldsBase ?? {},
+        })
       : await this.svc.create(this.selectedCatalogOption!.id, paymentInfo);
     if (ok) {
       this.closeFieldsForm();
