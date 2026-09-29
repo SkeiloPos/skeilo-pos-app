@@ -86,8 +86,12 @@ export class TenantInfoService {
    * Guarda cambios sueltos del negocio (`PATCH /tenant`). Devuelve `true` si se
    * guardó. La respuesta trae el tenant completo, así que refresca `info` y con
    * ella el sidebar y todo lo que lea sus señales.
+   *
+   * spec 088: este método **nunca** reenvía `logo_url` (el tipo lo impide): el logo solo
+   * cambia con `uploadLogo`, que envía además su base. Reenviar el logo sin tocar era lo que
+   * un formulario desactualizado usaba para deshacer un logo más nuevo.
    */
-  async update(patch: Partial<TenantInfo>): Promise<boolean> {
+  async update(patch: Partial<Omit<TenantInfo, 'logo_url'>>): Promise<boolean> {
     this.isSubmitting.set(true);
     this.error.set(null);
     try {
@@ -108,6 +112,10 @@ export class TenantInfoService {
    * (el `authTokenInterceptor` no decora esa URL porque no cuelga de
    * `apiBaseUrl`) y guarda la URL pública con `PATCH /tenant`; el backend borra
    * el logo anterior. Devuelve `true` si se guardó.
+   *
+   * spec 088 (FR-002): junto con el logo nuevo viaja `logo_url_base`, el logo que este
+   * navegador conoce (`null` explícito si el negocio no tenía). Si otra sesión ya lo cambió,
+   * el backend ignora en silencio el logo de este formulario en vez de pisarlo.
    */
   async uploadLogo(file: File): Promise<boolean> {
     if (!file.type.startsWith('image/')) {
@@ -134,7 +142,10 @@ export class TenantInfoService {
       );
       this.info.set(
         await firstValueFrom(
-          this.http.patch<TenantInfo>(this.baseUrl, { logo_url: presign.public_url }),
+          this.http.patch<TenantInfo>(this.baseUrl, {
+            logo_url: presign.public_url,
+            logo_url_base: this.info()?.logo_url ?? null,
+          }),
         ),
       );
       return true;
