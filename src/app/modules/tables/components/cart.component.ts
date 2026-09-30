@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, inject } from '@angular/core';
 import { MoneyPipe } from '../../../shared/money.pipe';
+import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { DiningCartService } from '../services/dining-cart.service';
 
 @Component({
   selector: 'app-cart',
   standalone: true,
-  imports: [MoneyPipe],
+  imports: [MoneyPipe, IconMiComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col h-full">
@@ -35,7 +36,25 @@ import { DiningCartService } from '../services/dining-cart.service';
                 @if (line.notes) {
                   <p class="text-xs text-gray-400 italic truncate">“{{ line.notes }}”</p>
                 }
+                @if (canEditAddons(line)) {
+                  <!-- spec 089 (Historia 3): editar/quitar los adicionales y la nota sin eliminar
+                       la línea. 44 px de alto: objetivo táctil cómodo con el pulgar. -->
+                  <button
+                    type="button"
+                    data-testid="editar-adicionales"
+                    (click)="editAddons.emit(line.id)"
+                    [disabled]="cart.busy()"
+                    class="mt-1 min-h-11 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 disabled:opacity-40"
+                  >
+                    <app-mi-icon name="edit" [size]="14" />
+                    Editar adicionales
+                  </button>
+                }
                 <p class="text-xs text-gray-400">{{ line.unitPrice | money }} c/u</p>
+                @if (line.addonsTotal > 0) {
+                  <!-- spec 089 (A-94): los adicionales se cobran una vez por línea, no por unidad. -->
+                  <p class="text-xs text-gray-400">+ {{ line.addonsTotal | money }} adicionales</p>
+                }
               </div>
               <!-- 44 px: el objetivo táctil mínimo cómodo con el pulgar. -->
               <!-- spec 081 (FR-004/FR-006): el paso lo decide stepFor(line) — 1 (libre) para
@@ -99,6 +118,18 @@ export class CartComponent {
   @Output() submitOrder = new EventEmitter<void>();
   /** El carrito vive en el backend: la mutación la hace el padre y puede fallar. */
   @Output() quantityChanged = new EventEmitter<{ itemId: string; quantity: number }>();
+  /**
+   * spec 089 (Historia 3): el comensal pidió editar los adicionales de una línea (emite su id). El
+   * padre abre el selector con la selección precargada. No se ofrece para una línea cuyo producto o
+   * presentación ya no está en el menú (`editable` la resuelve el padre): solo se puede quitar.
+   */
+  @Output() editAddons = new EventEmitter<string>();
+  /** Ids de línea que NO se pueden editar (producto/presentación desactivados). */
+  @Input() nonEditableLineIds: ReadonlySet<string> = new Set();
+
+  canEditAddons(line: { id: string }): boolean {
+    return !this.nonEditableLineIds.has(line.id);
+  }
 
   readonly cart = inject(DiningCartService);
 }

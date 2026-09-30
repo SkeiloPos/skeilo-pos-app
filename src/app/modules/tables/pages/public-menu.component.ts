@@ -1,14 +1,19 @@
 import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
-import { MenuCategory, MenuProduct } from '../../products/interfaces/product.interface';
+import {
+  MenuCategory,
+  MenuOption,
+  MenuProduct,
+  MenuVariant,
+} from '../../products/interfaces/product.interface';
 import {
   DinerService,
   DinerSessionExpiredError,
   MenuPromotionAnnouncement,
 } from '../services/diner.service';
 import { DinerTokenStore } from '../services/diner-token.store';
-import { DiningCartService } from '../services/dining-cart.service';
+import { CartLine, DiningCartService } from '../services/dining-cart.service';
 import { buildMenuLookup, splitVariantLabel } from '../services/menu-lookup';
 import { CartItemOptionsComponent } from '../components/cart-item-options.component';
 import { CartOptionLine } from '../services/pos-terminal.store';
@@ -19,7 +24,7 @@ import {
   MinPromoPrice,
   minPromoPriceForProduct,
 } from '../../promotions/services/promotion-pricing.util';
-import { DiningOrder, DiningOrderItem } from '../interfaces/dining.interface';
+import { DiningOrder, DiningOrderItem, lineTotal, lineTotalGross } from '../interfaces/dining.interface';
 import { DinerPaymentAttempt, DinerPaymentMethod } from '../interfaces/diner.interface';
 import { VisibleInterval, startVisibleInterval } from '../../../core/realtime/visible-interval';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
@@ -41,7 +46,7 @@ import {
   ProductSelection,
 } from '../components/product-select.component';
 
-type MenuView = 'loading' | 'error' | 'name' | 'menu' | 'exited';
+type MenuView = 'loading' | 'error' | 'name' | 'menu' | 'exited' | 'closed';
 /** Secciones navegables dentro de la vista `menu`, reflejadas en el query param `v`. */
 type MenuSection = 'carta' | 'pedidos';
 /**
@@ -100,13 +105,13 @@ const REFRESH_DEBOUNCE_MS = 250;
         </div>
       }
 
-      <!-- Acceso finalizado (Bug 1): tras "Salir" explícito, ni recargar, "Atrás"/
-           "Adelante" ni reabrir la misma URL en esta pestaña deben ofrecer de nuevo
-           el flujo de acceso — la única vía prevista es volver a escanear el QR
-           físico de la mesa (FR-002 a FR-006). Sin botón ni enlace hacia
+      <!-- Acceso denegado (Bug 1 + spec 089, A-95, FR-015b): tras "Salir" o el cierre de la mesa,
+           ni recargar, "Atrás"/"Adelante" ni reabrir la URL (o un token anterior rechazado) en esta
+           pestaña deben ofrecer de nuevo el flujo de acceso — la única vía es volver a escanear el
+           QR físico de la mesa. Pantalla estática: sin campo de nombre, menú, botón ni enlace hacia
            confirmName()/openSession() a propósito. -->
       @if (view() === 'exited') {
-        <div class="flex flex-col items-center justify-center min-h-screen px-4 text-center">
+        <div data-testid="vista-acceso-denegado" class="flex flex-col items-center justify-center min-h-screen px-4 text-center">
           @if (businessLogo()) {
             <img
               [src]="businessLogo()"
@@ -115,11 +120,27 @@ const REFRESH_DEBOUNCE_MS = 250;
             />
           }
           <h1 class="text-xl font-bold text-gray-800">
-            {{ businessName() ? '¡Gracias por tu visita a ' + businessName() + '!' : '¡Gracias por tu visita!' }}
+            Por favor, escanea nuevamente el código QR de la mesa para ingresar al menú
           </h1>
-          <p class="text-gray-500 text-sm mt-2">
-            Acceso finalizado, vuelve a escanear el código QR de tu mesa
-          </p>
+        </div>
+      }
+
+      <!-- spec 089 (A-95): la mesa se cerró (cobro, "Liberar mesa", barrido o cierre de una sesión
+           vacía). SIEMPRE esta pantalla, sin historial, recibo ni botón alguno: la sesión quedó
+           invalidada y solo un nuevo escaneo del QR crea una nueva. -->
+      @if (view() === 'closed') {
+        <div data-testid="vista-cerrada" class="flex flex-col items-center justify-center min-h-screen px-4 text-center">
+          @if (businessLogo()) {
+            <img
+              [src]="businessLogo()"
+              [alt]="businessName() ?? ''"
+              class="w-20 h-20 rounded-2xl object-cover mx-auto mb-4 border border-gray-100"
+            />
+          }
+          @if (businessName()) {
+            <p class="text-sm font-semibold text-gray-500 mb-1">{{ businessName() }}</p>
+          }
+          <h1 class="text-xl font-bold text-gray-800">¡Gracias por tu visita! Esperamos verte pronto.</h1>
         </div>
       }
 
@@ -349,6 +370,10 @@ const REFRESH_DEBOUNCE_MS = 250;
                                   <div class="font-medium text-gray-900 text-sm">{{ itemLineTotal(item) | money }}</div>
                                 }
                                 <div class="text-xs text-gray-400">{{ item.quantity }} × {{ item.unit_price | money }}</div>
+                                @if (itemAddons(item) > 0) {
+                                  <!-- spec 089 (A-94): los adicionales se cobran una vez por línea. -->
+                                  <div class="text-xs text-gray-400">+ {{ itemAddons(item) | money }} adicionales</div>
+                                }
                               </div>
                             </div>
                             @if (promo) {
@@ -528,6 +553,8 @@ const REFRESH_DEBOUNCE_MS = 250;
                 [error]="orderError()"
                 (submitOrder)="sendOrder()"
                 (quantityChanged)="changeQuantity($event.itemId, $event.quantity)"
+                (editAddons)="openEditAddons($event)"
+                [nonEditableLineIds]="nonEditableLineIds()"
               />
             </div>
           </div>
@@ -546,6 +573,8 @@ const REFRESH_DEBOUNCE_MS = 250;
                 [error]="orderError()"
                 (submitOrder)="sendOrder()"
                 (quantityChanged)="changeQuantity($event.itemId, $event.quantity)"
+                (editAddons)="openEditAddons($event)"
+                [nonEditableLineIds]="nonEditableLineIds()"
               />
             </div>
           }
@@ -606,8 +635,25 @@ const REFRESH_DEBOUNCE_MS = 250;
           [product]="selectedProduct()!"
           [fromPromotions]="selectedProductFromPromotions()"
           [existingQtyFor]="selectedProductExistingQtyFor()"
+          [addonsPerLine]="true"
           (added)="onProductAdded($event)"
           (cancelled)="selectedProduct.set(null)"
+        />
+      }
+
+      <!-- spec 089 (Historia 3): editar los adicionales y la nota de una línea del carrito.
+           Reutiliza el selector de producto con la selección precargada; Guardar cambios va a
+           PATCH /cart/items/{id}, Cancelar no llama al backend. -->
+      @if (editing(); as ed) {
+        <app-product-select
+          [product]="ed.product"
+          [initialSelection]="ed.selection"
+          [addonsPerLine]="true"
+          [quantityLocked]="true"
+          [staleOptionNames]="ed.stale"
+          [externalError]="editError()"
+          (added)="onEditSaved($event)"
+          (cancelled)="closeEdit()"
         />
       }
 
@@ -732,6 +778,105 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
   readonly selectedProductExistingQtyFor = signal<(variantId: string, optionKey: string) => number>(() => 0);
   readonly cartDrawerOpen = signal(false);
   readonly orderError = signal<string | null>(null);
+
+  // ── spec 089 (Historia 3): editar los adicionales de una línea del carrito ──
+
+  /** Línea del carrito cuyos adicionales se están editando (`null` = ningún selector abierto). */
+  readonly editingLine = signal<CartLine | null>(null);
+  /** Error del backend (p. ej. 422 de la selección) mostrado dentro del selector, sin cerrarlo. */
+  readonly editError = signal<string | null>(null);
+
+  /** Producto y presentación de una variante, buscados en el menú vigente. */
+  private findVariant(variantId: string): { product: MenuProduct; variant: MenuVariant } | null {
+    for (const category of this.categories()) {
+      for (const product of category.products) {
+        const variant = product.variants.find((v) => v.id === variantId);
+        if (variant) return { product, variant };
+      }
+    }
+    return null;
+  }
+
+  /** Líneas cuyo producto/presentación ya no está en el menú: solo se pueden quitar, no editar. */
+  readonly nonEditableLineIds = computed(
+    () =>
+      new Set(
+        this.cart
+          .lines()
+          .filter((l) => !this.findVariant(l.productVariantId))
+          .map((l) => l.id),
+      ),
+  );
+
+  /**
+   * Selección precargada del selector: variante, cantidad, notas y los adicionales de la línea
+   * resueltos contra el menú. Un adicional que el menú ya no ofrece (desactivado) no se puede
+   * preseleccionar: se avisa y se quita al guardar.
+   */
+  readonly editing = computed(() => {
+    const line = this.editingLine();
+    if (!line) return null;
+    const found = this.findVariant(line.productVariantId);
+    if (!found) return null;
+    const { product, variant } = found;
+    const options: { option: MenuOption; quantity: number; groupName: string }[] = [];
+    let missing = 0;
+    for (const sel of line.optionSelections) {
+      let match: { option: MenuOption; groupName: string } | null = null;
+      for (const group of variant.option_groups) {
+        const option = group.options.find((o) => o.id === sel.optionId);
+        if (option) {
+          match = { option, groupName: group.name };
+          break;
+        }
+      }
+      if (match) options.push({ ...match, quantity: sel.quantity });
+      else missing += 1;
+    }
+    const stale = missing === 0 ? [] : [missing === 1 ? 'Un adicional' : `${missing} adicionales`];
+    return {
+      product,
+      stale,
+      selection: { product, variant, options, quantity: line.quantity, notes: line.notes },
+    };
+  });
+
+  openEditAddons(lineId: string): void {
+    const line = this.cart.lines().find((l) => l.id === lineId);
+    if (!line || !this.findVariant(line.productVariantId)) return;
+    this.editError.set(null);
+    this.orderError.set(null);
+    this.editingLine.set(line);
+  }
+
+  /** Cancelar o cerrar: la línea queda intacta y no se llama al backend. */
+  closeEdit(): void {
+    this.editingLine.set(null);
+    this.editError.set(null);
+  }
+
+  async onEditSaved(selection: ProductSelection): Promise<void> {
+    const line = this.editingLine();
+    if (!line) return;
+    this.editError.set(null);
+    try {
+      await this.cart.updateItem(line.id, selection.options, selection.notes);
+      this.closeEdit();
+    } catch (err) {
+      if (err instanceof DinerSessionExpiredError) {
+        this.closeEdit();
+        this.handleSessionError(err);
+        return;
+      }
+      // 422/409 del backend: se muestra su mensaje SIN cerrar el selector.
+      const stock = this.api.stockConflict(err);
+      this.editError.set(
+        stock
+          ? `No queda suficiente ${stock.insumo} para esa cantidad.`
+          : this.api.extractError(err, 'No se pudieron guardar los cambios.'),
+      );
+    }
+  }
 
   /**
    * Pedidos de este comensal. Se refrescan desde `GET /cart/orders`, nunca se
@@ -879,9 +1024,15 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
       this.view.set('menu');
       this.startPolling();
       this.connectRealtime();
-    } catch {
-      // Token inválido, sesión cerrada o mesa ya cobrada.
-      this.expireSession('Tu sesión terminó. Ingresa tu nombre de nuevo.');
+    } catch (err) {
+      // Token inválido, sesión cerrada o mesa ya cobrada. spec 089 (A-95, FR-017a): si el 401 es de
+      // cierre (`X-Session-State: closed`) es un token anterior → acceso denegado (no "gracias",
+      // que solo se ve en el momento del cierre); si no, se vuelve a pedir el nombre.
+      if (err instanceof DinerSessionExpiredError && err.closed) {
+        this.denyAccess();
+      } else {
+        this.expireSession('expired', 'Tu sesión terminó. Ingresa tu nombre de nuevo.');
+      }
     }
   }
 
@@ -1128,10 +1279,7 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
       await this.api.cancelMyOrder(order.id, 'Cancelado por el comensal');
       await this.refreshOrders();
     } catch (err) {
-      if (err instanceof DinerSessionExpiredError) {
-        this.expireSession(err.message);
-        return;
-      }
+      if (this.handleSessionError(err)) return;
       // 409 = cocina ya empezó: se refresca para que el botón desaparezca.
       this.orderError.set(this.api.extractError(err, 'No se pudo cancelar el pedido.'));
       await this.refreshOrders().catch(() => undefined);
@@ -1200,10 +1348,7 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
       }
       this.activeAttempt.set(attempt);
     } catch (err) {
-      if (err instanceof DinerSessionExpiredError) {
-        this.expireSession(err.message);
-        return;
-      }
+      if (this.handleSessionError(err)) return;
       this.paymentError.set(this.api.extractError(err, 'No se pudo iniciar el pago.'));
     } finally {
       this.paymentSubmitting.set(false);
@@ -1225,10 +1370,7 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
       await this.refreshOrders();
       this.closePayment();
     } catch (err) {
-      if (err instanceof DinerSessionExpiredError) {
-        this.expireSession(err.message);
-        return;
-      }
+      if (this.handleSessionError(err)) return;
       this.paymentError.set(this.api.extractError(err, 'No se pudo subir el comprobante.'));
     } finally {
       this.paymentSubmitting.set(false);
@@ -1244,16 +1386,11 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
    * adelante igual — el barrido lo resuelve solo, y bloquear la salida por un
    * error de red sería peor que la fuga.
    *
-   * Además marca este `:token` como acceso cerrado (Bug 1, FR-001/FR-002): sin
-   * esa marca, un reload/"Atrás"/"Adelante" en la misma pestaña volvería a
-   * ofrecer el flujo de nombre como si fuera un primer acceso.
-   *
-   * Spec 077 (corrección post-implementación): también limpia el token de
-   * sesión (`tokenStore.clear()`) — ahora que `DinerShellComponent` es quien
-   * abre/cierra la conexión SSE reaccionando a ese signal, es la única forma
-   * de que "Salir" siga cerrando el stream de inmediato (antes lo cerraba
-   * `disconnectRealtime()` directamente). Mismo criterio que ya usa
-   * `expireSession()`.
+   * Usa el mismo fin de acceso que el cierre de la mesa (`expireSession('closed')` →
+   * `tokenStore.endAccess`): borra token y datos del comensal y deja la marca de este `:token`
+   * (Bug 1, FR-001/FR-002), de modo que un reload/"Atrás"/"Adelante" en la misma pestaña
+   * muestre el acceso denegado en vez de ofrecer el flujo de nombre. Limpiar el token también
+   * cierra el stream SSE que abre `DinerShellComponent` (spec 077).
    */
   async exit(): Promise<void> {
     this.stopPolling();
@@ -1262,15 +1399,11 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
       await this.api.leave();
     } catch {
       /* best-effort: el barrido cierra la sesión de todos modos */
-    } finally {
-      this.tokenStore.markExited(this.token);
-      this.tokenStore.clear();
     }
-    this.cart.clear();
-    this.cart.clearDiner();
-    this.myOrders.set([]);
+    // spec 089 (A-95, FR-015a): mismo borrado que el cierre de la mesa y, como él, termina en la
+    // pantalla de gracias; solo una recarga posterior muestra el acceso denegado.
     this.section.set('carta');
-    this.view.set('exited');
+    this.expireSession('closed');
   }
 
   variantLabel(variantId: string): string {
@@ -1325,14 +1458,18 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
    * (`discounted_line_total`), o el bruto si ninguna promoción aplicó.
    */
   itemLineTotal(item: DiningOrderItem): number {
-    return item.discounted_line_total != null
-      ? Number(item.discounted_line_total)
-      : Number(item.unit_price) * item.quantity;
+    // spec 089 (A-94): incluye los adicionales cobrados una vez por línea.
+    return lineTotal(item);
   }
 
   /** Subtotal de lista de la línea (sin descuento), para el tachado. */
   itemOriginalLineTotal(item: DiningOrderItem): number {
-    return Number(item.unit_price) * item.quantity;
+    return lineTotalGross(item);
+  }
+
+  /** spec 089: adicionales de la línea (cobrados una vez), para mostrarlos aparte del precio por unidad. */
+  itemAddons(item: DiningOrderItem): number {
+    return Number(item.addons_total ?? 0);
   }
 
   /** Suma de las líneas del pedido, con descuentos ya aplicados. */
@@ -1358,7 +1495,7 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     this.pollHandle = startVisibleInterval(() => {
       this.refreshOrders().catch((err) => {
         if (err instanceof DinerSessionExpiredError) {
-          this.expireSession('Tu sesión terminó. Ingresa tu nombre de nuevo.');
+          this.handleSessionError(err, 'Tu sesión terminó. Ingresa tu nombre de nuevo.');
         }
       });
     }, this.pollPeriod());
@@ -1407,10 +1544,9 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
       this.realtime.on('order.cancelled', refrescar),
       this.realtime.on('resync', refrescar),
       this.realtime.on('reconnected', refrescar),
-      // La mesa se cobró o la barrió el scheduler: se acabó la sesión.
-      this.realtime.on('session.closed', () =>
-        this.expireSession('La mesa se cerró. ¡Gracias por tu visita!'),
-      ),
+      // La mesa se cobró, se liberó, la barrió el scheduler o quedó vacía: se acabó la sesión.
+      // spec 089 (A-95): cualquier `reason` produce la misma pantalla de gracias.
+      this.realtime.on('session.closed', () => this.expireSession('closed')),
       // Spec 077 (RF-005): mismo evento que ya recibe el staff — antes solo
       // se enrutaba al canal `staff`, nunca al de esta sesión. No siempre
       // cierra la sesión (cobro dividido puede tener otros comensales
@@ -1449,7 +1585,11 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     if (this.refreshHandle !== null) return;
     this.refreshHandle = setTimeout(() => {
       this.refreshHandle = null;
-      this.refreshOrders().catch(() => undefined);
+      // spec 089: un 401 aquí ("resync"/"reconnected" tras una desconexión) es la señal de que la
+      // mesa se cerró mientras el teléfono estaba sin conexión: pantalla de gracias (SC-006).
+      this.refreshOrders().catch((err) => {
+        if (err instanceof DinerSessionExpiredError) this.handleSessionError(err);
+      });
     }, REFRESH_DEBOUNCE_MS);
   }
 
@@ -1457,10 +1597,7 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
 
   /** Muestra el conflicto de stock señalando el insumo concreto que falta. */
   private showCartError(err: unknown): void {
-    if (err instanceof DinerSessionExpiredError) {
-      this.expireSession(err.message);
-      return;
-    }
+    if (this.handleSessionError(err)) return;
     const stock = this.api.stockConflict(err);
     this.orderError.set(
       stock
@@ -1481,27 +1618,77 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * La sesión dejó de valer: se descarta el token y se vuelve a pedir nombre.
+   * Si `err` es un 401 de sesión, actúa (pantalla de gracias si la mesa se cerró, nombre si solo
+   * venció) y devuelve `true`; si no, devuelve `false` para que el llamador siga con su error.
+   * spec 089 (A-95): el 401 con `X-Session-State: closed` lleva a "gracias".
+   */
+  private handleSessionError(err: unknown, fallbackMessage?: string): boolean {
+    if (!(err instanceof DinerSessionExpiredError)) return false;
+    if (err.closed) this.expireSession('closed');
+    else this.expireSession('expired', fallbackMessage ?? err.message);
+    return true;
+  }
+
+  /**
+   * La sesión dejó de valer: se descarta el token y se limpia todo.
+   *
+   * spec 089 (A-95): `motivo`
+   *  - `'closed'`: la mesa se cerró (evento `session.closed` o un 401 con `X-Session-State: closed`).
+   *    Pantalla de gracias, siempre, sin historial ni botones; la sesión queda invalidada y solo un
+   *    nuevo escaneo del QR crea una nueva.
+   *  - `'expired'`: vencimiento por inactividad/duración/firma. Se vuelve a pedir el nombre, como antes.
    *
    * Segundo camino hacia el formulario de nombre además de `ngOnInit`
    * (`research.md` Decisión 2): si este `:token` ya está marcado como un acceso
    * que el propio comensal cerró explícitamente, respeta ese estado en vez de
-   * reabrir el flujo de nombre — un `401` tardío no debe pisar la marca de
-   * `exit()`.
+   * reabrir el flujo — un `401` tardío no debe pisar la marca de `exit()`.
    */
-  private expireSession(message: string): void {
-    this.stopPolling();
-    this.disconnectRealtime();
+  private expireSession(motivo: 'closed' | 'expired', message?: string): void {
+    if (motivo === 'closed') {
+      // Mismo borrado y misma marca por pestaña que "Salir" (A-95, FR-015a/c, D9b): recargar
+      // después muestra el acceso denegado, nunca un ingreso nuevo. Si ya se muestra la pantalla
+      // de gracias (p. ej. tras "Salir") un evento o 401 tardío no la cambia.
+      this.resetSessionState();
+      this.tokenStore.endAccess(this.token);
+      this.view.set('closed');
+      return;
+    }
+    this.resetSessionState();
     this.tokenStore.clear();
-    this.cart.clear();
-    this.cart.clearDiner();
-    this.myOrders.set([]);
-    this.orderError.set(null);
+    // Un 401 de vencimiento tardío no debe pisar la marca de un acceso ya cerrado.
     if (this.tokenStore.isExited(this.token)) {
       this.view.set('exited');
       return;
     }
-    this.errorMessage.set(message);
+    this.errorMessage.set(message ?? 'Tu sesión terminó. Ingresa tu nombre de nuevo.');
     this.view.set('name');
+  }
+
+  /**
+   * Token de una sesión anterior rechazado al cargar la página (`?s=` o `localStorage`; mesa libre,
+   * cerrada o reocupada): acceso denegado, no "gracias" (A-95, FR-017a / FR-015b). Deja la marca
+   * por pestaña y no crea sesión; solo un nuevo escaneo del QR entra.
+   */
+  private denyAccess(): void {
+    this.resetSessionState();
+    this.tokenStore.endAccess(this.token);
+    this.view.set('exited');
+  }
+
+  /** Detiene el sondeo y el SSE y vacía lo que dependía de la sesión anterior. */
+  private resetSessionState(): void {
+    this.stopPolling();
+    this.disconnectRealtime();
+    this.cart.clear();
+    this.cart.clearDiner();
+    this.myOrders.set([]);
+    this.orderError.set(null);
+    // Ningún overlay de la sesión anterior (selector de producto, edición de adicionales, pago en
+    // curso, cajón del carrito) puede quedar montado sobre la pantalla de gracias / de nombre.
+    this.selectedProduct.set(null);
+    this.editingLine.set(null);
+    this.editError.set(null);
+    this.payingOrder.set(null);
+    this.cartDrawerOpen.set(false);
   }
 }

@@ -25,6 +25,7 @@ import {
   DiningOrderItem,
   DraftPreviewPayload,
   KitchenStatus,
+  lineTotalGross,
   PaymentLine,
   SessionBill,
 } from '../interfaces/dining.interface';
@@ -455,6 +456,17 @@ export class PosTerminalStore {
   }
 
   /**
+   * spec 089 (A-94): total de la línea tal como se cobra. `discounted_line_total` (ya incluye los
+   * adicionales) si el backend lo congeló; si no, el precio por unidad efectivo × cantidad **más**
+   * los adicionales cobrados una vez por línea (`addons_total`, 0 en toda línea histórica y en las
+   * de la terminal POS). Nunca `unit_price × quantity` suelto: subcobraría los adicionales.
+   */
+  private itemLineTotal(i: DiningOrderItem): number {
+    if (i.discounted_line_total != null) return Number(i.discounted_line_total);
+    return this.itemUnitPrice(i) * i.quantity + Number(i.addons_total ?? 0);
+  }
+
+  /**
    * spec 073, FR-016/FR-017 (US6): la condición legible de la promoción para la
    * tarjeta del catálogo — la **misma** que ya publica el backend para el menú
    * QR (`MenuVariantPromotion`, spec 066), en lugar de la insignia local
@@ -495,13 +507,15 @@ export class PosTerminalStore {
     unitPrice: number,
     discountedUnitPrice: number | null | undefined,
     quantity: number,
+    addonsTotal = 0,
   ): CartLinePromo | null {
     const info = discountInfo(unitPrice, discountedUnitPrice);
     if (!info) return null;
+    // spec 089: una promoción nunca descuenta los adicionales; van enteros en ambos importes.
     return {
       badge: `-${info.percent}%`,
-      originalAmount: info.original * quantity,
-      discountedAmount: info.discounted * quantity,
+      originalAmount: info.original * quantity + addonsTotal,
+      discountedAmount: info.discounted * quantity + addonsTotal,
       savings: info.amountOff * quantity,
     };
   }
@@ -983,11 +997,14 @@ export class PosTerminalStore {
           ),
         notes: i.notes || null,
         unitPrice,
-        subtotal: unitPrice * i.quantity,
+        addonsTotal: Number(i.addons_total ?? 0),
+        subtotal: this.itemLineTotal(i),
         ready: !KITCHEN_NOT_READY.includes(i.estado_cocina),
         kitchenStatus: i.estado_cocina as KitchenStatus | null,
         pendingItemIds: KITCHEN_NOT_READY.includes(i.estado_cocina) ? [i.id] : [],
-        promo: this.persistedLinePromo(Number(i.unit_price), discountedUnit, i.quantity),
+        promo: this.persistedLinePromo(
+          Number(i.unit_price), discountedUnit, i.quantity, Number(i.addons_total ?? 0),
+        ),
       };
     });
 
@@ -1014,6 +1031,7 @@ export class PosTerminalStore {
         ),
         notes: null as string | null,
         unitPrice: units > 0 ? subtotal / units : subtotal,
+        addonsTotal: 0,
         subtotal,
         ready: its.every((it) => !KITCHEN_NOT_READY.includes(it.estado_cocina)),
         kitchenStatus: leastAdvanced(its),
@@ -1062,6 +1080,7 @@ export class PosTerminalStore {
           options: this.comboBullets(l.comboId).map((text): CartOptionLine => ({ groupLabel: null, text })),
           notes: null as string | null,
           unitPrice: l.unitPrice,
+          addonsTotal: 0,
           subtotal: l.unitPrice * l.quantity,
           ready: true,
           kitchenStatus: null,
@@ -1091,6 +1110,8 @@ export class PosTerminalStore {
         ),
         notes: l.notes || null,
         unitPrice,
+        // La terminal POS cobra los extras por unidad (dentro de `unitPrice`): sin adicionales por línea.
+        addonsTotal: 0,
         subtotal: unitPrice * l.quantity,
         ready: true,
         kitchenStatus: null,
@@ -1722,7 +1743,7 @@ export class PosTerminalStore {
     its: DiningOrderItem[],
     _units: number,
   ): number {
-    return its.reduce((s, it) => s + Number(it.unit_price) * it.quantity, 0);
+    return its.reduce((s, it) => s + lineTotalGross(it), 0);
   }
 
   incDraft(key: string): void {
@@ -1754,11 +1775,25 @@ export class PosTerminalStore {
       this.toast.error(this.error()!);
       return false;
     }
+    // Serializa las altas: un segundo guardado no arranca sobre uno en vuelo (su estimado se
+    // calcularía sobre un total confirmado que aún no incluye lo primero).
+    if (this.submitting()) return false;
     this.submitting.set(true);
     this.error.set(null);
+
+    // spec 089 (A-96): la cifra del panel de cobro se actualiza al instante con un ESTIMADO local
+    // (último total confirmado + las líneas que se van a guardar) y el servidor lo confirma al
+    // terminar. Sin un total confirmado que estimar (el panel no está en modo cobro) no se toca.
+    const lines = [...this.draftLines()];
+    const hadPreview = this.checkoutPreview() != null;
+    if (hadPreview) {
+      this.publishEstimate(lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0));
+    }
+
+    const savedKeys = new Set<string>();
     try {
       let order: DiningOrder | null = null;
-      for (const l of this.draftLines()) {
+      for (const l of lines) {
         order = await this.api.addOrderItems(
           orderId,
           l.kind === 'combo'
@@ -1770,15 +1805,32 @@ export class PosTerminalStore {
                 notes: l.notes,
               },
         );
+        savedKeys.add(l.key);
       }
       this.draftLines.set([]);
       await this.reload();
       if (order) this.selectedOrderId.set(order.id);
+      // La cifra visible pasa a ser la del servidor, sin diálogo aunque difiera del estimado.
+      if (hadPreview) await this.settleEstimate(order?.id ?? orderId);
+      else this.checkoutPreviewEstimate.set(null);
       this.toast.success('Pedido guardado');
       return true;
     } catch (err) {
+      // El nombre del producto agotado (backend, spec 089) llega en `detail.error`.
       this.error.set(this.api.extractError(err, 'No se pudo guardar el pedido.'));
       this.toast.error(this.error()!);
+      // Las líneas que sí se guardaron antes del fallo ya son del pedido: se quitan del borrador
+      // para que reintentar no las duplique, y el total vuelve al confirmado real (incluyéndolas).
+      if (savedKeys.size > 0) {
+        this.draftLines.update((cur) => cur.filter((x) => !savedKeys.has(x.key)));
+        try {
+          await this.reload();
+        } catch {
+          /* la recarga es best-effort: el error que se muestra es el de guardar */
+        }
+      }
+      if (hadPreview) await this.settleEstimate(orderId);
+      else this.checkoutPreviewEstimate.set(null);
       return false;
     } finally {
       this.submitting.set(false);
@@ -1825,12 +1877,26 @@ export class PosTerminalStore {
     });
     if (!ok) return;
     this.submitting.set(true);
+
+    // spec 089 (A-96, FR-025): quitar un producto también baja el total al instante (estimado
+    // local: confirmado − la línea) y el servidor lo confirma después; la confirmación de arriba
+    // "¿Anular este ítem?" se conserva, no es el aviso de total. Solo si la línea es del pedido
+    // cuyo total muestra el panel de cobro.
+    const selectedId = this.selectedOrderId();
+    const owner = this.orders().find((o) => (o.items ?? []).some((i) => i.id === itemId));
+    const line = owner?.items?.find((i) => i.id === itemId);
+    const refresh = !!selectedId && owner?.id === selectedId && this.checkoutPreview() != null;
+    if (refresh && line) this.publishEstimate(-this.itemLineTotal(line));
     try {
       await this.api.voidItem(itemId, 'Anulado desde terminal');
       await this.reload();
+      if (refresh) await this.settleEstimate(selectedId);
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo anular el ítem.'));
+      // Fallo o servidor sin respuesta: se descarta el estimado y se vuelve a lo confirmado.
+      if (refresh) await this.settleEstimate(selectedId);
     } finally {
+      this.checkoutPreviewEstimate.set(null);
       this.submitting.set(false);
     }
   }
@@ -2065,6 +2131,39 @@ export class PosTerminalStore {
    * permite cobrar contra un total no verificado (FR-007a, Edge Case "Sin
    * conexión al consultar el total del cobro").
    */
+  /**
+   * spec 089 (A-96, contracts/pos-total-immediate.md): cifra **estimada** que el panel de cobro
+   * muestra al instante mientras el servidor confirma un cambio en la orden (agregar o quitar un
+   * producto): último total confirmado ± las líneas tocadas. `null` = no hay estimación, la cifra
+   * visible es la confirmada. **Mientras haya estimado, Cobrar queda deshabilitado**: solo la cifra
+   * que confirmó el servidor se cobra (nunca un importe que el cajero no vio).
+   */
+  readonly checkoutPreviewEstimate = signal<{ subtotal: number; total: number } | null>(null);
+
+  /** Publica el estimado `confirmado + delta` (síncrono). No hace nada sin un total confirmado. */
+  private publishEstimate(delta: number): void {
+    const confirmed = this.checkoutPreview();
+    if (!confirmed) return;
+    this.checkoutPreviewEstimate.set({
+      subtotal: Math.max(0, Number(confirmed.subtotal) + delta),
+      total: Math.max(0, Number(confirmed.total) + delta),
+    });
+  }
+
+  /**
+   * Cierra el estimado con la cifra del servidor: pide el preview real y limpia el estimado
+   * **siempre** (éxito, fallo o servidor sin respuesta), de modo que nunca quede un importe
+   * fantasma. Si el preview falla, `loadCheckoutPreview` deja `checkoutPreview = null` y el panel
+   * vuelve a "Calculando el total…" con Cobrar deshabilitado (FR-031).
+   */
+  private async settleEstimate(orderId: string | null): Promise<void> {
+    try {
+      await this.loadCheckoutPreview(orderId);
+    } finally {
+      this.checkoutPreviewEstimate.set(null);
+    }
+  }
+
   async loadCheckoutPreview(orderId: string | null): Promise<void> {
     this.checkoutPreviewStale.set(false);
     if (!orderId) {
@@ -2380,17 +2479,10 @@ export class PosTerminalStore {
     // `discounted_unit_price * quantity` en líneas con descuento y `quantity > 1`.
     // Sin ese campo (pedido histórico, o sin promoción), se cae al cálculo de
     // siempre, así que no cambia el total de ninguna tarjeta que hoy pase por aquí.
-    let total = plain.reduce(
-      (s, i) =>
-        s +
-        (i.discounted_line_total != null
-          ? Number(i.discounted_line_total)
-          : this.itemUnitPrice(i) * i.quantity),
-      0,
-    );
+    let total = plain.reduce((s, i) => s + this.itemLineTotal(i), 0);
     // spec 063: `combo_id` histórico — los componentes se cobran a su precio.
     for (const it of items.filter((i) => i.combo_id)) {
-      total += Number(it.unit_price) * it.quantity;
+      total += lineTotalGross(it);
     }
     return total;
   }

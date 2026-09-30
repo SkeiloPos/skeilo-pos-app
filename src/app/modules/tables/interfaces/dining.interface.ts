@@ -83,6 +83,11 @@ export interface DiningOrderItemOption {
   option_id: string;
   quantity: number;
   /**
+   * spec 089 (A-94): la opción es un adicional cobrado y consumido una sola vez por línea
+   * (no por unidad de producto). Ausente = por unidad (líneas anteriores y de la terminal POS).
+   */
+  per_line?: boolean;
+  /**
    * Nombre de la opción y de su grupo, resueltos por el backend en lectura
    * (spec 087, FR-015/A-89). Respaldo cuando la opción ya no está en el menú
    * vigente; opcionales porque un pedido recién creado puede traerlos en `null`.
@@ -110,6 +115,14 @@ export interface DiningOrderItem {
   quantity: number;
   unit_price: string;
   /**
+   * spec 089 (A-94): adicionales cobrados UNA vez por línea (`unit_price` ya no los incluye en
+   * las líneas nuevas del Menú QR). Ausente/`"0"` en toda línea anterior y en las de la terminal
+   * POS: su `unit_price` sigue incluyendo los extras por unidad.
+   */
+  addons_total?: string;
+  /** Total de la línea sin descuento: `unit_price × quantity + addons_total`. Ausente en respuestas de un backend anterior. */
+  line_total?: string;
+  /**
    * Precio/subtotal ya con el mejor descuento vigente aplicado al confirmar,
    * o `null`/ausente si ninguna promoción aplicó a esta línea (o es un
    * combo, que ahorra aparte), o si el pedido es anterior a esta spec.
@@ -128,6 +141,37 @@ export interface DiningOrderItem {
   void_de?: string | null;
   notes?: string | null;
   options?: DiningOrderItemOption[];
+}
+
+/**
+ * spec 089 (A-94): total de lista de una línea de pedido, sin descuento.
+ *
+ * `line_total` viene del backend; con un backend anterior (sin ese campo) se cae a
+ * `unit_price × quantity + addons_total`, que para toda línea histórica (sin `addons_total`) es el
+ * `unit_price × quantity` de siempre. **No** usar `unit_price × quantity` suelto: en las líneas
+ * nuevas del Menú QR subcobraría los adicionales.
+ */
+export function lineTotalGross(
+  item: Pick<DiningOrderItem, 'unit_price' | 'quantity' | 'addons_total' | 'line_total'>,
+): number {
+  if (item.line_total != null) return Number(item.line_total);
+  return Number(item.unit_price) * item.quantity + Number(item.addons_total ?? 0);
+}
+
+/**
+ * spec 089: total de la línea tal como se cobra — el `discounted_line_total` que el backend
+ * congeló al confirmar (ya incluye los adicionales: una promoción no los descuenta) o, sin
+ * descuento, el total de lista de `lineTotalGross`.
+ */
+export function lineTotal(
+  item: Pick<
+    DiningOrderItem,
+    'unit_price' | 'quantity' | 'addons_total' | 'line_total' | 'discounted_line_total'
+  >,
+): number {
+  return item.discounted_line_total != null
+    ? Number(item.discounted_line_total)
+    : lineTotalGross(item);
 }
 
 /** Body for `PATCH /orders/items/{id}/kitchen` (`KitchenTransitionIn`). */

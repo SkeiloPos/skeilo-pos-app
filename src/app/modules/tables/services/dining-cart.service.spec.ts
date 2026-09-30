@@ -159,4 +159,169 @@ describe('DiningCartService', () => {
 
     expect(cart.stepFor(cart.lines()[0])).toBe(1);
   });
+
+  // ── spec 089 (A-94): adicionales cobrados una vez por línea ────────────────
+
+  it('CartLine expone addonsTotal y el total de línea incluye los adicionales una sola vez', async () => {
+    await load({
+      ...emptyCart('Ana'),
+      total: '33000',
+      items: [
+        {
+          id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', addons_total: '3000',
+          line_total: '33000', notes: null, options: [{ id: 'o1', option_id: 'toc', quantity: 1, per_line: true }],
+        },
+      ],
+    });
+
+    const [line] = cart.lines();
+    expect(line.unitPrice).toBe(15000); // solo la presentación
+    expect(line.addonsTotal).toBe(3000);
+    expect(line.lineTotal).toBe(33000);
+    expect(cart.total()).toBe(33000);
+  });
+
+  it('cambiar la cantidad del producto no toca addonsTotal', async () => {
+    await load({
+      ...emptyCart('Ana'),
+      total: '33000',
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', addons_total: '3000', line_total: '33000', notes: null, options: [] },
+      ],
+    });
+
+    const promise = cart.setQuantity('i1', 3);
+    http.expectOne(`${API}/cart/items/i1`).flush({
+      ...emptyCart('Ana'),
+      total: '48000',
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 3, unit_price: '15000', addons_total: '3000', line_total: '48000', notes: null, options: [] },
+      ],
+    });
+    await promise;
+
+    expect(cart.lines()[0].addonsTotal).toBe(3000);
+    expect(cart.lines()[0].lineTotal).toBe(48000);
+  });
+
+  it('una línea histórica (sin addons_total) sigue valiendo unit_price × quantity', async () => {
+    await load({
+      ...emptyCart('Ana'),
+      total: '36000',
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '18000', line_total: '36000', notes: null, options: [] },
+      ],
+    });
+
+    expect(cart.lines()[0].addonsTotal).toBe(0);
+    expect(cart.lines()[0].lineTotal).toBe(36000);
+  });
+
+  it('con un backend sin line_total reconstruye unit_price × quantity + addons_total, nunca sin los adicionales', async () => {
+    await load({
+      ...emptyCart('Ana'),
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', addons_total: '3000', notes: null, options: [] },
+      ],
+    });
+
+    expect(cart.lines()[0].lineTotal).toBe(33000);
+  });
+
+  it('con promoción usa discounted_line_total (que ya incluye los adicionales)', async () => {
+    await load({
+      ...emptyCart('Ana'),
+      total: '33000',
+      discounted_total: '27000.00',
+      items: [
+        {
+          id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', addons_total: '3000',
+          line_total: '33000', discounted_unit_price: '12000.00', discounted_line_total: '27000.00',
+          notes: null, options: [],
+        },
+      ],
+    });
+
+    expect(cart.lines()[0].lineTotal).toBe(27000);
+    expect(cart.lines()[0].unitPrice).toBe(12000);
+    expect(cart.total()).toBe(27000);
+  });
+
+  // ── spec 089 (Historia 3): editar adicionales sin eliminar la línea ────────
+
+  it('updateItem hace PATCH /cart/items/{id} con {options, notes} —sin cantidad— y actualiza la línea en su lugar', async () => {
+    await load({
+      ...emptyCart('Ana'),
+      total: '33000',
+      items: [
+        {
+          id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', addons_total: '3000',
+          line_total: '33000', notes: null, options: [{ id: 'o1', option_id: 'toc', quantity: 1, per_line: true }],
+        },
+      ],
+    });
+    const tocino = { id: 'toc', name: 'Tocino', extra_price: 3000, available: true };
+
+    const promise = cart.updateItem('i1', [{ option: tocino, quantity: 2, groupName: 'Adicionales' }], 'sin sal');
+    const req = http.expectOne(`${API}/cart/items/i1`);
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ options: [{ option_id: 'toc', quantity: 2 }], notes: 'sin sal' });
+    req.flush({
+      ...emptyCart('Ana'),
+      total: '36000',
+      items: [
+        {
+          id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', addons_total: '6000',
+          line_total: '36000', notes: 'sin sal', options: [{ id: 'o1', option_id: 'toc', quantity: 2, per_line: true }],
+        },
+      ],
+    });
+    await promise;
+
+    expect(cart.lines().length).toBe(1);
+    expect(cart.lines()[0].id).toBe('i1');
+    expect(cart.lines()[0].quantity).toBe(2);
+    expect(cart.lines()[0].lineTotal).toBe(36000);
+    expect(cart.lines()[0].optionSelections).toEqual([{ optionId: 'toc', quantity: 2 }]);
+  });
+
+  it('updateItem con todos los adicionales quitados manda options vacías y la línea sigue en el carrito', async () => {
+    await load({
+      ...emptyCart('Ana'),
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', addons_total: '3000', line_total: '33000', notes: null, options: [{ id: 'o1', option_id: 'toc', quantity: 1 }] },
+      ],
+    });
+
+    const promise = cart.updateItem('i1', [], null);
+    const req = http.expectOne(`${API}/cart/items/i1`);
+    expect(req.request.body).toEqual({ options: [], notes: null });
+    req.flush({
+      ...emptyCart('Ana'),
+      total: '30000',
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', addons_total: '0', line_total: '30000', notes: null, options: [] },
+      ],
+    });
+    await promise;
+
+    expect(cart.lines()[0].lineTotal).toBe(30000);
+    expect(cart.lines()[0].addonsTotal).toBe(0);
+  });
+
+  it('un 422 no toca el estado local y se propaga para mostrarlo sin cerrar el selector', async () => {
+    await load({
+      ...emptyCart('Ana'),
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', addons_total: '3000', line_total: '33000', notes: null, options: [] },
+      ],
+    });
+
+    const promise = cart.updateItem('i1', [], null);
+    http.expectOne(`${API}/cart/items/i1`).flush({ detail: 'inválido' }, { status: 422, statusText: 'Unprocessable' });
+
+    await expect(promise).rejects.toBeTruthy();
+    expect(cart.lines()[0].lineTotal).toBe(33000);
+    expect(cart.busy()).toBe(false);
+  });
 });

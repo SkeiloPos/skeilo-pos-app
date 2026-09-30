@@ -9,7 +9,7 @@ import { environment } from '../../../../environments/environment';
 import { PosOrderPanelComponent } from './pos-order-panel.component';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { PromotionService } from '../../promotions/services/promotion.service';
-import { DiningOrder } from '../interfaces/dining.interface';
+import { DiningOrder, DiningOrderItem } from '../interfaces/dining.interface';
 import { TableService } from '../services/table.service';
 import { Table } from '../interfaces/table.interface';
 
@@ -177,6 +177,78 @@ describe('PosOrderPanelComponent — sin resumen de totales (spec 049)', () => {
 
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(texto).toContain('Marcar pedido listo');
+  });
+});
+
+/**
+ * spec 089 (A-94): las líneas del Menú QR cobran los adicionales una sola vez por línea; el total
+ * de cada línea del panel los incluye y los muestra aparte del precio por unidad.
+ */
+describe('PosOrderPanelComponent — adicionales por línea (spec 089)', () => {
+  let fixture: ComponentFixture<PosOrderPanelComponent>;
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [PosOrderPanelComponent],
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    fixture = TestBed.createComponent(PosOrderPanelComponent);
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  function conItem(extra: Partial<DiningOrderItem>): void {
+    store.orders.set([
+      {
+        ...orderConItemListo(false),
+        items: [
+          { id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', estado_cocina: 'pendiente', ...extra },
+        ],
+      } as DiningOrder,
+    ]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    fixture.detectChanges();
+  }
+
+  it('el total de la línea incluye el adicional una sola vez: $33.000, no $30.000 ni $36.000', () => {
+    conItem({ addons_total: '3000', line_total: '33000' });
+
+    expect(store.cartView()[0].subtotal).toBe(33000);
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain(store.fmt(33000));
+    expect(texto).toContain('adicionales');
+  });
+
+  it('una línea histórica sin adicionales conserva su total y no muestra la fila de adicionales', () => {
+    conItem({ unit_price: '18000' });
+
+    expect(store.cartView()[0].subtotal).toBe(36000);
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('adicionales');
+  });
+
+  it('con promoción, el importe descontado y el tachado conservan el adicional', () => {
+    conItem({
+      addons_total: '3000', line_total: '33000',
+      discounted_unit_price: '12000.00', discounted_line_total: '27000.00',
+    });
+
+    const row = store.cartView()[0];
+    expect(row.subtotal).toBe(27000);
+    expect(row.promo?.discountedAmount).toBe(27000); // 12.000 × 2 + 3.000
+    expect(row.promo?.originalAmount).toBe(33000); // 15.000 × 2 + 3.000
+    expect(row.promo?.savings).toBe(6000); // el adicional no se descuenta
   });
 });
 

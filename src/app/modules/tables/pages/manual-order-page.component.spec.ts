@@ -1416,7 +1416,7 @@ describe('ManualOrderPageComponent — desglose del borrador (spec 073, US5)', (
     expect(confirmButton.disabled).toBe(false);
   });
 
-  it('Scenario 5 (FR-015a): si el total cambió al confirmar, pide una segunda confirmación antes de crear el pedido', async () => {
+  it('Scenario 5 (FR-015a → spec 089 A-96): si el total cambió al confirmar, NO abre modal: avisa sin bloquear y no crea el pedido hasta un segundo clic', async () => {
     setup();
     const draftSpy = vi.spyOn(api, 'draftPreview')
       .mockResolvedValueOnce(preview('16000', '8000', '8000'))  // al armar el borrador
@@ -1433,19 +1433,27 @@ describe('ManualOrderPageComponent — desglose del borrador (spec 073, US5)', (
     expect(store.draftPreview()?.total).toBe('8000');
 
     const confirmSvc = TestBed.inject(ConfirmService);
-    const confirmButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+    const confirmButton = () => Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
       (b as HTMLButtonElement).textContent?.includes('Crear pedido'),
     ) as HTMLButtonElement;
-    confirmButton.click();
+    confirmButton().click();
     await new Promise((r) => setTimeout(r));
+    fixture.detectChanges();
 
-    expect(confirmSvc.state()).not.toBeNull();
-    expect(confirmSvc.state()!.title).toContain('El total cambió');
-    confirmSvc.respond(false);
-    await new Promise((r) => setTimeout(r));
-
+    // Primer clic: sin diálogo, aviso no bloqueante, pedido sin crear.
+    expect(confirmSvc.state()).toBeNull();
     expect(createSpy).not.toHaveBeenCalled();
     expect(draftSpy).toHaveBeenCalled();
+    const aviso = fixture.nativeElement.querySelector('[data-testid="total-cambio-aviso"]') as HTMLElement;
+    expect(aviso).toBeTruthy();
+    expect(aviso.textContent).toContain('El total cambió');
+    expect(store.draftPreview()?.total).toBe('16000');
+
+    // Segundo clic sobre el importe visible: crea el pedido.
+    confirmButton().click();
+    await new Promise((r) => setTimeout(r));
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    expect(confirmSvc.state()).toBeNull();
   });
 });
 

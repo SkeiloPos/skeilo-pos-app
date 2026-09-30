@@ -4,6 +4,9 @@ const STORAGE_KEY = 'pos.diner.session_token';
 /** Marca, por pestaña, del token cuyo acceso el propio comensal cerró explícitamente. */
 const EXITED_STORAGE_KEY = 'pos.diner.exited_token';
 
+/** Prefijo común de todo lo que la app guarda del comensal (token, marca, progreso de checkout). */
+const DINER_STORAGE_PREFIX = 'pos.diner.';
+
 /** Nombre del query param que permite reingresar desde un enlace compartido. */
 export const DINER_TOKEN_PARAM = 's';
 
@@ -82,6 +85,44 @@ export class DinerTokenStore {
     } catch {
       /* modo privado / storage bloqueado: sin marca persistente en esta pestaña */
     }
+  }
+
+  /**
+   * Fin de acceso del comensal: **único** borrado, compartido por "Salir" y por el cierre de la
+   * mesa (spec 089, A-95, FR-015a / research D9b). Así ambos caminos dejan el navegador idéntico
+   * (SC-011).
+   *
+   * Quita el token de sesión, elimina de `localStorage` y `sessionStorage` toda clave `pos.diner.*`
+   * (progreso de checkout incluido), expira cualquier cookie `pos.diner*` y deja **solo** la marca
+   * por pestaña del token público de la mesa (`tableToken`, el de la URL; FR-015c), sin datos de
+   * sesión ni de comensal. Con almacenamiento bloqueado la purga en memoria igual ocurre.
+   */
+  endAccess(tableToken: string): void {
+    this.clear();
+    for (const storage of [() => localStorage, () => sessionStorage]) {
+      try {
+        const area = storage();
+        const keys: string[] = [];
+        for (let i = 0; i < area.length; i++) {
+          const key = area.key(i);
+          if (key?.startsWith(DINER_STORAGE_PREFIX)) keys.push(key);
+        }
+        keys.forEach((key) => area.removeItem(key));
+      } catch {
+        /* storage bloqueado: nada que purgar */
+      }
+    }
+    try {
+      for (const cookie of document.cookie.split(';')) {
+        const name = cookie.split('=')[0].trim();
+        if (name.startsWith(DINER_STORAGE_PREFIX.slice(0, -1))) {
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+        }
+      }
+    } catch {
+      /* sin acceso a cookies */
+    }
+    this.markExited(tableToken);
   }
 
   /** ¿Esta pestaña ya cerró explícitamente el acceso de `token`? */

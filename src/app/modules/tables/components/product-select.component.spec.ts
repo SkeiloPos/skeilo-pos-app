@@ -712,4 +712,137 @@ describe('ProductSelectComponent — [fromPromotions]/[existingQtyFor] (spec 081
     const icon = el.querySelector('app-mi-icon .material-icons-outlined');
     expect(icon?.textContent?.trim()).toBe('close');
   });
+
+  // ── spec 089 (A-94): adicionales cobrados una vez por línea (Menú QR) ───────
+
+  describe('addonsPerLine (spec 089)', () => {
+    function withTocino(addonsPerLine: boolean) {
+      const tocino = makeOption({ id: 'toc', name: 'Tocino', extra_price: 3000 });
+      const group = makeGroup({ id: 'ad', name: 'Adicionales', max_select: 3, options: [tocino] });
+      create(makeProduct({ variants: [makeVariant({ option_groups: [group] })] }));
+      component.addonsPerLine = addonsPerLine;
+      component.toggleOption(group, tocino);
+      component.inc(); // cantidad = 2
+      return { tocino, group };
+    }
+
+    it('2 hamburguesas de $15.000 con 1 tocino de $3.000 = $33.000, no $36.000', () => {
+      withTocino(true);
+      expect(component.lineTotal()).toBe(33000);
+    });
+
+    it('subir la cantidad a 3 no multiplica el adicional: $48.000', () => {
+      withTocino(true);
+      component.inc(); // cantidad = 3
+      expect(component.lineTotal()).toBe(48000);
+    });
+
+    it('sin addonsPerLine (terminal POS, pedido manual) conserva el cálculo por unidad', () => {
+      withTocino(false);
+      expect(component.lineTotal()).toBe(36000); // (15000 + 3000) × 2
+    });
+
+    it('una opción de grupo incluido ($0) no suma con ninguna de las dos reglas', () => {
+      const sabor = makeOption({ id: 'sab', name: 'Fresa', extra_price: 0 });
+      const group = makeGroup({ id: 'sb', name: 'Sabores', max_select: 2, options: [sabor] });
+      create(makeProduct({ variants: [makeVariant({ option_groups: [group] })] }));
+      component.addonsPerLine = true;
+      component.toggleOption(group, sabor);
+      component.inc();
+      expect(component.lineTotal()).toBe(30000);
+    });
+  });
+
+  // ── spec 089 (Historia 3): modo edición de una línea del carrito ────────────
+
+  describe('editar adicionales de una línea (spec 089, Historia 3)', () => {
+    function edicion(opts: { tocinoDisponible?: boolean } = {}) {
+      const tocino = makeOption({ id: 'toc', name: 'Tocino', extra_price: 3000, available: opts.tocinoDisponible ?? true });
+      const queso = makeOption({ id: 'que', name: 'Queso', extra_price: 2000 });
+      const group = makeGroup({
+        id: 'ad', name: 'Adicionales', selection_mode: 'cantidad', max_select: 3, options: [tocino, queso],
+      });
+      const variant = makeVariant({ option_groups: [group] });
+      const product = makeProduct({ variants: [variant] });
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({ imports: [ProductSelectComponent] });
+      fixture = TestBed.createComponent(ProductSelectComponent);
+      component = fixture.componentInstance;
+      component.product = product;
+      component.addonsPerLine = true;
+      component.quantityLocked = true;
+      component.initialSelection = {
+        product, variant, quantity: 2, notes: 'sin cebolla',
+        options: [{ option: tocino, quantity: 1, groupName: 'Adicionales' }],
+      };
+      fixture.detectChanges();
+      return { tocino, queso, group };
+    }
+
+    it('precarga el adicional y la nota; el botón dice "Guardar cambios" con el total por la regla nueva', () => {
+      edicion();
+
+      expect(component.notes()).toBe('sin cebolla');
+      expect(component.optionQuantity('ad', 'toc')).toBe(1);
+      expect(component.lineTotal()).toBe(33000); // 2 × 15.000 + 3.000
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Guardar cambios');
+    });
+
+    it('la cantidad de producto queda fija (sin +/−)', () => {
+      edicion();
+      const el = fixture.nativeElement as HTMLElement;
+
+      expect(el.querySelector('[data-testid="cantidad-fija"]')?.textContent?.trim()).toBe('2');
+      expect(el.querySelector('button[aria-label="Añadir uno"]')).toBeNull();
+    });
+
+    it('ignora existingQtyFor y el paso de la promoción: la cantidad no se reescribe al editar', () => {
+      edicion();
+      component.fromPromotions = true;
+      component.existingQtyFor = () => 5;
+      fixture.detectChanges();
+
+      expect(component.quantity()).toBe(2);
+      expect(component.minQty()).toBe(1);
+    });
+
+    it('se pueden dejar todos los adicionales en cero y guardar', () => {
+      const { group, tocino } = edicion();
+      component.decrementOption(group, tocino);
+      fixture.detectChanges();
+
+      let emitted: ProductSelection | undefined;
+      component.added.subscribe((sel) => (emitted = sel));
+      component.confirm();
+
+      expect(emitted?.options).toEqual([]);
+      expect(emitted?.quantity).toBe(2);
+    });
+
+    it('un adicional que se quedó sin stock aparece como "No disponible" y bloquea guardar hasta quitarlo', () => {
+      const { group, tocino } = edicion({ tocinoDisponible: false });
+      const el = fixture.nativeElement as HTMLElement;
+
+      expect(el.querySelector('[data-testid="no-disponibles"]')?.textContent).toContain('No disponible');
+      expect(component.canConfirm()).toBe(false);
+      expect(component.blockingLabel()).toContain('Quita «Tocino»');
+
+      component.removeOption(group, tocino);
+      fixture.detectChanges();
+
+      expect(component.canConfirm()).toBe(true);
+      expect(el.querySelector('[data-testid="no-disponibles"]')).toBeNull();
+    });
+
+    it('muestra el error del backend sin cerrar y avisa de los adicionales que ya no se ofrecen', () => {
+      edicion();
+      fixture.componentRef.setInput('externalError', 'Selección de opciones inválida');
+      fixture.componentRef.setInput('staleOptionNames', ['Un adicional']);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      expect(el.querySelector('[data-testid="error-externo"]')?.textContent).toContain('Selección de opciones inválida');
+      expect(el.querySelector('[data-testid="adicionales-retirados"]')?.textContent).toContain('se quitará');
+    });
+  });
 });

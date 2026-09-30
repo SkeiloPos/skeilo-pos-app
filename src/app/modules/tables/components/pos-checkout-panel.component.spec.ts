@@ -487,7 +487,8 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
     store.checkoutPreviewLoading.set(false);
   });
 
-  it('FR-007: si el total cambió justo antes de cobrar, pide una segunda confirmación y no somete el pago', async () => {
+  it('spec 089 (A-96, FR-027/FR-028): si el total cambió justo antes de cobrar, NO abre modal: avisa dentro del panel y no somete el pago; el segundo Cobrar cobra el importe visible', async () => {
+    // Antes (spec 073, FR-007) esto abría el modal "El total cambió" y exigía confirmarlo.
     const confirm = TestBed.inject(ConfirmService);
     setPreview('16000.00', '8000.00', '8000.00');
     await fixture.whenStable();
@@ -498,14 +499,52 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
 
     cobrarButton().click();
     await new Promise((r) => setTimeout(r));
-    // El re-chequeo del preview devuelve otro total.
+    // El re-chequeo del preview devuelve otro total (causa externa).
     await flushPreview({ subtotal: '16000.00', discount: '0.00', total: '16000.00' });
-
-    expect(confirm.state()).not.toBeNull();
-    expect(confirm.state()!.title).toContain('El total cambió');
-    confirm.respond(false);
     await fixture.whenStable();
+    fixture.detectChanges();
 
+    // Sin diálogo, sin cobro, con aviso no bloqueante dentro del panel.
+    expect(confirm.state()).toBeNull();
+    http.expectNone(`${API}/orders/o1/checkout-and-send`);
+    const aviso = fixture.nativeElement.querySelector('[data-testid="total-cambio-aviso"]') as HTMLElement;
+    expect(aviso).toBeTruthy();
+    expect(aviso.textContent).toContain('El total cambió');
+    expect(aviso.textContent).toContain('vuelve a pulsar Cobrar');
+    expect(cobrarButton().textContent).toContain('Cobrar');
+  });
+
+  it('spec 089 (A-96, FR-026): mientras la cifra sea un estimado, Cobrar está deshabilitado y el panel dice "actualizando…"', async () => {
+    setPreview('20000.00', '0.00', '20000.00');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await fill(selects()[0], 'pm-cash');
+    await fill(numberInputs()[0], '25000');
+    expect(cobrarButton().disabled).toBe(false);
+
+    // Se agregó una gaseosa de $5.000 y el servidor aún no confirma.
+    store.checkoutPreviewEstimate.set({ subtotal: 25000, total: 25000 });
+    fixture.detectChanges();
+
+    expect(cobrarButton().disabled).toBe(true);
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain('25.000');
+    expect(fixture.nativeElement.querySelector('[data-testid="total-actualizando"]')).toBeTruthy();
+
+    // Llega la cifra confirmada: se limpia el estimado y Cobrar vuelve.
+    store.checkoutPreviewEstimate.set(null);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="total-actualizando"]')).toBeNull();
+  });
+
+  it('spec 089 (A-96): Cobrar con un estimado en curso no llama al backend', async () => {
+    setPreview('20000.00', '0.00', '20000.00');
+    store.checkoutPreviewEstimate.set({ subtotal: 25000, total: 25000 });
+    fixture.detectChanges();
+
+    await fixture.componentInstance.checkout();
+
+    http.expectNone(`${API}/orders/o1/checkout-preview`);
     http.expectNone(`${API}/orders/o1/checkout-and-send`);
   });
 

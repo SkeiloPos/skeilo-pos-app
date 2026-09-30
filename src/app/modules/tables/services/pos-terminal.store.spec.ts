@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
@@ -10,7 +11,8 @@ import {
   newPendingIds,
   normalizeSearchTerm,
 } from './pos-terminal.store';
-import { DiningOrder, DiningOrderItem } from '../interfaces/dining.interface';
+import { CheckoutPreview, DiningOrder, DiningOrderItem } from '../interfaces/dining.interface';
+import { DiningSessionService } from './dining-session.service';
 import { TableService } from './table.service';
 import { Promotion } from '../../promotions/interfaces/promotion.interface';
 import { PromotionService } from '../../promotions/services/promotion.service';
@@ -2185,6 +2187,63 @@ describe('PosTerminalStore.ordersByType — total de la tarjeta de Domicilio (sp
     expect(store.ordersByType('para-llevar')[0].totalLabel).toBe(store.fmt(25000));
   });
 
+  // ── spec 089 (A-94): adicionales cobrados una vez por línea (Menú QR) ──────
+
+  it('spec 089: una línea del Menú QR (2 × 15.000 + adicional 3.000) suma 33.000 en la tarjeta', () => {
+    store.orders.set([
+      delivery('o1', [{ unit_price: '15000', quantity: 2, addons_total: '3000', line_total: '33000' }], {
+        delivery_fee: 0,
+      }),
+    ]);
+
+    expect(store.ordersByType('domicilios')[0].totalLabel).toBe(store.fmt(33000));
+  });
+
+  it('spec 089: un pedido con una línea histórica y una nueva del Menú QR suma cada una con su regla', () => {
+    store.orders.set([
+      delivery(
+        'o1',
+        [
+          { unit_price: '18000', quantity: 2 }, // histórica: el extra ya va dentro del precio por unidad
+          { unit_price: '15000', quantity: 2, addons_total: '3000' }, // nueva: adicional una sola vez
+        ],
+        { delivery_fee: 0 },
+      ),
+    ]);
+
+    expect(store.ordersByType('domicilios')[0].totalLabel).toBe(store.fmt(69000));
+  });
+
+  it('spec 089: con promoción, el discounted_line_total ya incluye el adicional y no se pierde', () => {
+    store.orders.set([
+      delivery(
+        'o1',
+        [
+          {
+            unit_price: '15000', quantity: 2, addons_total: '3000', line_total: '33000',
+            discounted_unit_price: '12000.00', discounted_line_total: '27000.00',
+          },
+        ],
+        { delivery_fee: 0 },
+      ),
+    ]);
+
+    expect(store.ordersByType('domicilios')[0].totalLabel).toBe(store.fmt(27000));
+  });
+
+  it('spec 089: con descuento y sin discounted_line_total suma el adicional aparte del precio por unidad', () => {
+    store.orders.set([
+      delivery(
+        'o1',
+        [{ unit_price: '15000', quantity: 2, addons_total: '3000', discounted_unit_price: '12000' }],
+        { delivery_fee: 0 },
+      ),
+    ]);
+
+    // 12.000 × 2 + 3.000
+    expect(store.ordersByType('domicilios')[0].totalLabel).toBe(store.fmt(27000));
+  });
+
   it('la tarjeta muestra un único string de total, sin desglose productos/domicilio (FR-004)', () => {
     store.orders.set([delivery('o1', [{ unit_price: '25000' }], { delivery_fee: 6000 })]);
 
@@ -2502,5 +2561,253 @@ describe('PosTerminalStore.loadDraftPreview — conjunto vigente completo (spec 
 
     expect(store.draftPreview()).toBeNull();
     expect(store.draftPreviewLoading()).toBe(false);
+  });
+});
+
+
+/**
+ * spec 089 (A-96, contracts/pos-total-immediate.md §2/§2b): al agregar o quitar un producto de una
+ * orden abierta, el total del panel de cobro se actualiza AL INSTANTE con un estimado local
+ * (último total confirmado ± las líneas tocadas) que el servidor confirma después, sin ningún
+ * diálogo. Solo la cifra confirmada se cobra. Un fallo revierte al total confirmado y nombra el
+ * producto agotado.
+ */
+describe('PosTerminalStore — total inmediato al guardar y quitar (spec 089, A-96)', () => {
+  let store: PosTerminalStore;
+  let api: DiningSessionService;
+  let toast: ToastService;
+  let confirm: ConfirmService;
+
+  const preview = (total: string, subtotal = total): CheckoutPreview =>
+    ({ subtotal, discount: '0', delivery_fee: '0', total, promotion_evaluated_at: '2026-09-30T10:00:00Z' }) as CheckoutPreview;
+
+  const pos = (items: Partial<DiningOrderItem>[] = []): DiningOrder =>
+    ({
+      id: 'o1', channel: 'POS', status: 'abierta', version: 1, created_at: '2026-09-30T10:00:00',
+      items: items.map((it, i) => ({
+        id: `i${i}`, product_variant_id: 'v1', quantity: 1, unit_price: '20000', estado_cocina: 'pendiente', ...it,
+      })),
+    }) as DiningOrder;
+
+  /** Promesa controlable, para observar el estado MIENTRAS el servidor responde. */
+  function deferred<T>() {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  const gaseosa = (unit = 5000, quantity = 1) => ({
+    product: { id: 'p2', name: 'Gaseosa' } as never,
+    variant: { id: 'v2', price: unit, option_groups: [] } as never,
+    options: [],
+    quantity,
+    notes: null,
+  });
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    api = TestBed.inject(DiningSessionService);
+    toast = TestBed.inject(ToastService);
+    confirm = TestBed.inject(ConfirmService);
+    vi.spyOn(store, 'reload').mockResolvedValue();
+    store.orders.set([pos([{}])]);
+    store.selectedOrderId.set('o1');
+    store.checkoutPreview.set(preview('20000'));
+  });
+
+  it('saveOrder publica el estimado ANTES del primer POST: $20.000 + $5.000 = $25.000, sin diálogo', async () => {
+    const post = deferred<DiningOrder>();
+    vi.spyOn(api, 'addOrderItems').mockReturnValue(post.promise);
+    vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('25000'));
+    store.addDraftFromSelection(gaseosa());
+
+    const saving = store.saveOrder();
+
+    // Síncrono: el estimado ya está publicado y el servidor todavía no respondió.
+    expect(store.checkoutPreviewEstimate()).toEqual({ subtotal: 25000, total: 25000 });
+    expect(confirm.state()).toBeNull();
+
+    post.resolve(pos([{}, {}]));
+    await saving;
+
+    expect(store.checkoutPreviewEstimate()).toBeNull();
+    expect(store.checkoutPreview()?.total).toBe('25000');
+    expect(confirm.state()).toBeNull();
+  });
+
+  it('el estimado se reemplaza por la cifra del servidor aunque difiera (promoción), sin diálogo', async () => {
+    vi.spyOn(api, 'addOrderItems').mockResolvedValue(pos([{}, {}]));
+    vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('24000', '25000'));
+    store.addDraftFromSelection(gaseosa());
+
+    await store.saveOrder();
+
+    expect(store.checkoutPreview()?.total).toBe('24000');
+    expect(store.checkoutPreviewEstimate()).toBeNull();
+    expect(confirm.state()).toBeNull();
+  });
+
+  it('si el servidor rechaza el producto agotado, revierte al total confirmado y muestra el nombre del producto', async () => {
+    const { HttpErrorResponse } = await import('@angular/common/http');
+    vi.spyOn(api, 'addOrderItems').mockRejectedValue(
+      new HttpErrorResponse({
+        status: 400,
+        error: { detail: { error: '«Gaseosa · Única» está agotado: falta Botella', producto: 'Gaseosa · Única', insumo: 'Botella' } },
+      }),
+    );
+    const previewSpy = vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('20000'));
+    store.addDraftFromSelection(gaseosa());
+
+    const ok = await store.saveOrder();
+
+    expect(ok).toBe(false);
+    expect(store.checkoutPreviewEstimate()).toBeNull();
+    expect(previewSpy).toHaveBeenCalledTimes(1); // se re-pide el confirmado real
+    expect(store.checkoutPreview()?.total).toBe('20000');
+    expect(toast.toasts().some((t) => t.kind === 'error' && t.text.includes('«Gaseosa · Única» está agotado'))).toBe(true);
+  });
+
+  it('un fallo a mitad de varias líneas no duplica las ya guardadas al reintentar', async () => {
+    const { HttpErrorResponse } = await import('@angular/common/http');
+    const add = vi.spyOn(api, 'addOrderItems')
+      .mockResolvedValueOnce(pos([{}, {}]))
+      .mockRejectedValueOnce(new HttpErrorResponse({ status: 400, error: { detail: 'sin stock' } }));
+    vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('25000'));
+    store.addDraftFromSelection(gaseosa());
+    store.addDraftFromSelection({ ...gaseosa(3000), variant: { id: 'v3', price: 3000, option_groups: [] } as never });
+    expect(store.draftLines().length).toBe(2);
+
+    await store.saveOrder();
+
+    expect(add).toHaveBeenCalledTimes(2);
+    // La primera ya es del pedido: en el borrador queda solo la que falló.
+    expect(store.draftLines().length).toBe(1);
+    expect(store.checkoutPreview()?.total).toBe('25000'); // refleja la línea que sí se guardó
+  });
+
+  it('servidor sin respuesta: no queda ningún estimado como si fuera confirmado y el panel cae a "Calculando el total…"', async () => {
+    vi.spyOn(api, 'addOrderItems').mockRejectedValue(new Error('offline'));
+    vi.spyOn(api, 'checkoutPreview').mockRejectedValue(new Error('offline'));
+    store.addDraftFromSelection(gaseosa());
+
+    await store.saveOrder();
+
+    expect(store.checkoutPreviewEstimate()).toBeNull();
+    expect(store.checkoutPreview()).toBeNull(); // Cobrar deshabilitado (FR-031)
+  });
+
+  it('tres altas seguidas suman una sola vez: cada guardado parte del último total confirmado', async () => {
+    let total = 20000;
+    vi.spyOn(api, 'addOrderItems').mockImplementation(async () => pos([{}]));
+    vi.spyOn(api, 'checkoutPreview').mockImplementation(async () => preview(String(total)));
+
+    for (const unit of [5000, 3000, 2000]) {
+      store.addDraftFromSelection(gaseosa(unit));
+      const saving = store.saveOrder();
+      expect(store.checkoutPreviewEstimate()?.total).toBe(total + unit);
+      total += unit;
+      await saving;
+      expect(store.checkoutPreview()?.total).toBe(String(total));
+    }
+    expect(store.checkoutPreview()?.total).toBe('30000');
+  });
+
+  it('un segundo guardado mientras hay uno en vuelo no arranca (serializa las altas)', async () => {
+    const post = deferred<DiningOrder>();
+    const add = vi.spyOn(api, 'addOrderItems').mockReturnValue(post.promise);
+    vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('25000'));
+    store.addDraftFromSelection(gaseosa());
+
+    const first = store.saveOrder();
+    const second = await store.saveOrder();
+
+    expect(second).toBe(false);
+    expect(add).toHaveBeenCalledTimes(1);
+    post.resolve(pos([{}, {}]));
+    await first;
+  });
+
+  it('sin un total confirmado (panel sin cobro) no se publica ningún estimado', async () => {
+    store.checkoutPreview.set(null);
+    const post = deferred<DiningOrder>();
+    vi.spyOn(api, 'addOrderItems').mockReturnValue(post.promise);
+    const previewSpy = vi.spyOn(api, 'checkoutPreview');
+    store.addDraftFromSelection(gaseosa());
+
+    const saving = store.saveOrder();
+    expect(store.checkoutPreviewEstimate()).toBeNull();
+    post.resolve(pos([{}, {}]));
+    await saving;
+
+    expect(previewSpy).not.toHaveBeenCalled();
+  });
+
+  // ── §2b: quitar una línea ──────────────────────────────────────────────────
+
+  it('anular una línea baja el total al instante y luego queda el confirmado (la confirmación "¿Anular este ítem?" se conserva)', async () => {
+    store.orders.set([pos([{ id: 'i0', unit_price: '15000' }, { id: 'i1', unit_price: '5000' }])]);
+    store.checkoutPreview.set(preview('20000'));
+    const del = deferred<DiningOrder>();
+    vi.spyOn(api, 'voidItem').mockReturnValue(del.promise);
+    vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('15000'));
+
+    const voiding = store.voidPersistedItem('i1');
+    confirm.respond(true); // "¿Anular este ítem?" sigue existiendo: no es el aviso de total
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(store.checkoutPreviewEstimate()).toEqual({ subtotal: 15000, total: 15000 });
+
+    del.resolve(pos([{ id: 'i0', unit_price: '15000' }]));
+    await voiding;
+
+    expect(store.checkoutPreviewEstimate()).toBeNull();
+    expect(store.checkoutPreview()?.total).toBe('15000');
+  });
+
+  it('si anular falla, el total revierte al confirmado', async () => {
+    const { HttpErrorResponse } = await import('@angular/common/http');
+    store.orders.set([pos([{ id: 'i0', unit_price: '15000' }, { id: 'i1', unit_price: '5000' }])]);
+    store.checkoutPreview.set(preview('20000'));
+    vi.spyOn(api, 'voidItem').mockRejectedValue(new HttpErrorResponse({ status: 409, error: { detail: 'ya pagado' } }));
+    vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('20000'));
+
+    const voiding = store.voidPersistedItem('i1');
+    confirm.respond(true);
+    await voiding;
+
+    expect(store.checkoutPreviewEstimate()).toBeNull();
+    expect(store.checkoutPreview()?.total).toBe('20000');
+  });
+
+  it('el estimado de anular no baja de $0 y usa el total de la línea con adicionales', async () => {
+    store.orders.set([pos([{ id: 'i1', unit_price: '15000', quantity: 2, addons_total: '3000' }])]);
+    store.checkoutPreview.set(preview('30000')); // menos de lo que vale la línea (33.000)
+    const del = deferred<DiningOrder>();
+    vi.spyOn(api, 'voidItem').mockReturnValue(del.promise);
+    vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('0'));
+
+    const voiding = store.voidPersistedItem('i1');
+    confirm.respond(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.checkoutPreviewEstimate()?.total).toBe(0);
+
+    del.resolve(pos([]));
+    await voiding;
   });
 });
