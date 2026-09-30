@@ -1,11 +1,15 @@
 import { TestBed } from '@angular/core/testing';
-import { Component } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA } from '@angular/core';
 import { Router, provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { SwPush } from '@angular/service-worker';
 import { DashboardLayoutComponent } from './dashboard-layout.component';
 import { LayoutService } from './layout.service';
+import { SidebarComponent } from './sidebar.component';
+import { HeaderComponent } from './header.component';
+import { ToastContainerComponent } from '../../../shared/feedback/toast-container.component';
+import { ConfirmDialogComponent } from '../../../shared/feedback/confirm-dialog.component';
 
 @Component({ selector: 'app-blank', standalone: true, template: '' })
 class BlankComponent {}
@@ -141,3 +145,67 @@ describe('LayoutService — valor inicial de sidebarOpen por ancho (spec 078, US
 // verifica por lectura de código + el recorrido responsive de quickstart.md
 // (Historia 6). El comportamiento observable — cuándo el menú arranca oculto y
 // cuándo auto-cierra — sí queda cubierto por los tests de este archivo.
+
+
+/**
+ * spec 089 (Historia 5, FR-022/FR-024): el reporte de cierre de caja se imprimía en blanco. Causa
+ * reproducida con Chrome real (`Page.printToPDF`, medio `print`): al paginar a ~816 px el telón del menú
+ * móvil (`fixed inset-0 z-30 lg:hidden`) dejaba de estar oculto y se pintaba ENCIMA del reporte en cada
+ * hoja; además el shell (`h-screen overflow-hidden`) no dejaba paginar. Ninguna prueba unitaria ejecuta
+ * la impresión real (eso se verifica en la vista previa del navegador): estas comprueban que las clases
+ * y las reglas de la corrección siguen en su sitio. Los hijos (sidebar, header…) se sustituyen por
+ * elementos vacíos: aquí solo importa el shell.
+ */
+describe('DashboardLayoutComponent — impresión del reporte de caja (spec 089, Historia 5)', () => {
+  const estilos = (): string =>
+    (
+      (DashboardLayoutComponent as unknown as { ɵcmp: { styles: string[] } }).ɵcmp.styles ?? []
+    ).join('\n');
+
+  function render(): HTMLElement {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [DashboardLayoutComponent],
+      providers: [provideRouter([]), swPushStub, provideHttpClient(), provideHttpClientTesting()],
+    });
+    TestBed.overrideComponent(DashboardLayoutComponent, {
+      remove: { imports: [SidebarComponent, HeaderComponent, ToastContainerComponent, ConfirmDialogComponent] },
+      add: { schemas: [NO_ERRORS_SCHEMA] },
+    });
+    const fixture = TestBed.createComponent(DashboardLayoutComponent);
+    TestBed.inject(LayoutService).open();
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  it('el telón del menú móvil nunca se imprime (print:hidden), aunque el menú esté abierto', () => {
+    const backdrop = render().querySelector('div.fixed.inset-0') as HTMLElement | null;
+    expect(backdrop).not.toBeNull();
+    expect(backdrop!.className).toContain('print:hidden');
+  });
+
+  it('los tres contenedores del shell tienen las clases que la impresión libera', () => {
+    const el = render();
+    expect(el.querySelector('.shell-root')).not.toBeNull();
+    expect(el.querySelector('.shell-content')).not.toBeNull();
+    expect(el.querySelector('main.shell-main')).not.toBeNull();
+  });
+
+  it('en impresión, y solo con body.printing-cash-report, el shell se libera (altura, overflow, margen)', () => {
+    const css = estilos();
+    expect(css).toContain('@media print');
+    for (const cls of ['.shell-root', '.shell-content', '.shell-main']) {
+      expect(css).toMatch(new RegExp(`printing-cash-report[^{}]*${cls.replace('.', '\\.')}`));
+    }
+    expect(css).toMatch(/height:\s*auto/);
+    expect(css).toMatch(/overflow:\s*visible/);
+    expect(css).toMatch(/margin-left:\s*0/);
+    expect(css).toMatch(/position:\s*static/);
+  });
+
+  it('sigue ocultando sidebar y header solo durante esa impresión (spec 087)', () => {
+    const css = estilos();
+    expect(css).toMatch(/printing-cash-report[^{}]*app-sidebar/);
+    expect(css).toMatch(/printing-cash-report[^{}]*app-header/);
+  });
+});
