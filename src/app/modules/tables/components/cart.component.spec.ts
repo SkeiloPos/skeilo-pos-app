@@ -28,9 +28,11 @@ function line(partial: Partial<CartLine> = {}): CartLine {
     quantity: 2,
     notes: null,
     unitPrice: 5000,
+    addonsTotal: 0,
     lineTotal: 10000,
     productVariantId: 'v1',
     optionKey: '',
+    optionSelections: [],
     ...partial,
   };
 }
@@ -114,5 +116,68 @@ describe('CartComponent', () => {
     buttons().plus.click();
 
     expect(emitted).toEqual({ itemId: 'i1', quantity: 2 });
+  });
+
+  // ── spec 089 (A-94): presentación de adicionales cobrados una vez por línea ──
+
+  it('muestra "c/u" con el precio de la presentación, el adicional aparte y el total de la línea', () => {
+    create();
+    cart.isEmpty.set(false);
+    cart.lines.set([
+      line({
+        quantity: 2, unitPrice: 15000, addonsTotal: 3000, lineTotal: 33000,
+        optionNames: ['Tocino x1'],
+      }),
+    ]);
+    cart.total.set(33000);
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent!.replace(/\s+/g, ' ');
+    expect(text).toContain('15.000 c/u');
+    expect(text).toContain('Tocino x1');
+    expect(text).toContain('3.000 adicionales');
+    expect(text).toContain('33.000');
+  });
+
+  it('una línea sin adicionales no muestra la fila "adicionales"', () => {
+    create();
+    cart.isEmpty.set(false);
+    cart.lines.set([line()]);
+    fixture.detectChanges();
+
+    // (el botón "Editar adicionales" sí está; lo que no debe haber es la fila "+ $ N adicionales")
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toMatch(/\+\s*\$\s*[\d.]+\s*adicionales/);
+  });
+
+  // ── spec 089 (Historia 3): "Editar adicionales" por línea ──────────────────
+
+  it('cada línea ofrece "Editar adicionales" con un objetivo táctil de al menos 44 px y emite el id de la línea', () => {
+    create();
+    cart.isEmpty.set(false);
+    cart.lines.set([line({ id: 'l1' }), line({ id: 'l2' })]);
+    fixture.detectChanges();
+    const emitted: string[] = [];
+    component.editAddons.subscribe((id) => emitted.push(id));
+
+    const botones = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('[data-testid="editar-adicionales"]'),
+    ) as HTMLButtonElement[];
+    expect(botones.length).toBe(2);
+    expect(botones[0].textContent).toContain('Editar adicionales');
+    expect(botones[0].className).toContain('min-h-11'); // 44 px
+    botones[1].click();
+
+    expect(emitted).toEqual(['l2']);
+  });
+
+  it('una línea de un producto ya no disponible no ofrece editar (solo quitar)', () => {
+    create();
+    cart.isEmpty.set(false);
+    cart.lines.set([line({ id: 'l1' }), line({ id: 'l2' })]);
+    component.nonEditableLineIds = new Set(['l2']);
+    fixture.detectChanges();
+
+    const botones = (fixture.nativeElement as HTMLElement).querySelectorAll('[data-testid="editar-adicionales"]');
+    expect(botones.length).toBe(1);
   });
 });

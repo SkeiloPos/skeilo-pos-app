@@ -103,6 +103,31 @@ export interface ProductSelection {
         </header>
 
         <main class="flex-1 overflow-y-auto px-5 py-2 space-y-6">
+          @if (unavailableChosen().length > 0) {
+            <!-- spec 089 (Historia 3): adicional elegido que ya no está disponible (sin stock).
+                 Va arriba, fuera de los grupos plegables: sin quitarlo no se puede guardar. -->
+            <div data-testid="no-disponibles" class="space-y-2">
+              @for (c of unavailableChosen(); track c.option.id) {
+                <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-red-50 border border-red-200">
+                  <span class="text-sm text-red-700 min-w-0">
+                    <span class="line-through">{{ c.option.name }}</span> · No disponible
+                  </span>
+                  <button type="button" (click)="removeChosen(c.option)"
+                    class="shrink-0 min-h-11 px-3 text-xs font-semibold text-red-700 underline"
+                  >Quitar</button>
+                </div>
+              }
+            </div>
+          }
+          @if (staleOptionNames.length > 0) {
+            <!-- spec 089 (Historia 3): adicionales de la línea que ya no se ofrecen. -->
+            <p data-testid="adicionales-retirados" role="status"
+              class="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+              {{ staleOptionNames.join(', ') }}
+              {{ staleOptionNames.length === 1 ? 'ya no está disponible y se quitará' : 'ya no están disponibles y se quitarán' }}
+              al guardar.
+            </p>
+          }
           <!-- Presentación -->
           @if (product.variants.length > 0) {
             <section class="pt-2">
@@ -342,6 +367,10 @@ export interface ProductSelection {
         <footer class="p-4 bg-white border-t border-gray-100 shrink-0 space-y-3">
           <div class="flex items-center justify-between">
             <span class="text-sm font-bold text-gray-900">Cantidad</span>
+            @if (quantityLocked) {
+              <!-- spec 089: al editar los adicionales de una línea, la cantidad no cambia. -->
+              <span data-testid="cantidad-fija" class="text-lg font-semibold text-gray-800">{{ quantity() }}</span>
+            } @else {
             <!-- 44 px: el objetivo táctil mínimo cómodo con el pulgar. -->
             <div class="flex items-center gap-3 bg-gray-100 p-1 rounded-full border border-gray-200">
               <button
@@ -359,7 +388,11 @@ export interface ProductSelection {
                 class="w-11 h-11 rounded-full bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:scale-95 text-xl font-bold leading-none flex items-center justify-center transition"
               >+</button>
             </div>
+            }
           </div>
+          @if (externalError) {
+            <p data-testid="error-externo" role="alert" class="text-red-600 text-xs">{{ externalError }}</p>
+          }
           <!-- Con el grupo plegado, un botón atenuado sin más no dice qué falta. -->
           <button
             type="button"
@@ -389,6 +422,26 @@ export class ProductSelectComponent implements OnInit {
   @Input() initialSelection: ProductSelection | null = null;
   /** spec 081: `true` cuando el modal se abrió desde la pestaña "Promociones". */
   @Input() fromPromotions = false;
+  /**
+   * spec 089 (A-94): `true` en el Menú QR. Los adicionales (opciones con recargo) se cobran
+   * UNA vez por línea, no por unidad de producto: el total del pie es
+   * `precio × cantidad del producto + Σ adicionales`, y subir la cantidad no los multiplica.
+   * `false` (terminal POS y pedido manual) conserva el cálculo por unidad de siempre.
+   * Las opciones de un grupo "incluido" cuestan $0, así que solo las de recargo suman aquí.
+   */
+  @Input() addonsPerLine = false;
+  /**
+   * spec 089 (Historia 3): al editar los adicionales de una línea del carrito la cantidad de
+   * producto NO cambia (el `PATCH` solo lleva `options` y `notes`): se muestra fija, sin +/−.
+   */
+  @Input() quantityLocked = false;
+  /**
+   * spec 089 (Historia 3): nombres de adicionales de la línea que ya no se ofrecen (desactivados:
+   * el menú ya no los trae). No se pueden preseleccionar; se avisa que se quitarán al guardar.
+   */
+  @Input() staleOptionNames: string[] = [];
+  /** spec 089: error del backend (p. ej. 422 de la selección) mostrado sin cerrar el selector. */
+  @Input() externalError: string | null = null;
   /**
    * spec 081 (research.md D5): closure hacia `cart.lines()` provisto por
    * `public-menu.component.ts`, para poder recalcular la cantidad existente de
@@ -513,7 +566,9 @@ export class ProductSelectComponent implements OnInit {
    * No es `private`: la plantilla lo usa para deshabilitar "−" en el mínimo.
    */
   readonly minQty = computed(() =>
-    this.fromPromotions ? (this.selectedVariant()?.promotion?.min_qty ?? 1) : 1,
+    this.fromPromotions && !this.initialSelection
+      ? (this.selectedVariant()?.promotion?.min_qty ?? 1)
+      : 1,
   );
 
   /** Unidades ya en el carrito para la variante+opciones actualmente elegidas. */
@@ -530,7 +585,9 @@ export class ProductSelectComponent implements OnInit {
    * libre en 1 de siempre.
    */
   private readonly resyncQuantityForPromotions = effect(() => {
-    if (!this.fromPromotions) return;
+    // spec 089: al editar una línea ya agregada la cantidad no cambia, así que ni la cantidad
+    // existente ni el paso de la promoción (spec 081) aplican.
+    if (!this.fromPromotions || this.initialSelection) return;
     const minQty = this.minQty();
     const existingQty = this.existingQty();
     this.quantity.set(
@@ -568,7 +625,7 @@ export class ProductSelectComponent implements OnInit {
       : effectivePrice(variant.price, variant.discounted_price) * quantity;
     const extra = this.selectedOptions().reduce(
       (s, c) => s + c.option.extra_price * c.quantity, 0,
-    ) * quantity;
+    ) * (this.addonsPerLine ? 1 : quantity);
     return base + extra;
   });
 
@@ -718,9 +775,29 @@ export class ProductSelectComponent implements OnInit {
   soldOutOptions(group: MenuOptionGroup): MenuOption[] {
     const q = normalizeText(this.filters()[group.id] ?? '');
     return group.options.filter(
-      (o) => !o.available && (!q || normalizeText(o.name).includes(q)),
+      (o) => !o.available && !this.isSelected(o.id) && (!q || normalizeText(o.name).includes(q)),
     );
   }
+
+  /** Quita del todo una opción elegida, buscando su grupo (el aviso "No disponible" no lo conoce). */
+  removeChosen(opt: MenuOption): void {
+    const group = this.activeGroups().find((g) => g.options.some((o) => o.id === opt.id));
+    if (group) this.removeOption(group, opt);
+  }
+
+  /** Quita del todo una opción elegida (la del aviso "No disponible"). */
+  removeOption(group: MenuOptionGroup, opt: MenuOption): void {
+    this.selected.update((map) => {
+      const next = { ...(map[group.id] ?? {}) };
+      delete next[opt.id];
+      return { ...map, [group.id]: next };
+    });
+  }
+
+  /** Opciones elegidas que ya no están disponibles, de cualquier grupo (bloquean el botón). */
+  readonly unavailableChosen = computed(() =>
+    this.selectedOptions().filter((c) => !c.option.available),
+  );
 
   showSearch(group: MenuOptionGroup): boolean {
     return group.options.length > this.SEARCH_THRESHOLD;
@@ -793,6 +870,8 @@ export class ProductSelectComponent implements OnInit {
     const variant = this.selectedVariant();
     if (!variant) return 'Elige una presentación';
     if (variant.available === false) return 'Presentación agotada';
+    const noDisponible = this.unavailableChosen()[0];
+    if (noDisponible) return `Quita «${noDisponible.option.name}» (no disponible)`;
     for (const g of this.activeGroups()) {
       if (g.selection_mode === 'cantidad') continue; // FR-003: nunca bloquea.
       const faltan = this.requiredCount(g) - this.chosenCount(g);
@@ -893,6 +972,8 @@ export class ProductSelectComponent implements OnInit {
   canConfirm(): boolean {
     const variant = this.selectedVariant();
     if (!variant || variant.available === false) return false;
+    // spec 089: un adicional elegido que dejó de estar disponible bloquea el guardado hasta quitarlo.
+    if (this.unavailableChosen().length > 0) return false;
     return this.activeGroups().every((g) => {
       if (g.selection_mode === 'cantidad') return true; // FR-003: nunca bloquea.
       const chosen = Object.keys(this.selected()[g.id] ?? {});
