@@ -35,8 +35,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   ],
   template: `
     <div class="min-h-full flex flex-col -m-4 sm:-m-6">
-      <!-- Barra superior -->
-      <div class="flex items-center justify-between gap-4 px-4 py-3 border-b-2 border-gray-100 bg-white">
+      <!-- Barra superior (spec 089: no se imprime; el reporte ya trae su propio encabezado) -->
+      <div class="flex items-center justify-between gap-4 px-4 py-3 border-b-2 border-gray-100 bg-white print:hidden">
         <div class="flex items-center gap-4">
           @if (store.isAdmin() && store.screen() !== 'overview') {
             <button (click)="store.backToOverview()" class="text-[13px] text-gray-500 hover:text-gray-800 font-medium">← Cajas</button>
