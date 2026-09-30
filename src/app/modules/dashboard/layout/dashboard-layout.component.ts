@@ -16,12 +16,12 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
   standalone: true,
   imports: [RouterOutlet, SidebarComponent, HeaderComponent, ToastContainerComponent, ConfirmDialogComponent],
   template: `
-    <div class="flex h-screen bg-gray-50 overflow-hidden">
+    <div class="shell-root flex h-screen bg-gray-50 overflow-hidden">
       <!-- Overlay backdrop — visible en móvil y tablet cuando el sidebar está
            abierto (spec 078, US6: umbral md → lg). -->
       @if (layoutService.sidebarOpen()) {
         <div
-          class="fixed inset-0 bg-black/40 z-30 lg:hidden"
+          class="fixed inset-0 bg-black/40 z-30 lg:hidden print:hidden"
           (click)="layoutService.close()"
         ></div>
       }
@@ -37,11 +37,11 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
         siendo un slide-over con backdrop, sin desplazar el contenido.
       -->
       <div
-        class="flex flex-col flex-1 min-w-0 overflow-hidden transition-[margin-left] duration-300 ease-in-out"
+        class="shell-content flex flex-col flex-1 min-w-0 overflow-hidden transition-[margin-left] duration-300 ease-in-out"
         [class.lg:ml-64]="layoutService.sidebarOpen()"
       >
         <app-header />
-        <main class="flex-1 overflow-y-auto p-4 md:p-6">
+        <main class="shell-main flex-1 overflow-y-auto p-4 md:p-6">
           <router-outlet />
         </main>
       </div>
@@ -57,12 +57,40 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
   // `cash-session.store.ts::imprimirReporte()` justo antes de `window.print()`
   // y retirada en `afterprint`), para no afectar la impresión de otras
   // pantallas que ya usan `window.print()` (p. ej. `table-qr-sheet.component.ts`).
+  //
+  // spec 089 (Historia 5, FR-022/FR-024): además de ocultar el shell, hay que **liberarlo** y quitar
+  // el telón del menú. Causa reproducida con Chrome real (`Page.printToPDF` con medio `print` sobre
+  // el reporte de un turno cerrado, también con un turno sin movimientos):
+  //  1. **Hoja en blanco**: el navegador pagina a ~816 px de ancho, por debajo del umbral `lg`, así
+  //     que el telón del menú móvil (`fixed inset-0 z-30 lg:hidden`, presente porque `sidebarOpen()`
+  //     es true en escritorio) deja de estar oculto y se pinta, a página completa, ENCIMA del
+  //     reporte en cada hoja. Se oculta con `print:hidden`.
+  //  2. **Sin paginar**: el contenedor raíz es `h-screen overflow-hidden`, el de contenido
+  //     `overflow-hidden` y `main` `overflow-y-auto` --cajas de altura fija que recortan lo que
+  //     excede la primera hoja--, y `lg:ml-64` deja un margen del sidebar. Se pasan a bloque con
+  //     altura automática, sin overflow, sin margen y sin fondo.
+  // Acotado a `body.printing-cash-report` (salvo el telón, que nunca debe imprimirse) para no tocar
+  // recibos, cuenta de mesa ni la hoja de QR.
   styles: [
     `
       @media print {
         :host-context(body.printing-cash-report) app-sidebar,
         :host-context(body.printing-cash-report) app-header {
           display: none;
+        }
+        :host-context(body.printing-cash-report) .shell-root,
+        :host-context(body.printing-cash-report) .shell-content,
+        :host-context(body.printing-cash-report) .shell-main {
+          display: block;
+          height: auto;
+          min-height: 0;
+          max-height: none;
+          overflow: visible;
+          margin-left: 0;
+          padding: 0;
+          position: static;
+          background: none;
+          transition: none;
         }
       }
     `,
