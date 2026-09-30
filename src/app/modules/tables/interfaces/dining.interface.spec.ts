@@ -1,4 +1,4 @@
-import { DiningOrder, getSidebarMode } from './dining.interface';
+import { DiningOrder, DiningOrderItem, getSidebarMode, lineTotal, lineTotalGross } from './dining.interface';
 
 /**
  * Reporte del usuario: un pedido de mostrador (canal `counter`) ya cobrado
@@ -34,5 +34,44 @@ describe('getSidebarMode', () => {
   it('sin pedido seleccionado, cae en "terminal-pos"', () => {
     expect(getSidebarMode(null)).toBe('terminal-pos');
     expect(getSidebarMode(undefined)).toBe('terminal-pos');
+  });
+});
+
+/**
+ * spec 089 (A-94): el total de una línea de pedido incluye los adicionales cobrados una vez por
+ * línea; ninguna lectura debe volver a `unit_price × quantity` suelto.
+ */
+describe('lineTotal / lineTotalGross (spec 089)', () => {
+  function item(overrides: Partial<DiningOrderItem>): DiningOrderItem {
+    return {
+      id: 'i1',
+      product_variant_id: 'v1',
+      quantity: 2,
+      unit_price: '15000',
+      estado_cocina: 'pendiente',
+      ...overrides,
+    } as DiningOrderItem;
+  }
+
+  it('línea nueva del Menú QR: 2 × 15.000 + adicional de 3.000 = 33.000', () => {
+    const it = item({ addons_total: '3000', line_total: '33000' });
+    expect(lineTotalGross(it)).toBe(33000);
+    expect(lineTotal(it)).toBe(33000);
+  });
+
+  it('con promoción, usa el discounted_line_total (que ya incluye los adicionales)', () => {
+    const it = item({ addons_total: '3000', line_total: '33000', discounted_line_total: '27000.00' });
+    expect(lineTotal(it)).toBe(27000);
+    expect(lineTotalGross(it)).toBe(33000);
+  });
+
+  it('línea histórica sin los campos nuevos: unit_price × quantity, igual que siempre', () => {
+    const it = item({ unit_price: '18000' });
+    expect(lineTotalGross(it)).toBe(36000);
+    expect(lineTotal(it)).toBe(36000);
+  });
+
+  it('sin line_total (backend anterior) pero con addons_total: los suma una sola vez', () => {
+    expect(lineTotalGross(item({ addons_total: '3000' }))).toBe(33000);
   });
 });
