@@ -10,10 +10,9 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { CheckoutPreview, DiningOrder, PaymentAttempt } from '../interfaces/dining.interface';
+import { CheckoutPreview, DiningOrder, lineTotal, PaymentAttempt } from '../interfaces/dining.interface';
 import { DiningSessionService } from '../services/dining-session.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
-import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { MoneyInputComponent } from '../../../shared/money-input/money-input.component';
 import { formatMoney } from '../../../shared/money';
 import { BillSummaryComponent } from './bill-summary.component';
@@ -88,22 +87,29 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
         @if (totalChanged()) {
           <!-- FR-024: el total autoritativo difiere del que declaró el comensal
-               (promoción pausada — FR-009a — o cambio de ítems — FR-010). El
-               cajero debe reconocerlo antes de emitir. -->
+               (promoción pausada — FR-009a — o cambio de ítems — FR-010). Es solo
+               informativo: spec 089 (A-96, D17) ya no exige un acuse para continuar;
+               el cajero ve la diferencia y decide. -->
           <div class="rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 text-sm text-amber-900 space-y-1.5">
             <p>
               El total cambió respecto al declarado por el comensal:
               antes {{ money(cardDeclaredTotal()) }},
               ahora {{ money(checkoutPreview()!.total) }}.
             </p>
-            @if (!totalChangeAck()) {
-              <button
-                (click)="totalChangeAck.set(true)"
-                class="px-2.5 py-1 rounded-md bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition-colors"
-              >
-                Entendido, continuar
-              </button>
-            }
+          </div>
+        }
+
+        @if (totalChangeNotice(); as n) {
+          <!-- spec 089 (A-96, FR-028/FR-030): el total cambió justo al resolver el pago (causa
+               externa). Aviso NO bloqueante dentro de la tarjeta, sin diálogo: no se resolvió el
+               pago; el siguiente clic usa el total nuevo. -->
+          <div
+            data-testid="total-cambio-aviso"
+            role="status"
+            class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          >
+            El total cambió: ahora es {{ money(n.now) }} (antes {{ money(n.before) }}).
+            Revisa el importe y vuelve a confirmar.
           </div>
         }
 
@@ -304,7 +310,6 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
 
   private readonly api = inject(DiningSessionService);
   private readonly toast = inject(ToastService);
-  private readonly confirm = inject(ConfirmService);
 
   readonly attempts = signal<PaymentAttempt[]>([]);
   readonly loading = signal(false);
@@ -328,32 +333,31 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
   readonly checkoutPreview = signal<CheckoutPreview | null>(null);
   readonly checkoutPreviewLoading = signal(false);
   readonly checkoutPreviewError = signal<string | null>(null);
-  /** FR-024: el cajero reconoció que el total autoritativo cambió respecto al
-   *  que declaró el comensal. Se reinicia en cada `ngOnChanges`. */
-  readonly totalChangeAck = signal(false);
+  /**
+   * spec 089 (A-96, FR-028): aviso no bloqueante de que el total cambió justo al resolver el pago
+   * (causa externa). Reemplaza al modal "El total cambió" y al acuse `totalChangeAck` de la spec 073.
+   * Se reinicia en cada `ngOnChanges`.
+   */
+  readonly totalChangeNotice = signal<{ now: number; before: number } | null>(null);
 
   /** FR-024: el `Total` autoritativo difiere del que la tarjeta venía
-   *  mostrando (`Σ discounted_line_total ?? unit_price × quantity`). */
+   *  mostrando (`Σ lineTotal`: `discounted_line_total ?? unit_price × quantity + addons_total`). */
   readonly totalChanged = computed(() => {
     const p = this.checkoutPreview();
     return p != null && Number(p.total) !== this.cardDeclaredTotal();
   });
 
-  /** FR-024 → regla de FR-007a: acciones de confirmación bloqueadas mientras
-   *  no haya un total autoritativo, o mientras el cajero no reconozca un
-   *  cambio de total. */
+  /** FR-007a: acciones de confirmación bloqueadas mientras no haya un total autoritativo
+   *  (cargando o sin respuesta). spec 089: ya no se exige acuse de un cambio de total. */
   readonly actionsBlocked = computed(
-    () =>
-      this.checkoutPreviewLoading() ||
-      this.checkoutPreview() == null ||
-      (this.totalChanged() && !this.totalChangeAck()),
+    () => this.checkoutPreviewLoading() || this.checkoutPreview() == null,
   );
 
   ngOnChanges(): void {
     this.receiptPreviewOpen.set(false);
     this.checkoutPreview.set(null);
     this.checkoutPreviewError.set(null);
-    this.totalChangeAck.set(false);
+    this.totalChangeNotice.set(null);
     if (this.order) {
       this.load();
       void this.loadCheckoutPreview();
@@ -364,13 +368,8 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
    *  comensal al armar su carrito (`discounted_line_total` congelado), o el
    *  bruto si la línea no lo trae. Base de la comparación de FR-024. */
   cardDeclaredTotal(): number {
-    return (this.order?.items ?? []).reduce((sum, it) => {
-      const line =
-        it.discounted_line_total != null
-          ? Number(it.discounted_line_total)
-          : Number(it.unit_price) * it.quantity;
-      return sum + line;
-    }, 0);
+    // spec 089 (A-94): `lineTotal` incluye los adicionales cobrados una vez por línea.
+    return (this.order?.items ?? []).reduce((sum, it) => sum + lineTotal(it), 0);
   }
 
   /**
@@ -452,15 +451,18 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
 
   /**
    * spec 073, US7 (FR-024, research.md D11/D15): doble chequeo determinista
-   * justo antes de resolver el pago — se vuelve a pedir el preview; si el
-   * `total` cambió respecto al último mostrado, se detiene, se presenta el
-   * total nuevo y se exige una segunda confirmación explícita. Nunca se deja
-   * que el 422 del backend sea lo que le avise al cajero.
+   * justo antes de resolver el pago — se vuelve a pedir el preview.
+   *
+   * spec 089 (A-96, FR-028/FR-030): si el `total` cambió respecto al último mostrado, ya NO se abre
+   * un modal: se actualiza la cifra (`loadCheckoutPreview` ya lo hizo), se muestra un aviso no
+   * bloqueante en la tarjeta y **no se resuelve el pago**; el siguiente clic usa el total nuevo.
+   * Nunca se cobra un importe que el cajero no vio, y nunca es el 422 del backend lo que avisa.
    *
    * Devuelve `true` si se puede continuar, `false` si se aborta.
    */
   private async reconfirmIfTotalChanged(): Promise<boolean> {
     const before = Number(this.checkoutPreview()?.total ?? Number.NaN);
+    this.totalChangeNotice.set(null);
     await this.loadCheckoutPreview();
     const fresh = this.checkoutPreview();
     if (!fresh) {
@@ -469,15 +471,8 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
     }
     const freshTotal = Number(fresh.total);
     if (freshTotal !== before) {
-      const ok = await this.confirm.ask({
-        title: 'El total cambió',
-        message:
-          `El total a cobrar pasó a $${freshTotal.toFixed(2)} (antes $${before.toFixed(2)}). ` +
-          '¿Continuar con el cobro por ese importe?',
-        confirmText: 'Sí, continuar',
-      });
-      if (!ok) return false;
-      this.totalChangeAck.set(true);
+      this.totalChangeNotice.set({ now: freshTotal, before });
+      return false;
     }
     return true;
   }

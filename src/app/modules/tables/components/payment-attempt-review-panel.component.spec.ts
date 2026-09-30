@@ -12,7 +12,6 @@ import {
   DiningOrderItem,
   PaymentAttempt,
 } from '../interfaces/dining.interface';
-import { ConfirmService } from '../../../shared/feedback/confirm.service';
 
 const API = environment.apiBaseUrl;
 
@@ -86,22 +85,14 @@ describe('PaymentAttemptReviewPanelComponent', () => {
   let fixture: ComponentFixture<PaymentAttemptReviewPanelComponent>;
   let panel: PaymentAttemptReviewPanelComponent;
   let http: HttpTestingController;
-  /** Respuesta que el `ConfirmService` mock devuelve a la reconfirmación de
-   *  FR-024. Mutable por test. */
-  let confirmAnswer = true;
 
   beforeEach(() => {
-    confirmAnswer = true;
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [PaymentAttemptReviewPanelComponent],
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        {
-          provide: ConfirmService,
-          useValue: { ask: () => Promise.resolve(confirmAnswer) },
-        },
       ],
     });
     fixture = TestBed.createComponent(PaymentAttemptReviewPanelComponent);
@@ -330,7 +321,7 @@ describe('PaymentAttemptReviewPanelComponent', () => {
 
   // ── FR-024: el total cambió respecto al declarado por el comensal ─────────
 
-  it('Scenario 7: preview.total ≠ total de la tarjeta al abrir → aviso + exige reconocimiento antes de habilitar acciones', async () => {
+  it('Scenario 7 (spec 089 A-96): preview.total ≠ total de la tarjeta al abrir → texto informativo, sin exigir acuse para continuar', async () => {
     // La tarjeta declaraba $8.000 (discounted_line_total congelado); el preview
     // vivo trae $16.000 (promoción pausada — FR-009a).
     await renderWith(
@@ -343,6 +334,8 @@ describe('PaymentAttemptReviewPanelComponent', () => {
     expect(texto).toContain('El total cambió respecto al declarado por el comensal');
     expect(texto).toContain('antes $ 8.000');
     expect(texto).toContain('ahora $ 16.000');
+    // Ya no hay botón "Entendido, continuar": el cajero ve la diferencia y decide (D17).
+    expect(texto).not.toContain('Entendido, continuar');
 
     panel.cashShiftId = 'shift-1';
     panel.amountReceived = 16000;
@@ -350,18 +343,39 @@ describe('PaymentAttemptReviewPanelComponent', () => {
     const confirmBtn = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
       (b as HTMLButtonElement).textContent?.includes('Confirmar efectivo'),
     ) as HTMLButtonElement;
-    expect(confirmBtn.disabled).toBe(true);
-
-    // El cajero reconoce el cambio → se habilita.
-    const entendido = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.includes('Entendido, continuar'),
-    ) as HTMLButtonElement;
-    entendido.click();
-    fixture.detectChanges();
     expect(confirmBtn.disabled).toBe(false);
   });
 
-  it('research.md D15: el preview devuelve otro total justo antes de confirmar → segunda confirmación (mock ConfirmService)', async () => {
+  it('spec 089 (A-94): la tarjeta declara 2 × $15.000 + adicional $3.000 = $33.000 y coincide con el preview, sin marca de cambio', async () => {
+    await renderWith(
+      [attempt({ status: 'pendiente' })],
+      order('o1', [
+        item('15000', 2, 'pendiente', { addons_total: '3000', line_total: '33000' }),
+      ]),
+      preview({ subtotal: '33000', total: '33000' }),
+    );
+
+    expect(panel.cardDeclaredTotal()).toBe(33000);
+    expect(panel.totalChanged()).toBe(false);
+    expect(fixture.nativeElement.textContent).not.toContain('El total cambió respecto al declarado');
+  });
+
+  it('spec 089 (A-94): con promoción, usa el discounted_line_total que ya incluye el adicional', async () => {
+    await renderWith(
+      [attempt({ status: 'pendiente' })],
+      order('o1', [
+        item('15000', 2, 'pendiente', {
+          addons_total: '3000', line_total: '33000', discounted_line_total: '27000.00',
+        }),
+      ]),
+      preview({ subtotal: '33000', discount: '6000', total: '27000' }),
+    );
+
+    expect(panel.cardDeclaredTotal()).toBe(27000);
+    expect(panel.totalChanged()).toBe(false);
+  });
+
+  it('research.md D15 → spec 089 (A-96): el preview devuelve otro total justo antes de confirmar → aviso no bloqueante en la tarjeta, sin modal y sin resolver el pago', async () => {
     await renderWith(
       [attempt({ status: 'pendiente' })],
       order('o1', [promoItem()]),
@@ -371,20 +385,51 @@ describe('PaymentAttemptReviewPanelComponent', () => {
     panel.amountReceived = 16000;
     fixture.detectChanges();
 
-    confirmAnswer = false; // el cajero cancela la segunda confirmación
     await runConfirmCash(panel.current()!, {
       fresh: preview({ subtotal: '16000', discount: '0', total: '16000' }),
       confirmResponse: attempt({ status: 'confirmado' }),
       reload: [],
       expectConfirmCall: false,
     });
-    // No se emitió el cobro.
+    fixture.detectChanges();
+
+    // No se emitió el cobro y no hubo diálogo.
     http.expectNone((r) => r.url.endsWith('/confirm-cash'));
-    // El total mostrado se actualizó al nuevo.
-    expect(fixture.nativeElement.textContent as string).toContain('16.000');
+    // El total mostrado se actualizó y hay un aviso no bloqueante en la tarjeta.
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).toContain('16.000');
+    const aviso = fixture.nativeElement.querySelector('[data-testid="total-cambio-aviso"]') as HTMLElement;
+    expect(aviso).toBeTruthy();
+    expect(aviso.textContent).toContain('El total cambió: ahora es $ 16.000');
   });
 
-  // ── No regresión (spec 024/026/046) ─────────────────────────────────────
+  it('spec 089 (A-96, FR-028): tras el aviso, el segundo clic confirma el pago por el total NUEVO', async () => {
+    await renderWith(
+      [attempt({ status: 'pendiente' })],
+      order('o1', [promoItem()]),
+      preview({ subtotal: '16000', discount: '8000', total: '8000' }),
+    );
+    panel.cashShiftId = 'shift-1';
+    panel.amountReceived = 16000;
+    fixture.detectChanges();
+
+    // Primer clic: el total cambió a 16.000 → aviso, sin confirmar.
+    await runConfirmCash(panel.current()!, {
+      fresh: preview({ subtotal: '16000', discount: '0', total: '16000' }),
+      confirmResponse: attempt({ status: 'confirmado' }),
+      reload: [],
+      expectConfirmCall: false,
+    });
+    expect(panel.totalChangeNotice()).toEqual({ now: 16000, before: 8000 });
+
+    // Segundo clic: el preview ya no difiere → confirma el cobro y el aviso desaparece.
+    await runConfirmCash(panel.current()!, {
+      fresh: preview({ subtotal: '16000', discount: '0', total: '16000' }),
+      confirmResponse: attempt({ status: 'confirmado', amount_received: '16000', change_amount: '0' }),
+      reload: [attempt({ status: 'confirmado', amount_received: '16000', change_amount: '0' })],
+    });
+    expect(panel.totalChangeNotice()).toBeNull();
+  });
 
   it('muestra el monto recibido y el cambio de forma permanente al confirmar en efectivo (spec 026, FR-004/FR-005)', async () => {
     await renderWith([attempt({ status: 'pendiente' })], order('o1', [item('20000', 1)]), preview({ total: '20000' }));

@@ -11,7 +11,6 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
-import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { ProductSelectComponent } from '../components/product-select.component';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { PosTerminalHeaderComponent } from '../components/pos-terminal-header.component';
@@ -749,6 +748,19 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
             </div>
 
             <div class="p-2 flex flex-col gap-1.5">
+              @if (totalChangeNotice(); as n) {
+                <!-- spec 089 (A-96, FR-028): el total del pedido cambió al pulsar "Crear pedido".
+                     Aviso NO bloqueante, sin diálogo: no se creó; el siguiente clic lo crea por
+                     el importe que se ve ahora. -->
+                <div
+                  data-testid="total-cambio-aviso"
+                  role="status"
+                  class="rounded-[6px] border border-[#fef3c7] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]"
+                >
+                  El total cambió: ahora es {{ store.fmt(n.now) }} (antes {{ store.fmt(n.before) }}).
+                  Revisa el importe y vuelve a pulsar Crear pedido.
+                </div>
+              }
               <button
                 (click)="confirm()"
                 [disabled]="
@@ -792,7 +804,6 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
   readonly store = inject(PosTerminalStore);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly confirmSvc = inject(ConfirmService);
 
   /** Por debajo de `lg`, cuál de las dos tarjetas (catálogo/ticket) se
    *  muestra -- mismo patrón que `store.hasActiveSelection()` en
@@ -850,6 +861,9 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
    *  muestra tras un intento de guardar fallido, no desde que se abre la
    *  pantalla. */
   readonly intentoGuardar = signal(false);
+  /** spec 089 (A-96, FR-028): aviso no bloqueante de que el total cambió al crear el pedido
+   *  (reemplaza al modal "El total cambió" de la spec 073, FR-015a). */
+  readonly totalChangeNotice = signal<{ now: number; before: number } | null>(null);
   readonly mostrarErrorNombre = computed(
     () => this.intentoGuardar() && !this.store.customerName().trim(),
   );
@@ -929,20 +943,19 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
     // descuento del backend. Si el preview había fallado (FR-015), la pantalla
     // ya avisó "el descuento se confirma al cobrar": no hay ningún total previo
     // que pueda "cambiar", así que se crea el pedido sin más.
+    //
+    // spec 089 (A-96, FR-028): si el total cambió ya NO se abre un modal; la cifra se actualiza
+    // (`loadDraftPreview` ya lo hizo), se avisa sin bloquear y NO se crea el pedido hasta un
+    // segundo clic sobre el importe visible.
+    this.totalChangeNotice.set(null);
     const shown = this.store.draftPreview();
     if (shown) {
       const before = Number(shown.total);
       await this.store.loadDraftPreview();
       const fresh = this.store.draftPreview();
       if (fresh && Number(fresh.total) !== before) {
-        const ok = await this.confirmSvc.ask({
-          title: 'El total cambió',
-          message:
-            `El total del pedido pasó a ${this.store.fmt(Number(fresh.total))} ` +
-            `(antes ${this.store.fmt(before)}). ¿Crear el pedido por ese importe?`,
-          confirmText: 'Sí, crear',
-        });
-        if (!ok) return;
+        this.totalChangeNotice.set({ now: Number(fresh.total), before });
+        return;
       }
     }
 

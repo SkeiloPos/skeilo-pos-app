@@ -9,7 +9,6 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
-import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { getSidebarMode } from '../interfaces/dining.interface';
 import { SessionBillPanelComponent } from './session-bill-panel.component';
 import { PaymentInputComponent } from './payment-input.component';
@@ -268,7 +267,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 Subtotal / Descuento / Domicilio / Total, con el mismo formato
                 que la cuenta de mesa; Descuento y Domicilio solo si son > 0.
               -->
-              @if (preview(); as p) {
+              @if (displayedPreview(); as p) {
                 <div class="rounded-[6px] border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2 my-3 space-y-1">
                   <app-bill-summary
                     [subtotal]="+p.subtotal"
@@ -277,6 +276,13 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                     [total]="+p.total"
                     size="sm"
                   />
+                  @if (store.checkoutPreviewEstimate() !== null) {
+                    <!-- spec 089 (A-96): cifra estimada al instante mientras el servidor
+                         confirma; Cobrar queda deshabilitado hasta tener la confirmada. -->
+                    <p data-testid="total-actualizando" class="text-[11px] text-[#9ca3af] text-right">
+                      actualizando…
+                    </p>
+                  }
                 </div>
               } @else {
                 <!-- FR-007a: nunca un total provisional — estado "calculando"
@@ -296,6 +302,22 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 </div>
               }
 
+              @if (totalChangeNotice(); as n) {
+                <!-- spec 089 (A-96, FR-028): el total cambió justo al cobrar (causa externa). Aviso
+                     NO bloqueante dentro del panel, sin diálogo: no se cobró; el siguiente Cobrar
+                     cobra el importe que se ve ahora. -->
+                <div
+                  data-testid="total-cambio-aviso"
+                  role="status"
+                  class="mb-3 rounded-[6px] border border-[#fef3c7] bg-[#fffbeb] px-3 py-2"
+                >
+                  <span class="text-[13px] text-[#92400e]">
+                    El total cambió: ahora es {{ store.fmt(n.now) }} (antes {{ store.fmt(n.before) }}).
+                    Revisa el importe y vuelve a pulsar Cobrar.
+                  </span>
+                </div>
+              }
+
               @if (preview()) {
                 <app-payment-input
                   [total]="previewTotal()"
@@ -312,7 +334,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
               <button
                 (click)="checkout()"
-                [disabled]="store.checkoutSubmitting() || !preview() || store.checkoutPreviewLoading() || issue() !== null"
+                [disabled]="store.checkoutSubmitting() || !preview() || store.checkoutPreviewLoading() || store.checkoutPreviewEstimate() !== null || issue() !== null"
                 class="w-full min-h-11 py-2.5 mt-3 bg-[#4f46e5] hover:bg-[#4338ca] text-white text-[14px] font-semibold rounded-[6px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {{ store.checkoutSubmitting() ? 'Cobrando…' : 'Cobrar' }}
@@ -393,7 +415,6 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 export class PosCheckoutPanelComponent {
   readonly store = inject(PosTerminalStore);
   private readonly router = inject(Router);
-  private readonly confirm = inject(ConfirmService);
 
   /**
    * Spec 045: mesa destino del botón fijo "+ Crear pedido nuevo" -- la mesa
@@ -461,9 +482,27 @@ export class PosCheckoutPanelComponent {
    */
   readonly preview = this.store.checkoutPreview;
 
-  /** El total real a cobrar (número), del preview del backend — reemplaza
-   *  `store.totals().total` para el pedido de mostrador/mesa individual. */
-  readonly previewTotal = computed(() => Number(this.store.checkoutPreview()?.total ?? 0));
+  /**
+   * spec 089 (A-96): lo que se PINTA. Con un estimado en curso (agregar/quitar un producto), el
+   * último preview confirmado con el subtotal y el total estimados; si no, el confirmado tal cual.
+   * Solo el confirmado se cobra (Cobrar está deshabilitado mientras haya estimado).
+   */
+  readonly displayedPreview = computed(() => {
+    const confirmed = this.store.checkoutPreview();
+    const estimate = this.store.checkoutPreviewEstimate();
+    if (!confirmed || !estimate) return confirmed;
+    return { ...confirmed, subtotal: String(estimate.subtotal), total: String(estimate.total) };
+  });
+
+  /** El total real a cobrar (número): el estimado mientras se confirma, si no el del preview del
+   *  backend — reemplaza `store.totals().total` para el pedido de mostrador/mesa individual. */
+  readonly previewTotal = computed(() => Number(this.displayedPreview()?.total ?? 0));
+
+  /**
+   * spec 089 (A-96, FR-028): aviso no bloqueante de que el total cambió justo al pulsar Cobrar
+   * (causa externa). Reemplaza al modal "El total cambió" de la spec 073.
+   */
+  readonly totalChangeNotice = signal<{ now: number; before: number } | null>(null);
 
   readonly issue = computed(() =>
     paymentIssue(this.paymentDraft(), this.previewTotal(), this.store.paymentMethodsAvailable()),
@@ -481,6 +520,7 @@ export class PosCheckoutPanelComponent {
       this.paymentDraft.set(emptyPaymentDraft());
       this.editandoFacturacion.set(false);
       this.lastShownTotal = null;
+      this.totalChangeNotice.set(null);
       // spec 073, FR-001: en el mismo punto donde se resetea `paymentDraft`,
       // se pide al backend el desglose autoritativo del pedido de
       // mostrador/mesa individual que se está cobrando. `untracked` evita que
@@ -505,15 +545,23 @@ export class PosCheckoutPanelComponent {
   }
 
   async checkout(): Promise<void> {
-    if (this.issue() || !this.preview()) return;
+    // spec 089 (A-96, FR-026): nunca se cobra una cifra que el servidor aún no confirmó.
+    if (
+      this.store.checkoutPreviewEstimate() !== null ||
+      this.store.checkoutPreviewLoading() ||
+      this.issue() ||
+      !this.preview()
+    ) {
+      return;
+    }
     const orderId = this.store.selectedOrderId();
     const beforeTotal = this.lastShownTotal ?? this.previewTotal();
+    this.totalChangeNotice.set(null);
 
-    // spec 073, FR-007 / research.md D11: doble chequeo determinista antes de
-    // someter — se vuelve a pedir el preview; si el total cambió respecto al
-    // último mostrado, se detiene, se presenta el total nuevo y se exige una
-    // segunda confirmación explícita (nunca se deja fallar la request real con
-    // el mensaje técnico del servidor).
+    // spec 073, FR-007 / research.md D11: chequeo determinista antes de someter — se vuelve a pedir
+    // el preview. spec 089 (A-96, FR-027/FR-028): si el total cambió por una causa externa ya NO
+    // se abre un modal; se actualiza la cifra, se avisa dentro del panel y NO se cobra: el
+    // siguiente Cobrar cobra el importe visible (nunca un importe que el cajero no vio).
     if (orderId) {
       await this.store.loadCheckoutPreview(orderId);
     }
@@ -521,18 +569,9 @@ export class PosCheckoutPanelComponent {
     if (!fresh) return; // el preview falló: no se cobra contra un total no verificado
     const freshTotal = Number(fresh.total);
     if (freshTotal !== beforeTotal) {
-      const ok = await this.confirm.ask({
-        title: 'El total cambió',
-        message:
-          `El total a cobrar pasó a ${this.store.fmt(freshTotal)} ` +
-          `(antes ${this.store.fmt(beforeTotal)}). ¿Continuar con el cobro por ese importe?`,
-        confirmText: 'Sí, cobrar',
-      });
       this.lastShownTotal = freshTotal;
-      if (!ok) return;
-      // El importe tecleado pudo quedar corto (o el campo se reinició al
-      // cambiar el total): re-validar antes de someter.
-      if (this.issue()) return;
+      this.totalChangeNotice.set({ now: freshTotal, before: beforeTotal });
+      return;
     }
     await this.store.checkoutAndSend(paymentLines(this.paymentDraft()));
   }
