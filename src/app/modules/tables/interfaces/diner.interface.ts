@@ -70,6 +70,8 @@ export interface CartItemOption {
   id: string;
   option_id: string;
   quantity: number;
+  /** spec 089 (A-94): adicional cobrado y consumido una vez por línea. */
+  per_line?: boolean;
 }
 
 /** Una línea del carrito (`CartItemResponse`). Los importes llegan como string. */
@@ -77,7 +79,11 @@ export interface CartItemResponse {
   id: string;
   product_variant_id: string;
   quantity: number;
+  /** Precio de UNA unidad de producto; desde la spec 089 no incluye los adicionales de las líneas nuevas. */
   unit_price: string;
+  /** spec 089 (A-94): adicionales cobrados una vez por línea (`"0"` en líneas históricas). */
+  addons_total?: string;
+  /** `unit_price × quantity + addons_total`. */
   line_total: string;
   /**
    * Precio/subtotal ya con el mejor descuento vigente aplicado, o `null`/ausente

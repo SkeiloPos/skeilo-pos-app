@@ -18,7 +18,10 @@ export interface CartLine {
   optionNames: string[];
   quantity: number;
   notes: string | null;
+  /** Precio de UNA unidad de producto (desde la spec 089 no incluye los adicionales de las líneas nuevas). */
   unitPrice: number;
+  /** spec 089 (A-94): adicionales cobrados UNA vez por línea; no cambian al cambiar la cantidad del producto. */
+  addonsTotal: number;
   lineTotal: number;
   /**
    * spec 081 (data-model.md): derivados de `CartResponse.items[]`, ya presentes en
@@ -29,6 +32,12 @@ export interface CartLine {
   productVariantId: string;
   /** Ids de opción elegidas, ordenados y unidos con coma — clave estable sin importar el orden de llegada. */
   optionKey: string;
+  /**
+   * spec 089 (Historia 3): opciones elegidas con su cantidad, tal como las devolvió el backend.
+   * Sirven para precargar el selector al "Editar adicionales" (la cantidad de cada adicional es
+   * independiente de la del producto).
+   */
+  optionSelections: { optionId: string; quantity: number }[];
 }
 
 /** Índice del menú para resolver ids → nombres al pintar el carrito. */
@@ -134,6 +143,25 @@ export class DiningCartService {
     return this.stepByKey.get(DiningCartService.lineKey(line.productVariantId, line.optionKey)) ?? 1;
   }
 
+  /**
+   * spec 089 (Historia 3): reemplaza los adicionales (y la nota) de una línea ya agregada sin
+   * eliminarla — `PATCH /cart/items/{id}` con `{options, notes}`; la cantidad de producto no
+   * cambia. Propaga el error (422 de la selección, 409 de stock) para que la pantalla lo muestre
+   * sin cerrar el selector; solo actualiza el estado local si el backend acepta.
+   */
+  async updateItem(
+    itemId: string,
+    options: ChosenMenuOption[],
+    notes: string | null,
+  ): Promise<void> {
+    await this.mutate(() =>
+      this.api.updateItem(itemId, {
+        options: options.map((c) => ({ option_id: c.option.id, quantity: c.quantity })),
+        notes: notes || null,
+      }),
+    );
+  }
+
   async setQuantity(itemId: string, quantity: number): Promise<void> {
     if (quantity <= 0) return this.remove(itemId);
     await this.mutate(() => this.api.updateItem(itemId, { quantity }));
@@ -188,9 +216,16 @@ export class DiningCartService {
           quantity: it.quantity,
           notes: it.notes,
           unitPrice: effectivePrice(it.unit_price, it.discounted_unit_price),
-          lineTotal: effectivePrice(it.line_total, it.discounted_line_total),
+          addonsTotal: Number(it.addons_total ?? 0),
+          // `line_total` ya es `unit_price × quantity + addons_total`; con un backend sin ese
+          // campo se reconstruye igual (spec 089), nunca como `unit_price × quantity` suelto.
+          lineTotal: effectivePrice(
+            it.line_total ?? String(Number(it.unit_price) * it.quantity + Number(it.addons_total ?? 0)),
+            it.discounted_line_total,
+          ),
           productVariantId: it.product_variant_id,
           optionKey: it.options.map((o) => o.option_id).sort().join(','),
+          optionSelections: it.options.map((o) => ({ optionId: o.option_id, quantity: o.quantity })),
         };
       }),
     );

@@ -207,6 +207,50 @@ describe('DinerService', () => {
     expect(tokens.token()).toBeNull();
   });
 
+  // ── spec 089 (A-95): distinguir "mesa cerrada" de "sesión vencida" ────────
+
+  it('un 401 con X-Session-State: closed lanza DinerSessionExpiredError con closed = true (mismo mensaje del cuerpo)', async () => {
+    tokens.set('tok-viejo');
+
+    const promise = service.myOrders().catch((e: unknown) => e);
+    http.expectOne(`${API}/cart/orders`).flush(
+      { detail: 'Sesión no activa' },
+      { status: 401, statusText: 'Unauthorized', headers: { 'X-Session-State': 'closed' } },
+    );
+
+    const err = (await promise) as DinerSessionExpiredError;
+    expect(err instanceof DinerSessionExpiredError).toBe(true);
+    expect(err.closed).toBe(true);
+    expect(err.message).toBe('Sesión no activa'); // los mensajes actuales no cambian
+    expect(tokens.token()).toBeNull();
+  });
+
+  it('un 401 SIN la cabecera (vencimiento) lanza closed = false', async () => {
+    tokens.set('tok-viejo');
+
+    const promise = service.myOrders().catch((e: unknown) => e);
+    http.expectOne(`${API}/cart/orders`).flush(
+      { detail: 'Sesión expirada por inactividad. Vuelve a escanear el QR.' },
+      { status: 401, statusText: 'Unauthorized' },
+    );
+
+    const err = (await promise) as DinerSessionExpiredError;
+    expect(err.closed).toBe(false);
+    expect(err.message).toContain('inactividad');
+  });
+
+  it('una cabecera con otro valor no cuenta como cierre', async () => {
+    tokens.set('tok-viejo');
+
+    const promise = service.myOrders().catch((e: unknown) => e);
+    http.expectOne(`${API}/cart/orders`).flush(
+      { detail: 'x' },
+      { status: 401, statusText: 'Unauthorized', headers: { 'X-Session-State': 'expired' } },
+    );
+
+    expect(((await promise) as DinerSessionExpiredError).closed).toBe(false);
+  });
+
   // ── Salir de la mesa ──────────────────────────────────────────────────────
 
   it('avisa al backend al salir y descarta el token', async () => {

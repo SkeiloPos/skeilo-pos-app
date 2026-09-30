@@ -232,6 +232,10 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                         <div class="font-bold text-[#111827] text-[14px]">{{ store.fmt(it.subtotal) }}</div>
                       }
                       <div class="text-[11px] text-[#9ca3af]">{{ it.qty }} × {{ store.fmt(it.unitPrice) }}</div>
+                      @if (it.addonsTotal > 0) {
+                        <!-- spec 089 (A-94): adicionales del Menú QR, cobrados una vez por línea. -->
+                        <div class="text-[11px] text-[#9ca3af]">+ {{ store.fmt(it.addonsTotal) }} adicionales</div>
+                      }
                     </div>
                   </div>
                   @if (it.promo; as promo) {
