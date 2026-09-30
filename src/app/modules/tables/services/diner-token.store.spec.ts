@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 import { DinerTokenStore, DINER_TOKEN_PARAM } from './diner-token.store';
 
 const STORAGE_KEY = 'pos.diner.session_token';
@@ -84,6 +85,73 @@ describe('DinerTokenStore', () => {
 
     it('sin ninguna marca, isExited() devuelve false para cualquier token', () => {
       expect(create().isExited('cualquiera')).toBe(false);
+    });
+  });
+
+  // spec 089 (A-95, FR-015a/c, SC-011): único borrado de fin de acceso.
+  describe('endAccess() — único borrado de fin de acceso (A-95)', () => {
+    function dinerKeys(area: Storage): string[] {
+      const keys: string[] = [];
+      for (let i = 0; i < area.length; i++) {
+        const k = area.key(i);
+        if (k?.startsWith('pos.diner.')) keys.push(k);
+      }
+      return keys;
+    }
+
+    it('deja solo pos.diner.exited_token = token público en sessionStorage', () => {
+      const store = create();
+      store.set('tok-sesion');
+      localStorage.setItem('pos.diner.checkout_progress.ord-1', '{"step":2}');
+      sessionStorage.setItem('pos.diner.checkout_progress.ord-2', '{"step":1}');
+      sessionStorage.setItem('pos.diner.otro_dato', 'x');
+
+      store.endAccess('tok-mesa');
+
+      expect(store.token()).toBeNull();
+      expect(dinerKeys(localStorage)).toEqual([]);
+      expect(dinerKeys(sessionStorage)).toEqual([EXITED_STORAGE_KEY]);
+      expect(sessionStorage.getItem(EXITED_STORAGE_KEY)).toBe('tok-mesa');
+      expect(store.isExited('tok-mesa')).toBe(true);
+    });
+
+    it('no toca claves ajenas a pos.diner.*', () => {
+      const store = create();
+      localStorage.setItem('auth.token', 'staff');
+
+      store.endAccess('tok-mesa');
+
+      expect(localStorage.getItem('auth.token')).toBe('staff');
+    });
+
+    it('expira las cookies pos.diner* y respeta las demás', () => {
+      const store = create();
+      document.cookie = 'pos.diner.dato=1; path=/';
+      document.cookie = 'otra=1; path=/';
+
+      store.endAccess('tok-mesa');
+
+      expect(document.cookie).not.toContain('pos.diner');
+      expect(document.cookie).toContain('otra=1');
+      document.cookie = 'otra=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    });
+
+    it('con el almacenamiento bloqueado no lanza y purga el signal', () => {
+      const store = create();
+      store.set('tok-sesion');
+      const blocked = () => {
+        throw new DOMException('bloqueado', 'SecurityError');
+      };
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(blocked);
+      vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(blocked);
+      vi.spyOn(Storage.prototype, 'key').mockImplementation(blocked);
+
+      try {
+        expect(() => store.endAccess('tok-mesa')).not.toThrow();
+        expect(store.token()).toBeNull();
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
   });
 });

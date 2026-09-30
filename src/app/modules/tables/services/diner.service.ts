@@ -92,9 +92,18 @@ function mapPromotion(raw: unknown): MenuVariantPromotion | null {
   };
 }
 
-/** Error de sesión: hay que volver a pedir el nombre al comensal. */
+/**
+ * Error de sesión (401). Por defecto significa "hay que volver a pedir el nombre al comensal";
+ * `closed` (spec 089, A-95) distingue que la MESA SE CERRÓ (el backend lo marca con la cabecera
+ * `X-Session-State: closed`) de un simple vencimiento (inactividad, duración máxima, firma): en ese
+ * caso el Menú QR muestra "¡Gracias por tu visita!" en vez de pedir el nombre.
+ */
 export class DinerSessionExpiredError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** `true` solo si el 401 trae `X-Session-State: closed`. */
+    readonly closed = false,
+  ) {
     super(message);
     this.name = 'DinerSessionExpiredError';
   }
@@ -334,6 +343,7 @@ export class DinerService {
         this.tokenStore.clear();
         throw new DinerSessionExpiredError(
           this.extractError(err, 'Tu sesión terminó. Vuelve a escanear el QR.'),
+          err.headers?.get('X-Session-State') === 'closed',
         );
       }
       throw err;
