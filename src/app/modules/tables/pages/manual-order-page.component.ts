@@ -364,6 +364,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     type="text"
                     [value]="store.customerName()"
                     (input)="store.customerName.set($any($event.target).value)"
+                    (focus)="$any($event.target).select()"
                     placeholder="Ej: Juan Pérez"
                     class="h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] font-medium focus:outline-none focus:border-[#111827] focus:bg-white"
                   />
@@ -386,9 +387,9 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
             }
 
             @if (store.orderTypeTab() === 'para-llevar') {
-              <!-- Cliente de la orden (spec 087, FR-005/A-88): siempre
-                   editable, sin valor por defecto -- igual que "Domicilio",
-                   nunca se guarda vacío. -->
+              <!-- Cliente de la orden (spec 091, A-99): precargado con "Consumidor final" y
+                   seleccionado por completo al enfocarlo, pero siempre editable -- a diferencia
+                   de "Domicilio", si queda vacío se guarda con ese valor por defecto. -->
               <div class="flex flex-col gap-0.5">
                 <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
                   >Cliente / Para llevar</label
@@ -397,6 +398,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                   type="text"
                   [value]="store.customerName()"
                   (input)="store.customerName.set($any($event.target).value)"
+                  (focus)="$any($event.target).select()"
                   placeholder="Ej: Juan Pérez"
                   class="h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] font-medium focus:outline-none focus:border-[#111827] focus:bg-white"
                 />
@@ -766,10 +768,10 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 [disabled]="
                   store.cartEmpty() ||
                   store.submitting() ||
-                  !store.customerName().trim() ||
                   (store.orderTypeTab() === 'mesas' && !store.selectedTableId()) ||
                   (store.orderTypeTab() === 'domicilios' &&
-                    (!store.deliveryAddress().trim() ||
+                    (!store.customerName().trim() ||
+                      !store.deliveryAddress().trim() ||
                       store.deliveryFee() == null))
                 "
                 class="w-full h-12 bg-[#4f46e5] hover:bg-[#4338ca] active:bg-[#3730a3] text-white font-semibold text-[15px] flex items-center justify-center gap-2 rounded-[6px] disabled:opacity-50 transition-colors"
@@ -856,19 +858,27 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
     })),
   );
 
-  /** spec 087 (FR-005, A-88): `customer_name` es obligatorio en los 3 tabs y
-   *  nunca tiene valor por defecto — el mensaje de error inline solo se
-   *  muestra tras un intento de guardar fallido, no desde que se abre la
-   *  pantalla. */
+  /** spec 087 (FR-005, A-88) -- acotado por spec 091 (A-99) a solo "Domicilio": Mesa/Para
+   *  llevar ya no exigen `customer_name` (el valor por defecto lo resuelve, FR-004/FR-005); el
+   *  mensaje de error inline solo se muestra tras un intento de guardar fallido, no desde que se
+   *  abre la pantalla. */
   readonly intentoGuardar = signal(false);
   /** spec 089 (A-96, FR-028): aviso no bloqueante de que el total cambió al crear el pedido
    *  (reemplaza al modal "El total cambió" de la spec 073, FR-015a). */
   readonly totalChangeNotice = signal<{ now: number; before: number } | null>(null);
   readonly mostrarErrorNombre = computed(
-    () => this.intentoGuardar() && !this.store.customerName().trim(),
+    () =>
+      this.intentoGuardar() &&
+      this.store.orderTypeTab() === 'domicilios' &&
+      !this.store.customerName().trim(),
   );
 
   async ngOnInit(): Promise<void> {
+    // spec 091 (A-99): esta pantalla arma SIEMPRE un pedido nuevo (nunca edita uno existente,
+    // ver comentario de `selectTable()` abajo), así que es seguro reiniciar "Cliente" de cero en
+    // cada apertura -- sin esto, abrir "Nueva orden" para la siguiente orden conservaría el
+    // nombre de la anterior (FR-011).
+    this.store.customerName.set('');
     await this.store.init();
     const tableId = this.route.snapshot.paramMap.get('tableId');
     if (tableId) this.selectTable(tableId);
@@ -879,6 +889,10 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
     const tipo = this.route.snapshot.queryParamMap.get('tipo');
     if (tipo === 'domicilio') this.setOrderTypeTab('domicilios');
     else if (tipo === 'para-llevar') this.setOrderTypeTab('para-llevar');
+    // spec 091 (A-99, research.md D3): invocación explícita y obligatoria -- la ruta de Mesa
+    // (sin `?tipo=`) nunca llama a `setOrderTypeTab()` arriba, así que sin esto el campo quedaría
+    // vacío en vez de "Consumidor final" para ese camino, el más común de los tres.
+    this.store.applyCustomerNameDefaultForTab(this.store.orderTypeTab());
   }
 
   ngOnDestroy(): void {
@@ -936,7 +950,9 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
 
   async confirm(): Promise<void> {
     this.intentoGuardar.set(true);
-    if (!this.store.customerName().trim()) return;
+    // spec 091 (A-99): solo Domicilio sigue exigiendo el nombre -- en Mesa/Para llevar, un campo
+    // vacío se guarda como "Consumidor final" (lo resuelve el backend).
+    if (this.store.orderTypeTab() === 'domicilios' && !this.store.customerName().trim()) return;
 
     // spec 073, FR-015a / research.md D11: doble chequeo del total antes de
     // crear el pedido — pero solo si la pantalla venía mostrando un total con
