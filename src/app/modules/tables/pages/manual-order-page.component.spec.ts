@@ -287,7 +287,7 @@ describe('ManualOrderPageComponent', () => {
     expect(botonConfirmar().disabled).toBe(true);
   });
 
-  it('al seleccionar "Para Llevar", el campo Cliente queda vacío y editable, sin valor por defecto (spec 087, FR-005/A-88 -- reemplaza el auto-relleno "Consumidor final" de spec 054)', async () => {
+  it('al seleccionar "Para Llevar", el campo Cliente muestra "Consumidor final", editable (spec 091, A-99 -- reabre el auto-relleno que spec 087/A-88 había retirado)', async () => {
     createComponent(null);
     fixture.detectChanges();
     await Promise.resolve();
@@ -296,7 +296,7 @@ describe('ManualOrderPageComponent', () => {
     botonTipoOrden('Para llevar').click();
     fixture.detectChanges();
 
-    expect(campoCliente().value).toBe('');
+    expect(campoCliente().value).toBe('Consumidor final');
     expect(campoCliente().readOnly).toBe(false);
   });
 
@@ -979,11 +979,11 @@ describe('ManualOrderPageComponent', () => {
     expect(createSpy).not.toHaveBeenCalled();
   });
 
-  // spec 087 (FR-005, A-88): reemplaza el auto-relleno "Consumidor final" +
-  // toggle de solo-lectura de spec 054 -- el campo Cliente ahora es siempre
-  // editable, sin valor por defecto, y bloquea "Crear pedido" si queda vacío.
+  // spec 091 (A-99): reabre A-88 (spec 087) solo para Mesa/Para llevar -- el campo Cliente
+  // vuelve a precargar "Consumidor final", editable, y ya no bloquea "Crear pedido" si queda
+  // vacío (el backend lo resuelve). Domicilio no cambia (ver su propia sección más abajo).
 
-  it('el campo Cliente empieza vacío y editable, sin ningún valor por defecto (spec 087, FR-005/A-88)', async () => {
+  it('el campo Cliente precarga "Consumidor final", editable (spec 091, FR-001/FR-002)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -992,11 +992,11 @@ describe('ManualOrderPageComponent', () => {
     fixture.detectChanges();
 
     const input = campoCliente();
-    expect(input.value).toBe('');
+    expect(input.value).toBe('Consumidor final');
     expect(input.readOnly).toBe(false);
   });
 
-  it('escribir en el campo Cliente actualiza el nombre directamente, sin ningún botón de edición (spec 087, FR-005/A-88)', async () => {
+  it('escribir en el campo Cliente reemplaza el valor por defecto directamente, sin ningún botón de edición (spec 091, FR-002)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1010,7 +1010,7 @@ describe('ManualOrderPageComponent', () => {
     expect(store.customerName()).toBe('María Pérez');
   });
 
-  it('"Crear pedido" está deshabilitado sin nombre de cliente, aunque haya productos y mesa (spec 087, FR-005/A-88)', async () => {
+  it('"Crear pedido" NO se deshabilita por el campo Cliente en Mesa, con productos y mesa (spec 091, FR-005)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1024,12 +1024,13 @@ describe('ManualOrderPageComponent', () => {
       quantity: 1,
       notes: null,
     });
+    escribirCliente('');
     fixture.detectChanges();
 
-    expect(botonConfirmar().disabled).toBe(true);
+    expect(botonConfirmar().disabled).toBe(false);
   });
 
-  it('confirmar sin nombre de cliente muestra el mensaje de error inline y no crea el pedido (spec 087, FR-005/A-88)', async () => {
+  it('confirmar con el campo Cliente vaciado en Mesa SÍ crea el pedido, sin mensaje de error (spec 091, FR-004/FR-005, escenario 4)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1043,18 +1044,21 @@ describe('ManualOrderPageComponent', () => {
       quantity: 1,
       notes: null,
     });
+    escribirCliente('');
     fixture.detectChanges();
 
     const diningSessionService = TestBed.inject(DiningSessionService);
     const createSpy = vi
       .spyOn(diningSessionService, 'createManualOrder')
       .mockResolvedValue({ id: 'o9' } as DiningOrder);
+    vi.spyOn(store, 'reload').mockResolvedValue(undefined);
+    vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     await fixture.componentInstance.confirm();
     fixture.detectChanges();
 
-    expect(createSpy).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.textContent).toContain('El nombre del cliente es obligatorio.');
+    expect(createSpy).toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).not.toContain('El nombre del cliente es obligatorio.');
   });
 
   it('al confirmar con un nombre diligenciado, se envía ese nombre como customer_name (spec 087, FR-005/A-88)', async () => {
@@ -1087,6 +1091,58 @@ describe('ManualOrderPageComponent', () => {
     await Promise.resolve();
 
     expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ customer_name: 'María Pérez' }));
+  });
+
+  // spec 091 (A-99): el campo Cliente se reinicia al abrir "Nueva orden" de cero -- no conserva
+  // el nombre de una instancia anterior (p. ej. el pedido recién creado de otra orden). El store
+  // (a diferencia del componente) sobrevive la navegación real entre instancias de esta
+  // pantalla, así que la prueba reutiliza el mismo `store` y vuelve a invocar `ngOnInit()`
+  // directamente -- en vez de recrear el componente, que perdería ese estado compartido y
+  // volvería la prueba trivial.
+  it('al reabrir "Nueva orden" (ngOnInit de nuevo), el campo Cliente no conserva un nombre ya escrito (FR-011, escenario 8)', async () => {
+    createComponent('t1');
+    tableService.tables.set([table({ id: 't1', number: 3 })]);
+    fixture.detectChanges();
+    await Promise.resolve();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+    fixture.detectChanges();
+
+    // Simula el nombre propio que el cajero escribió para el pedido anterior.
+    escribirCliente('María Pérez');
+    expect(store.customerName()).toBe('María Pérez');
+
+    // Simula el reinicio de la pantalla para la siguiente orden (mismo store).
+    await fixture.componentInstance.ngOnInit();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+    fixture.detectChanges();
+
+    expect(campoCliente().value).toBe('Consumidor final');
+  });
+
+  // spec 091 (A-99): Domicilio no cambia -- el valor por defecto no se le cuela, y sus
+  // validaciones (nombre, dirección, valor del domicilio) siguen intactas.
+  it('con el valor por defecto intacto, cambiar a "Domicilio" vacía el campo sin afectar su validación (FR-008, escenario 5)', async () => {
+    createComponent('t1');
+    tableService.tables.set([table({ id: 't1', number: 3 })]);
+    fixture.detectChanges();
+    await Promise.resolve();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+    fixture.detectChanges();
+    expect(campoCliente().value).toBe('Consumidor final');
+
+    botonTipoOrden('Domicilio').click();
+    fixture.detectChanges();
+
+    // La pestaña Domicilio etiqueta su input "Nombre cliente" (no "Cliente"), por eso se
+    // consulta directo en vez de con el helper `campoCliente()`.
+    const inputDomicilio = fixture.nativeElement.querySelector(
+      'input[placeholder="Ej: Juan Pérez"]',
+    ) as HTMLInputElement;
+    expect(store.customerName()).toBe('');
+    expect(inputDomicilio.value).toBe('');
+    // Sin dirección ni valor del domicilio diligenciados, "Crear pedido" sigue bloqueado --
+    // ninguna validación de Domicilio cambió.
+    expect(botonConfirmar().disabled).toBe(true);
   });
 
   // ── Rediseño responsive (create-order/code.html): una sola tarjeta a la
@@ -1306,6 +1362,61 @@ describe('ManualOrderPageComponent', () => {
     expect(toppingsButton).toBeTruthy();
     const icon = toppingsButton.querySelector('.material-icons-outlined');
     expect(icon?.textContent?.trim()).toBe('tune');
+  });
+
+  // spec 091 (A-99, FR-003): al enfocar el campo Cliente en Mesa/Para llevar, su contenido queda
+  // seleccionado por completo -- para que escribir reemplace el valor existente de inmediato.
+  describe('campo Cliente — selección completa al enfocar (spec 091, US3)', () => {
+    it('en "Mesa", enfocar el campo invoca `select()` sobre el input (FR-003)', async () => {
+      createComponent('t1');
+      tableService.tables.set([table({ id: 't1', number: 3 })]);
+      fixture.detectChanges();
+      await Promise.resolve();
+      http.expectOne(`${API}/table-sessions`).flush([]);
+      fixture.detectChanges();
+
+      const input = campoCliente();
+      const selectSpy = vi.spyOn(input, 'select');
+      input.dispatchEvent(new Event('focus'));
+
+      expect(selectSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('en "Para llevar", enfocar el campo invoca `select()` sobre el input, con un nombre ya escrito (FR-003)', async () => {
+      createComponent(null);
+      fixture.detectChanges();
+      await Promise.resolve();
+      fixture.detectChanges();
+      botonTipoOrden('Para llevar').click();
+      fixture.detectChanges();
+      escribirCliente('Carlos Ruiz');
+
+      const input = campoCliente();
+      const selectSpy = vi.spyOn(input, 'select');
+      input.dispatchEvent(new Event('focus'));
+
+      expect(selectSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('en "Domicilio", enfocar el campo "Nombre cliente" NO invoca `select()` (sin cambios)', async () => {
+      createComponent('t1');
+      tableService.tables.set([table({ id: 't1', number: 3 })]);
+      fixture.detectChanges();
+      await Promise.resolve();
+      http.expectOne(`${API}/table-sessions`).flush([]);
+      fixture.detectChanges();
+
+      botonTipoOrden('Domicilio').click();
+      fixture.detectChanges();
+
+      const inputDomicilio = fixture.nativeElement.querySelector(
+        'input[placeholder="Ej: Juan Pérez"]',
+      ) as HTMLInputElement;
+      const selectSpy = vi.spyOn(inputDomicilio, 'select');
+      inputDomicilio.dispatchEvent(new Event('focus'));
+
+      expect(selectSpy).not.toHaveBeenCalled();
+    });
   });
 });
 

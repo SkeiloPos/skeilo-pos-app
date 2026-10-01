@@ -1082,6 +1082,79 @@ describe('PosTerminalStore.orderTypeTab / setOrderTypeTab', () => {
     store.setOrderTypeTab('mesas');
     expect(store.orderTypeTab()).toBe('mesas');
   });
+
+  // spec 091 (A-99): "Consumidor final" por defecto en Mesa/Para llevar, reabre A-88 (spec 087).
+  describe('setOrderTypeTab / applyCustomerNameDefaultForTab — valor por defecto "Consumidor final"', () => {
+    it('cambiar a "mesas" con el campo vacío lo precarga con "Consumidor final" (FR-001)', () => {
+      store.customerName.set('');
+      store.setOrderTypeTab('mesas');
+      expect(store.customerName()).toBe('Consumidor final');
+    });
+
+    it('cambiar a "para-llevar" con el campo vacío lo precarga con "Consumidor final" (FR-001)', () => {
+      store.customerName.set('');
+      store.setOrderTypeTab('para-llevar');
+      expect(store.customerName()).toBe('Consumidor final');
+    });
+
+    it('cambiar a "mesas"/"para-llevar" con un nombre ya escrito no lo toca (FR-002)', () => {
+      store.customerName.set('Ana Torres');
+      store.setOrderTypeTab('mesas');
+      expect(store.customerName()).toBe('Ana Torres');
+
+      store.setOrderTypeTab('para-llevar');
+      expect(store.customerName()).toBe('Ana Torres');
+    });
+
+    it('cambiar a "mesas" con el campo en solo espacios lo trata como vacío (FR-004)', () => {
+      store.customerName.set('   ');
+      store.setOrderTypeTab('mesas');
+      expect(store.customerName()).toBe('Consumidor final');
+    });
+
+    it('cambiar a "domicilios" con el valor por defecto intacto lo vacía (FR-008)', () => {
+      store.customerName.set('Consumidor final');
+      store.setOrderTypeTab('domicilios');
+      expect(store.customerName()).toBe('');
+    });
+
+    it('cambiar a "domicilios" con un nombre propio no lo toca (FR-009)', () => {
+      store.customerName.set('Carlos Ruiz');
+      store.setOrderTypeTab('domicilios');
+      expect(store.customerName()).toBe('Carlos Ruiz');
+    });
+
+    it('cambiar a "domicilios" con el campo ya vacío lo deja vacío, sin reintroducir el default', () => {
+      store.customerName.set('');
+      store.setOrderTypeTab('domicilios');
+      expect(store.customerName()).toBe('');
+    });
+
+    it('round-trip: Mesa (default) → Domicilio (vacío) → Para llevar vuelve a "Consumidor final" (FR-010)', () => {
+      store.customerName.set('');
+      store.setOrderTypeTab('mesas');
+      expect(store.customerName()).toBe('Consumidor final');
+
+      store.setOrderTypeTab('domicilios');
+      expect(store.customerName()).toBe('');
+
+      store.setOrderTypeTab('para-llevar');
+      expect(store.customerName()).toBe('Consumidor final');
+    });
+
+    it('un nombre propio se conserva al recorrer las tres pestañas en cualquier orden (FR-009, escenario 6)', () => {
+      store.customerName.set('Carlos Ruiz');
+
+      store.setOrderTypeTab('para-llevar');
+      expect(store.customerName()).toBe('Carlos Ruiz');
+
+      store.setOrderTypeTab('domicilios');
+      expect(store.customerName()).toBe('Carlos Ruiz');
+
+      store.setOrderTypeTab('mesas');
+      expect(store.customerName()).toBe('Carlos Ruiz');
+    });
+  });
 });
 
 // ── spec 055: "Para Llevar" no exige mesa; payload channel/order_type ──────
