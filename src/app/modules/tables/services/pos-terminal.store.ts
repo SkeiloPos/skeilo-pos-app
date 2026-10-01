@@ -192,6 +192,13 @@ const ORDERS_POLL_SSE_MS = 60_000;
 const RELOAD_DEBOUNCE_MS = 250;
 
 /**
+ * Nombre de cliente para Mesa/Para llevar cuando el cajero no escribe ninguno (spec 091, A-99;
+ * reabre A-88 de spec 087). Distinto y sin relación con "Consumidor Final" (F mayúscula), el
+ * nombre por defecto de la *factura* que ya usa `resetTransient()`/`checkout.py`.
+ */
+const DEFAULT_CUSTOMER_NAME = 'Consumidor final';
+
+/**
  * Ids de pedidos por confirmar que aún no se habían visto.
  *
  * Se comparan **ids y no cantidades**: si un pedido entra y el personal lo
@@ -1438,6 +1445,30 @@ export class PosTerminalStore {
   /** Único punto de escritura de `orderTypeTab` (spec 036, FR-001/FR-003). */
   setOrderTypeTab(tab: OrderTypeTab): void {
     this.orderTypeTab.set(tab);
+    this.applyCustomerNameDefaultForTab(tab);
+  }
+
+  /**
+   * Regla de valor por defecto del campo "Cliente" al entrar/cambiar a una pestaña (spec 091,
+   * A-99; research.md D2/D3). Público porque además de `setOrderTypeTab()` lo invoca
+   * `ManualOrderPageComponent.ngOnInit()` directamente: la ruta de Mesa sin `?tipo=` nunca pasa
+   * por `setOrderTypeTab()`, así que depender solo de ese método dejaría el campo vacío en vez de
+   * "Consumidor final" para el camino más común.
+   *
+   * - `mesas`/`para-llevar` con el campo vacío (o solo espacios) ⇒ se precarga el valor por
+   *   defecto (FR-001/FR-004/FR-010).
+   * - `domicilios` con el campo en **exactamente** el valor por defecto (sin editar) ⇒ se vacía,
+   *   para que nunca llegue "Consumidor final" como nombre real de una entrega (FR-008).
+   * - Cualquier otro valor (un nombre propio, o ya vacío en Domicilio) se conserva tal cual
+   *   (FR-009).
+   */
+  applyCustomerNameDefaultForTab(tab: OrderTypeTab): void {
+    const value = this.customerName().trim();
+    if (tab !== 'domicilios') {
+      if (!value) this.customerName.set(DEFAULT_CUSTOMER_NAME);
+    } else if (value === DEFAULT_CUSTOMER_NAME) {
+      this.customerName.set('');
+    }
   }
 
   /**
