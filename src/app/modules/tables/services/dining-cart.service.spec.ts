@@ -324,4 +324,57 @@ describe('DiningCartService', () => {
     expect(cart.lines()[0].lineTotal).toBe(33000);
     expect(cart.busy()).toBe(false);
   });
+
+  // ── spec 092 (research.md D5) — grossTotal y savings, aditivos ─────────────
+  //
+  // `total()` se queda hoy con `effectivePrice(cart.total, cart.discounted_total)`
+  // y tira a la basura el total de lista. `grossTotal` lo conserva, y la
+  // diferencia entre los dos ES el ahorro: el front no inventa ninguna cifra
+  // (FR-014, RN-001). El contrato de arriba lo fijan los characterization tests
+  // de `pos-backend` (`test_cart_service.py`): `discounted_total` es `None` sin
+  // promoción —no cero— y estrictamente menor que `total` con promoción.
+
+  it('sin discounted_total, grossTotal es el total y no hay ahorro', async () => {
+    await load({ ...emptyCart('Ana'), total: '10000' });
+
+    expect(cart.total()).toBe(10000);
+    expect(cart.grossTotal()).toBe(10000);
+    expect(cart.savings()).toBe(0);
+  });
+
+  it('con discounted_total en null (pedido sin promoción) tampoco hay ahorro', async () => {
+    // El backend manda `null`, no cero, cuando no hay promoción: es el caso por
+    // defecto y la fila "Ahorro" no debe aparecer (FR-012).
+    await load({ ...emptyCart('Ana'), total: '10000', discounted_total: null });
+
+    expect(cart.total()).toBe(10000);
+    expect(cart.grossTotal()).toBe(10000);
+    expect(cart.savings()).toBe(0);
+  });
+
+  it('con promoción vigente, el ahorro es la diferencia exacta entre el total de lista y el vigente', async () => {
+    await load({ ...emptyCart('Ana'), total: '10000', discounted_total: '8500' });
+
+    expect(cart.total()).toBe(8500); // el vigente, ya descontado (FR-004)
+    expect(cart.grossTotal()).toBe(10000); // el de lista
+    expect(cart.savings()).toBe(1500);
+  });
+
+  it('si llegara un discounted_total mayor o igual que el total, el ahorro es 0 y nunca negativo', async () => {
+    // El `max(0, …)` no es desconfianza del backend: hace que la fila
+    // simplemente no aparezca, en vez de pintar un "Ahorro: -$500".
+    await load({ ...emptyCart('Ana'), total: '10000', discounted_total: '12000' });
+
+    expect(cart.savings()).toBe(0);
+  });
+
+  it('clear() reinicia grossTotal junto con total, así que tampoco queda ahorro colgado', async () => {
+    await load({ ...emptyCart('Ana'), total: '10000', discounted_total: '8500' });
+
+    cart.clear();
+
+    expect(cart.total()).toBe(0);
+    expect(cart.grossTotal()).toBe(0);
+    expect(cart.savings()).toBe(0);
+  });
 });

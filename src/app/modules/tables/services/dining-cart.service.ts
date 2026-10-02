@@ -61,6 +61,16 @@ export class DiningCartService {
   readonly lines = signal<CartLine[]>([]);
   readonly total = signal(0);
   /**
+   * spec 092 (research.md D5): total **de lista**, sin el descuento de promoción
+   * — `CartResponse.total` tal como llega. Hasta esta spec `apply()` lo
+   * descartaba, quedándose solo con el resultado de `effectivePrice(...)`.
+   *
+   * Existe para poder pintar la fila "Ahorro" (FR-012) **sin inventar ningún
+   * cálculo en el front** (FR-014, RN-001): la diferencia entre este número y
+   * `total()` ya la resolvió el backend.
+   */
+  readonly grossTotal = signal(0);
+  /**
    * Nombre desambiguado del comensal, que viaja en la respuesta del carrito.
    *
    * Vive aquí y no en la pantalla porque `GET /cart` es lo único que se recarga al
@@ -72,6 +82,16 @@ export class DiningCartService {
 
   readonly count = computed(() => this.lines().reduce((n, l) => n + l.quantity, 0));
   readonly isEmpty = computed(() => this.lines().length === 0);
+  /**
+   * spec 092 (FR-012, research.md D5): descuento vigente del pedido. `0`
+   * significa "sin promoción aplicada" y la fila "Ahorro" no se pinta — ni en
+   * cero ni vacía.
+   *
+   * El `max(0, …)` no es desconfianza del backend: hace que la fila simplemente
+   * no aparezca si algún día llegara un `discounted_total` igual o mayor que el
+   * total, en vez de pintar un "Ahorro: -$500".
+   */
+  readonly savings = computed(() => Math.max(0, this.grossTotal() - this.total()));
 
   private index: MenuIndex = { variants: new Map(), options: new Map() };
   /**
@@ -180,6 +200,7 @@ export class DiningCartService {
   clear(): void {
     this.lines.set([]);
     this.total.set(0);
+    this.grossTotal.set(0);
   }
 
   /** Olvida al comensal (sesión expirada o salida de la mesa). */
@@ -230,5 +251,9 @@ export class DiningCartService {
       }),
     );
     this.total.set(effectivePrice(cart.total, cart.discounted_total));
+    // spec 092: el total de lista se conserva en vez de descartarse. `total` NO
+    // cambia de semántica —sigue siendo el vigente, con descuento— porque lo
+    // consumen tres pantallas fuera del alcance de esta spec (Principio V).
+    this.grossTotal.set(Number(cart.total));
   }
 }
