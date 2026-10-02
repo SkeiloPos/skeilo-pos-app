@@ -5,10 +5,13 @@ import { DinerTokenStore } from '../../services/diner-token.store';
 import { DiningCartService } from '../../services/dining-cart.service';
 import { DinerPaymentMethod, PaymentMethodField } from '../../interfaces/diner.interface';
 import { IconComponent } from '../../../../shared/icon/icon.component';
+import { MoneyPipe } from '../../../../shared/money.pipe';
 import { ToastService } from '../../../../shared/feedback/toast.service';
 import { ToastContainerComponent } from '../../../../shared/feedback/toast-container.component';
 import { CheckoutStepIndicatorComponent } from './checkout-step-indicator.component';
 import { CheckoutProgressStore } from './checkout-progress.store';
+import { formatProductCount } from './checkout-product-count';
+import { CheckoutOrderSummaryComponent } from './checkout-order-summary.component';
 
 /**
  * Paso 3 — datos de pago del método de transferencia + carga del comprobante
@@ -19,7 +22,13 @@ import { CheckoutProgressStore } from './checkout-progress.store';
 @Component({
   selector: 'app-transfer-details-step',
   standalone: true,
-  imports: [IconComponent, CheckoutStepIndicatorComponent, ToastContainerComponent],
+  imports: [
+    IconComponent,
+    MoneyPipe,
+    CheckoutStepIndicatorComponent,
+    ToastContainerComponent,
+    CheckoutOrderSummaryComponent,
+  ],
   template: `
     <app-toast-container />
     <div class="min-h-screen bg-gray-50 flex flex-col">
@@ -50,9 +59,30 @@ import { CheckoutProgressStore } from './checkout-progress.store';
           <p class="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-3">{{ error() }}</p>
         }
 
+        <!-- spec 092 (FR-001, FR-002, FR-003) — el total a pagar, el dato sin el
+             cual esta pantalla no cumple su función. Va FUERA de la rama que
+             espera el método a propósito: no depende de que el método haya
+             cargado, así que está visible sin ninguna interacción ni ninguna
+             espera de red (SC-001). Y fuera de toda zona colapsable, para que
+             contraer el resumen nunca lo esconda (FR-002). La cifra es text-3xl
+             y el h1 del método es text-lg: eso la deja siendo el texto más
+             grande de la vista (FR-001). -->
+        <div
+          data-testid="payment-total"
+          class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 text-center"
+        >
+          <p class="text-xs font-medium text-gray-500">Total a pagar</p>
+          <p class="text-3xl font-bold text-gray-900 leading-tight">{{ cart.total() | money }}</p>
+          <p class="text-xs text-gray-400">{{ productCountLabel() }}</p>
+        </div>
+
         @if (!method()) {
           <p class="text-sm text-gray-400 text-center py-8">Cargando datos de pago…</p>
         } @else {
+          <!-- spec 092 (FR-001, FR-016, research.md D9) — el nombre del método
+               queda DEBAJO del bloque de total y ENCIMA del bloque de datos
+               bancarios. Hasta esta spec era lo primero bajo el encabezado;
+               moverlo no es una libertad de diseño, lo exige FR-001. -->
           <h1 class="text-lg font-bold text-gray-900 mb-1">{{ method()!.name }}</h1>
           <p class="text-sm text-gray-500 mb-4">
             Transfiere y sube tu comprobante para enviar el pedido.
@@ -97,6 +127,22 @@ import { CheckoutProgressStore } from './checkout-progress.store';
                 />
               </div>
             }
+          </div>
+
+          <!-- spec 092 (FR-005, FR-016) — el resumen va ENTRE los datos
+               bancarios y la zona de comprobante. En modo colapsable: con más
+               de UMBRAL_EXPANDIDO_POR_DEFECTO líneas llega contraído, que es lo
+               que evita que la suma de QR + lista entierre el botón de enviar
+               (RN-002, FR-017). El total NO es parte de este componente: vive
+               arriba, fuera de toda zona colapsable (FR-002). -->
+          <div class="mt-4">
+            <app-checkout-order-summary
+              [lines]="cart.lines()"
+              [total]="cart.total()"
+              [count]="cart.count()"
+              [savings]="cart.savings()"
+              [collapsible]="true"
+            />
           </div>
 
           <div class="mt-4">
@@ -169,7 +215,9 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly api = inject(DinerService);
   private readonly tokenStore = inject(DinerTokenStore);
-  private readonly cart = inject(DiningCartService);
+  /** spec 092: público para que la plantilla lea el total, el conteo y las
+   *  líneas, siguiendo la convención de `review-step.component.ts`. */
+  readonly cart = inject(DiningCartService);
   private readonly progress = inject(CheckoutProgressStore);
   private readonly toast = inject(ToastService);
 
@@ -200,6 +248,15 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
       (f) => f.format === 'image' && this.method()?.payment_info?.[f.key],
     ),
   );
+
+  /**
+   * spec 092 (FR-003, FR-006): conteo en **unidades** que acompaña al total.
+   *
+   * Sale de `formatProductCount`, la misma composición que lee el `<summary>`
+   * del resumen. Que los dos salgan de ahí es lo que garantiza que el comensal
+   * no vea dos conteos distintos del mismo pedido en esta pantalla (RN-004).
+   */
+  readonly productCountLabel = computed(() => formatProductCount(this.cart.count()));
 
   async ngOnInit(): Promise<void> {
     const record = this.progress.read();
