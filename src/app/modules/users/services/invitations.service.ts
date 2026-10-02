@@ -3,6 +3,8 @@ import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { ApiErrorBody } from '../../../core/auth/auth.models';
+import { stripValueErrorPrefix } from '../../../shared/api-error.util';
+import { FULL_NAME_MESSAGES, normalizeFullName } from '../../../shared/validators/full-name.validator';
 import {
   InvitationCreatePayload,
   InvitationForm,
@@ -36,7 +38,15 @@ export class InvitationsService {
       return false;
     }
 
+    const normalized = normalizeFullName(form.name);
+    if ('error' in normalized) {
+      this.error.set(FULL_NAME_MESSAGES[normalized.error]);
+      this.isSubmitting.set(false);
+      return false;
+    }
+
     const payload: InvitationCreatePayload = {
+      name: normalized.value,
       email: form.email.trim(),
       role: form.role,
     };
@@ -108,7 +118,15 @@ export class InvitationsService {
   private extractError(err: unknown): string {
     if (err instanceof HttpErrorResponse) {
       const body = err.error as ApiErrorBody | null;
-      return body?.detail ?? body?.message ?? 'No se pudo completar la operación.';
+      const detail: unknown = body?.detail;
+      // FastAPI 422: `detail` es un arreglo de `{ msg, loc, ... }` con el prefijo `Value error, `.
+      if (Array.isArray(detail)) {
+        const first = detail[0] as { msg?: string } | undefined;
+        if (first?.msg) return stripValueErrorPrefix(first.msg);
+      } else if (typeof detail === 'string') {
+        return detail;
+      }
+      return body?.message ?? 'No se pudo completar la operación.';
     }
     return 'No se pudo completar la operación.';
   }

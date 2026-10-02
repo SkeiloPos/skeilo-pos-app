@@ -8,6 +8,7 @@ import { TenantUser } from '../interfaces/user-profile.interface';
 import { InvitationsService } from '../services/invitations.service';
 import { UsersService } from '../services/users.service';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { displayName, initialOf } from '../../../shared/person-display';
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Admin',
@@ -102,14 +103,17 @@ const PAGE_SIZES = [10, 20, 50, 100];
                 <!-- Avatar + info -->
                 <div class="flex items-center gap-3 min-w-0">
                   <div
+                    data-testid="user-avatar"
                     class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
                     [class]="roleBadgeClass(user.role_name)"
                   >
-                    {{ user.name.charAt(0).toUpperCase() }}
+                    {{ initialOf(user.name, user.email) }}
                   </div>
                   <div class="min-w-0">
                     <div class="flex items-center gap-2">
-                      <p class="text-sm font-semibold text-gray-800 truncate">{{ user.name }}</p>
+                      <p data-testid="user-title" class="text-sm font-semibold text-gray-800 truncate">
+                        {{ displayName(user.name, user.email) }}
+                      </p>
                       <span
                         class="w-2 h-2 rounded-full shrink-0"
                         [class]="user.active ? 'bg-green-500' : 'bg-gray-300'"
@@ -238,6 +242,10 @@ export class UsersPageComponent implements OnInit {
   readonly roleModalUser = signal<TenantUser | null>(null);
   readonly pageSizes = PAGE_SIZES;
 
+  // Presentación del nombre (spec 091): cuentas anteriores guardan el correo como nombre.
+  readonly displayName = displayName;
+  readonly initialOf = initialOf;
+
   readonly currentUserId = computed(() => this.authService.currentUser()?.id);
 
   ngOnInit(): void {
@@ -247,6 +255,7 @@ export class UsersPageComponent implements OnInit {
 
   openForm(): void {
     this.usersService.error.set(null);
+    this.invitationsService.error.set(null);
     this.showForm.set(true);
   }
 
@@ -264,7 +273,7 @@ export class UsersPageComponent implements OnInit {
   }
 
   async onToggleActive(user: TenantUser): Promise<void> {
-    if (user.active && !confirm(`¿Desactivar al usuario "${user.name}"?`)) return;
+    if (user.active && !confirm(`¿Desactivar al usuario "${displayName(user.name, user.email)}"?`)) return;
     await this.usersService.toggleActive(user.id, !user.active);
   }
 

@@ -27,7 +27,18 @@ const ROLE_BADGE_CLASSES: Record<string, string> = {
           @for (invitation of invitationsService.pendingInvitations(); track invitation.id) {
             <div class="px-5 py-4 flex items-center justify-between gap-3">
               <div class="min-w-0">
-                <p class="text-sm font-semibold text-gray-800 truncate">{{ invitation.email }}</p>
+                @if (invitation.name) {
+                  <p data-testid="invitation-title" class="text-sm font-semibold text-gray-800 truncate">
+                    {{ invitation.name }}
+                  </p>
+                  <p data-testid="invitation-email" class="text-xs text-gray-500 truncate">
+                    {{ invitation.email }}
+                  </p>
+                } @else {
+                  <p data-testid="invitation-title" class="text-sm font-semibold text-gray-800 truncate">
+                    {{ invitation.email }}
+                  </p>
+                }
                 <p class="text-xs text-gray-500">
                   Enviada el {{ invitation.sent_at | date: 'dd/MM/yyyy HH:mm' }}
                 </p>

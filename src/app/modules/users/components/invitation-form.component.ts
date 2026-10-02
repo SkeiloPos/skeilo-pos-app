@@ -1,7 +1,8 @@
-import { Component, EventEmitter, Output, inject } from '@angular/core';
+import { Component, EventEmitter, OnInit, Output, inject } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RoleName, InvitationForm } from '../interfaces/user-profile.interface';
 import { InvitationsService } from '../services/invitations.service';
+import { fullNameValidator } from '../../../shared/validators/full-name.validator';
 
 @Component({
   selector: 'app-invitation-form',
@@ -22,6 +23,22 @@ import { InvitationsService } from '../services/invitations.service';
             {{ invitationsService.error() }}
           </div>
         }
+
+        <!-- Nombre completo (spec 091): primero, antes de correo y rol -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1.5">Nombre completo</label>
+          <input
+            type="text"
+            formControlName="name"
+            placeholder="María Pérez"
+            autocomplete="off"
+            class="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition"
+            [class.border-red-300]="nameInvalid"
+          />
+          @if (nameInvalid) {
+            <p class="text-red-500 text-xs mt-1">{{ nameError }}</p>
+          }
+        </div>
 
         <!-- Email -->
         <div>
@@ -67,7 +84,7 @@ import { InvitationsService } from '../services/invitations.service';
           </button>
           <button
             type="button"
-            (click)="cancelled.emit()"
+            (click)="onCancel()"
             [disabled]="invitationsService.isSubmitting()"
             class="flex-1 py-2.5 bg-gray-100 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-200 disabled:opacity-50 transition-colors"
           >
@@ -78,17 +95,25 @@ import { InvitationsService } from '../services/invitations.service';
     </div>
   `,
 })
-export class InvitationFormComponent {
+export class InvitationFormComponent implements OnInit {
   @Output() saved = new EventEmitter<void>();
   @Output() cancelled = new EventEmitter<void>();
 
   readonly invitationsService = inject(InvitationsService);
 
   readonly form = new FormGroup({
+    name: new FormControl('', { nonNullable: true, validators: [fullNameValidator()] }),
     email: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.email] }),
     role: new FormControl<RoleName | ''>('', { nonNullable: true, validators: [Validators.required] }),
   });
 
+  get nameInvalid(): boolean {
+    const c = this.form.controls.name;
+    return c.invalid && c.touched;
+  }
+  get nameError(): string {
+    return this.form.controls.name.errors?.['fullName']?.message ?? '';
+  }
   get emailInvalid(): boolean {
     const c = this.form.controls.email;
     return c.invalid && c.touched;
@@ -107,7 +132,19 @@ export class InvitationFormComponent {
     const saved = await this.invitationsService.createInvitation(this.form.getRawValue() as InvitationForm);
 
     if (saved) {
+      this.form.reset();
       this.saved.emit();
     }
+  }
+
+  /** El error vive en un servicio singleton: sin limpiarlo, sobreviviría a cerrar y reabrir (FR-023). */
+  ngOnInit(): void {
+    this.invitationsService.error.set(null);
+  }
+
+  onCancel(): void {
+    this.form.reset();
+    this.invitationsService.error.set(null);
+    this.cancelled.emit();
   }
 }
