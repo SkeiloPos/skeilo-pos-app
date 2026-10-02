@@ -20,6 +20,7 @@ import { AdminUser, AdminUserForm } from '../interfaces/admin-user.interface';
 import { SuperAdminUsersService } from '../services/super-admin-users.service';
 import { TenantService } from '../services/tenant.service';
 import { PasswordInputComponent } from '../../../shared/password-input/password-input.component';
+import { fullNameValidator, normalizeFullName } from '../../../shared/validators/full-name.validator';
 
 /** Tenant roles the super admin can assign (creating super admins is out of scope). */
 const ASSIGNABLE_ROLES: { value: UserRole; label: string }[] = [
@@ -92,17 +93,27 @@ const ASSIGNABLE_ROLES: { value: UserRole; label: string }[] = [
             </div>
           }
 
-          <!-- Name -->
+          <!-- Name: obligatorio al crear; al editar, opcional pero válido si se escribe (spec 091) -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">
-              Nombre <span class="text-gray-400 font-normal">(opcional)</span>
+              Nombre completo
+              @if (user) {
+                <span class="text-gray-400 font-normal">(opcional)</span>
+              } @else {
+                <span class="text-red-500">*</span>
+              }
             </label>
             <input
               type="text"
               formControlName="name"
               placeholder="Nombre completo"
-              class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              [class.border-red-400]="nameControl.invalid && nameControl.touched"
+              [class.border-gray-200]="!(nameControl.invalid && nameControl.touched)"
             />
+            @if (nameControl.touched && nameControl.errors?.['fullName']) {
+              <p class="text-red-500 text-xs mt-1">{{ nameControl.errors?.['fullName'].message }}</p>
+            }
           </div>
 
           <!-- Role -->
@@ -194,13 +205,16 @@ export class AdminUserFormComponent implements OnInit, OnChanges {
       nonNullable: true,
       validators: [Validators.required, Validators.minLength(6)],
     }),
-    name: new FormControl('', { nonNullable: true }),
+    name: new FormControl('', { nonNullable: true, validators: [fullNameValidator()] }),
     role: new FormControl<UserRole | ''>('', { nonNullable: true, validators: [Validators.required] }),
     tenant_id: new FormControl<number | null>(null, { validators: [Validators.required] }),
   });
 
   get emailControl(): AbstractControl {
     return this.form.controls.email;
+  }
+  get nameControl(): AbstractControl {
+    return this.form.controls.name;
   }
   get passwordControl(): AbstractControl {
     return this.form.controls.password;
@@ -231,11 +245,15 @@ export class AdminUserFormComponent implements OnInit, OnChanges {
         tenant_id: this.user.tenant_id,
       });
       this.emailControl.disable();
+      this.nameControl.setValidators([fullNameValidator({ optional: true })]);
+      this.nameControl.updateValueAndValidity();
       this.passwordControl.clearValidators();
       this.passwordControl.updateValueAndValidity();
     } else {
       this.form.reset({ email: '', password: '', name: '', role: '', tenant_id: null });
       this.emailControl.enable();
+      this.nameControl.setValidators([fullNameValidator()]);
+      this.nameControl.updateValueAndValidity();
       this.passwordControl.setValidators([Validators.required, Validators.minLength(6)]);
       this.passwordControl.updateValueAndValidity();
     }
@@ -249,7 +267,8 @@ export class AdminUserFormComponent implements OnInit, OnChanges {
     const data: AdminUserForm = {
       email: raw.email.trim(),
       password: raw.password,
-      name: raw.name.trim(),
+      // Normalizado (recorte + NFC) cuando se escribió; vacío al editar sin nombre propio.
+      name: raw.name.trim() === '' ? '' : (normalizeFullName(raw.name) as { value: string }).value,
       role: raw.role as UserRole,
       tenant_id: raw.tenant_id,
     };
