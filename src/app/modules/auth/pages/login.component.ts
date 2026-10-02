@@ -30,6 +30,20 @@ const ROLE_HOME: Record<UserRole, string> = {
           <div class="w-full max-w-sm mx-auto lg:mx-0">
             <!-- Contexto resuelto por el dominio, no elegido a mano: dice en qué
                  puerta estás llamando antes de teclear las credenciales. -->
+            @if (tenant.isUnrecognized()) {
+              <!-- Host sin acceso (dominio raíz, reservado o desconocido): sin formulario
+                   y sin llamadas al API (spec 091, FR-005/FR-006). -->
+              <div
+                data-testid="unrecognized-host"
+                class="rounded-xl border border-amber-200 bg-amber-50 px-5 py-6 text-amber-800"
+              >
+                <h1 class="text-lg font-bold">Esta dirección no corresponde a ningún acceso</h1>
+                <p class="text-sm mt-2 leading-relaxed">
+                  Verifica la dirección e ingresa desde el enlace de tu negocio o desde el acceso de
+                  administración de la plataforma.
+                </p>
+              </div>
+            } @else {
             @if (tenant.isSuperAdmin()) {
               <span
                 class="inline-flex items-center gap-1.5 mb-5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold"
@@ -116,6 +130,7 @@ const ROLE_HOME: Record<UserRole, string> = {
                 }
               </button>
             </form>
+            }
           </div>
         </div>
 
@@ -163,7 +178,7 @@ export class LoginComponent {
 
   async submit(): Promise<void> {
     this.form.markAllAsTouched();
-    if (this.form.invalid) return;
+    if (this.form.invalid || this.tenant.isUnrecognized()) return;
 
     this.isLoading.set(true);
     this.errorMessage.set(null);
@@ -184,7 +199,7 @@ export class LoginComponent {
         this.router.navigate(['/change-password']);
         return;
       }
-      // Root domain → Super Admin area; tenant subdomain → role-based POS home.
+      // `admin.<dominio>` → Super Admin area; tenant subdomain → role-based POS home.
       const target = this.tenant.isSuperAdmin() ? '/super-admin' : ROLE_HOME[user.role];
       this.router.navigate([target]);
     }
