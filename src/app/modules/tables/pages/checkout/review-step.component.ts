@@ -2,8 +2,8 @@ import { Component, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DiningCartService } from '../../services/dining-cart.service';
 import { IconComponent } from '../../../../shared/icon/icon.component';
-import { MoneyPipe } from '../../../../shared/money.pipe';
 import { CheckoutStepIndicatorComponent } from './checkout-step-indicator.component';
+import { CheckoutOrderSummaryComponent } from './checkout-order-summary.component';
 
 /**
  * Paso 1 — resumen del pedido (spec 034, US2, FR-001). Sustituye al primer
@@ -14,7 +14,7 @@ import { CheckoutStepIndicatorComponent } from './checkout-step-indicator.compon
 @Component({
   selector: 'app-review-step',
   standalone: true,
-  imports: [IconComponent, MoneyPipe, CheckoutStepIndicatorComponent],
+  imports: [IconComponent, CheckoutStepIndicatorComponent, CheckoutOrderSummaryComponent],
   template: `
     <div class="min-h-screen bg-gray-50 flex flex-col">
       <div class="bg-white border-b border-gray-100 sticky top-0 z-10">
@@ -30,29 +30,19 @@ import { CheckoutStepIndicatorComponent } from './checkout-step-indicator.compon
       <div class="flex-1 max-w-lg w-full mx-auto px-4 py-6">
         <h1 class="text-lg font-bold text-gray-900 mb-4">Tu pedido</h1>
 
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-2">
-          @for (line of cart.lines(); track line.id) {
-            <div class="flex items-start justify-between gap-2 text-sm">
-              <div class="min-w-0">
-                <p class="text-gray-800 truncate">
-                  <span class="font-medium">{{ line.quantity }}×</span>
-                  {{ line.productName }} · {{ line.variantName }}
-                </p>
-                @if (line.optionNames.length > 0) {
-                  <p class="text-xs text-gray-400 truncate">{{ line.optionNames.join(', ') }}</p>
-                }
-                @if (line.notes) {
-                  <p class="text-xs text-gray-400 italic truncate">"{{ line.notes }}"</p>
-                }
-              </div>
-              <span class="text-gray-700 font-medium shrink-0">{{ line.lineTotal | money }}</span>
-            </div>
-          }
-          <div class="flex justify-between items-center border-t border-gray-100 pt-3 mt-1">
-            <span class="text-sm font-semibold text-gray-700">Total</span>
-            <span class="text-base font-bold text-gray-900">{{ cart.total() | money }}</span>
-          </div>
-        </div>
+        <!-- spec 092 (FR-021, FR-022) — el resumen que vivía embebido aquí es
+             ahora el componente compartido que este paso y el de datos de pago
+             consumen, para que los dos no puedan divergir (RN-004). NO se le
+             pasa collapsible: su default es false, así que este paso lo muestra
+             siempre expandido, sin chevron y sin control de colapso.
+             La fila "Ahorro" aparece cuando hay promoción vigente — cambio
+             visible autorizado por el negocio el 2026-10-02 (A-103, D6). -->
+        <app-checkout-order-summary
+          [lines]="cart.lines()"
+          [total]="cart.total()"
+          [count]="cart.count()"
+          [savings]="cart.savings()"
+        />
 
         <button
           (click)="continue()"
