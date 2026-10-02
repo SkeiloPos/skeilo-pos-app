@@ -210,6 +210,14 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
           <path d="m7 10 5 5 5-5" />
           <path d="M4 19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" />
         }
+        @case ('chevron-down') {
+          <!-- spec 092 (research.md D3): indicador del colapsable del resumen
+               del checkout. Se añade al set propio en vez de rotar por CSS el
+               marcador nativo del <summary>, porque ::marker acepta muy pocas
+               propiedades y la forma del triángulo difiere entre navegadores.
+               Un icono propio se ve igual en los tres. -->
+          <path d="m6 9 6 6 6-6" />
+        }
         @default {
           <circle cx="12" cy="12" r="9" />
           <circle cx="12" cy="12" r="1" />
