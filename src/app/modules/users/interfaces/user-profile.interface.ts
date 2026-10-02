@@ -24,15 +24,17 @@ export interface TenantUser {
   updated_at: string | null;
 }
 
-/** Campos capturados por el formulario "Agregar usuario" — exactamente correo y rol,
- * sin contraseña (FR-001): dar de alta un usuario interno ocurre solo por invitación. */
+/** Campos capturados por el formulario "Invitar usuario": nombre completo (spec 091), correo
+ * y rol, sin contraseña (FR-001): dar de alta un usuario interno ocurre solo por invitación. */
 export interface InvitationForm {
+  name: string;
   email: string;
   role: RoleName | '';
 }
 
 /** Cuerpo para `POST /invitations` (`InvitationCreate`). */
 export interface InvitationCreatePayload {
+  name: string;
   email: string;
   role: RoleName;
 }
@@ -40,6 +42,8 @@ export interface InvitationCreatePayload {
 /** Invitación pendiente tal como la devuelve la API (`InvitationResponse`). */
 export interface PendingInvitation {
   id: string;
+  /** Nombre completo capturado al invitar; `null` en las invitaciones anteriores a la spec 091. */
+  name: string | null;
   email: string;
   role_name: string;
   sent_at: string;

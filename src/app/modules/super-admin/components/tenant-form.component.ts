@@ -4,6 +4,8 @@ import {
   FormControl,
   FormGroup,
   ReactiveFormsModule,
+  ValidationErrors,
+  ValidatorFn,
   Validators,
 } from '@angular/forms';
 import { environment } from '../../../../environments/environment';
@@ -18,6 +20,24 @@ function toSlug(value: string): string {
     .replace(/[̀-ͯ]/g, '') // strip accents
     .toLowerCase()
     .replace(/[^a-z0-9]/g, ''); // keep only [a-z0-9]
+}
+
+/**
+ * spec 091 (A-101): el host no puede ser un subdominio reservado (`admin`, `assets`,
+ * `api`, `docs`, `www`, `app`). Mismo recorte y minúsculas que el backend; la lista es
+ * `environment.reservedSlugs`.
+ */
+export function reservedHostValidator(): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const value = String(control.value ?? '').trim().toLowerCase();
+    return value && environment.reservedSlugs.includes(value)
+      ? {
+          reserved: {
+            message: `«${value}» es una palabra reservada y no puede usarse como subdominio`,
+          },
+        }
+      : null;
+  };
 }
 
 @Component({
@@ -98,7 +118,9 @@ function toSlug(value: string): string {
                 [class.border-gray-200]="!invalid('host')"
               />
               @if (invalid('host')) {
-                <p class="text-red-500 text-xs mt-1">Mínimo 3 caracteres</p>
+                <p class="text-red-500 text-xs mt-1">
+                  {{ form.controls.host.errors?.['reserved']?.message ?? 'Mínimo 3 caracteres' }}
+                </p>
               }
             </div>
           </div>
@@ -238,7 +260,7 @@ export class TenantFormComponent implements OnInit {
     }),
     host: new FormControl('', {
       nonNullable: true,
-      validators: [Validators.required, Validators.minLength(3)],
+      validators: [Validators.required, Validators.minLength(3), reservedHostValidator()],
     }),
     name: new FormControl('', {
       nonNullable: true,
@@ -265,6 +287,10 @@ export class TenantFormComponent implements OnInit {
     }
     if (!this.hostTouchedManually) {
       this.form.controls.host.setValue(slug ? `${slug}` : '');
+      // Una sugerencia reservada (p. ej. el nombre "Admin") se muestra ya como error.
+      if (this.form.controls.host.errors?.['reserved']) {
+        this.form.controls.host.markAsTouched();
+      }
     }
   }
 

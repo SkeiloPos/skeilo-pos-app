@@ -1,4 +1,5 @@
 import { computed, Injectable, signal, Signal } from '@angular/core';
+import { environment } from '../../../environments/environment';
 import { TenantContext, TenantKind } from './tenant-context.model';
 
 /**
@@ -26,9 +27,26 @@ export class TenantContextService {
     () => this.context().kind === TenantKind.SuperAdmin
   );
 
+  readonly isTenant: Signal<boolean> = computed(() => this.context().kind === TenantKind.Tenant);
+
+  readonly isUnrecognized: Signal<boolean> = computed(
+    () => this.context().kind === TenantKind.Unrecognized
+  );
+
   readonly tenantSlug: Signal<string | null> = computed(() => {
     const ctx = this.context();
     return ctx.kind === TenantKind.Tenant ? ctx.slug : null;
+  });
+
+  /**
+   * Value of `X-Tenant-Host` for the API: the tenant slug, the platform slug in the
+   * SUPER_ADMIN context, or `null` (no header) when the host is not recognized.
+   */
+  readonly tenantHostHeader: Signal<string | null> = computed(() => {
+    const ctx = this.context();
+    if (ctx.kind === TenantKind.Tenant) return ctx.slug;
+    if (ctx.kind === TenantKind.SuperAdmin) return environment.platformSlug;
+    return null;
   });
 
   /** Fix the context once. Intended for the startup initializer only. */

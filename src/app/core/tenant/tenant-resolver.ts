@@ -3,21 +3,22 @@ import { TenantContext, TenantKind } from './tenant-context.model';
 /** Subset of `AppEnvironment` the pure resolver needs. */
 export interface TenantResolverConfig {
   readonly rootDomain: string;
-  readonly devRootHosts: readonly string[];
+  readonly platformSlug: string;
   readonly reservedSlugs: readonly string[];
 }
 
 /**
  * Pure function: maps a hostname to a {@link TenantContext}. No Angular, no
- * globals — trivially unit-testable.
+ * globals — trivially unit-testable. Contract:
+ * `specs/091-admin-subdominio-nombre-completo/contracts/tenant-context-resolution.md`.
  *
- * Algorithm (see design.md §4):
- *  1. Normalize (lowercase; `location.hostname` already excludes the port).
- *  2. Root/dev host or exact `rootDomain` → SUPER_ADMIN.
- *  3. `<slug>.<rootDomain>` → TENANT(slug).
- *  4. `<slug>.localhost` → TENANT(slug).
- *  5. Reserved slug → SUPER_ADMIN.
- *  6. No match → SUPER_ADMIN (safe default) + warning.
+ * Algorithm:
+ *  1. Normalize (lowercase, trim; `location.hostname` already excludes the port).
+ *  2. Exactly the root domain (and `localhost` / `127.0.0.1` in development) → UNRECOGNIZED:
+ *     only `admin.<rootDomain>` reaches the platform login; there is no "local mode".
+ *  3. `<slug>.<rootDomain>` or `<slug>.localhost` (first label only):
+ *     `platformSlug` → SUPER_ADMIN; reserved slug → UNRECOGNIZED; otherwise TENANT(slug).
+ *  4. Anything else → UNRECOGNIZED.
  */
 export function resolveTenantContext(
   hostname: string,
@@ -26,28 +27,20 @@ export function resolveTenantContext(
   const host = hostname.trim().toLowerCase();
   const rootDomain = config.rootDomain.toLowerCase();
 
-  // 2. Root / dev hosts.
-  if (host === rootDomain || config.devRootHosts.includes(host)) {
-    return { kind: TenantKind.SuperAdmin, hostname: host };
+  // 2. The root domain is not an access point.
+  if (host === rootDomain) {
+    return { kind: TenantKind.Unrecognized, hostname: host };
   }
 
-  // 3. Subdomain of the configured root domain.
-  const rootSlug = extractLeadingLabel(host, `.${rootDomain}`);
-  if (rootSlug !== null) {
-    return finalizeSlug(rootSlug, host, config);
+  // 3. Subdomain of the configured root domain, or a local `*.localhost` one.
+  const slug =
+    extractLeadingLabel(host, `.${rootDomain}`) ?? extractLeadingLabel(host, '.localhost');
+  if (slug !== null) {
+    return classifySlug(slug, host, config);
   }
 
-  // 4. Local subdomain (`*.localhost`), independent of rootDomain config.
-  const localSlug = extractLeadingLabel(host, '.localhost');
-  if (localSlug !== null) {
-    return finalizeSlug(localSlug, host, config);
-  }
-
-  // 6. Safe default.
-  console.warn(
-    `[tenant-resolver] Unrecognized hostname "${host}"; defaulting to SUPER_ADMIN.`
-  );
-  return { kind: TenantKind.SuperAdmin, hostname: host };
+  // 4. Unknown host: no silent fallback to Super Admin.
+  return { kind: TenantKind.Unrecognized, hostname: host };
 }
 
 /**
@@ -64,14 +57,12 @@ function extractLeadingLabel(host: string, suffix: string): string | null {
   return firstLabel.length > 0 ? firstLabel : null;
 }
 
-/** Reserved slugs collapse back to the root/Super Admin context. */
-function finalizeSlug(
-  slug: string,
-  host: string,
-  config: TenantResolverConfig
-): TenantContext {
-  if (config.reservedSlugs.includes(slug)) {
+function classifySlug(slug: string, host: string, config: TenantResolverConfig): TenantContext {
+  if (slug === config.platformSlug) {
     return { kind: TenantKind.SuperAdmin, hostname: host };
+  }
+  if (config.reservedSlugs.includes(slug)) {
+    return { kind: TenantKind.Unrecognized, hostname: host };
   }
   return { kind: TenantKind.Tenant, slug, hostname: host };
 }
