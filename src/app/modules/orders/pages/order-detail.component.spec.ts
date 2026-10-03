@@ -747,3 +747,31 @@ describe('OrderDetailComponent — huecos de datos (spec 094, US3)', () => {
     expect(texto).not.toContain('N/A');
   });
 });
+
+describe('OrderDetailComponent — la etiqueta "Cliente" (spec 094, US4)', () => {
+  const billing = {
+    state: 'sin_factura' as const,
+    source: 'pedido' as const,
+    subtotal: '8000',
+    discount: '0',
+    discount_label: null,
+    delivery_fee: '0',
+    total: '8000',
+    promotions: [],
+    sin_detalle_de_precios: false,
+  };
+
+  for (const tipo of ['DINE_IN', 'TAKEAWAY', 'DELIVERY']) {
+    it(`con order_type ${tipo}, la etiqueta dice "Cliente" y "Comensal" no aparece`, async () => {
+      // FR-013, SC-005: la palabra "Comensal" no debe quedar en ninguna parte de
+      // la pantalla, en ninguno de los tres tipos de pedido.
+      const { el } = await montar(
+        pedido({ order_type: tipo, customer_name: 'María Gómez', billing } as Partial<DiningOrder>),
+      );
+
+      expect(el.textContent).toContain('Cliente');
+      expect(el.textContent).toContain('María Gómez');
+      expect(el.textContent).not.toContain('Comensal');
+    });
+  }
+});

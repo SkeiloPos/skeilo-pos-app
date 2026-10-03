@@ -89,7 +89,9 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
 
           <div class="px-5 py-3 grid grid-cols-2 gap-4 border-b border-gray-100 text-sm">
             <div>
-              <p class="text-xs text-gray-400">Comensal</p>
+              <!-- spec 094 (FR-013, US4): "Comensal" solo era correcto en mesa; el
+                   mismo nombre aparece en pedidos para llevar y a domicilio. -->
+              <p class="text-xs text-gray-400">Cliente</p>
               <!-- spec 087 (FR-004, A-88): destacado -- "Cliente sin nombre"
                    solo para pedidos históricos anteriores a esta spec
                    (customer_name nulo/vacío), nunca migrados. -->
