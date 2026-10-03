@@ -7,25 +7,32 @@ import { CategoryService } from '../../categories/services/category.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
 import { PaginationBarComponent } from '../../../shared/pagination/pagination-bar.component';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { RelativeTimePipe } from '../../../shared/relative-time.pipe';
+import { AuthService } from '../../../core/services/auth.service';
+import { UserRole } from '../../../core/interfaces/user.interface';
 
 @Component({
   selector: 'app-products-page',
   standalone: true,
-  imports: [FormsModule, PaginationBarComponent, IconMiComponent],
+  imports: [FormsModule, PaginationBarComponent, IconMiComponent, RelativeTimePipe],
   template: `
     <div class="space-y-6">
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-2xl font-bold text-gray-900">Carta del menú</h1>
-          <p class="text-gray-500 text-sm mt-1">Gestiona el catálogo de productos</p>
+          <p class="text-gray-500 text-sm mt-1">
+            {{ isAdmin() ? 'Gestiona el catálogo de productos' : 'Consulta el catálogo y marca lo que se agote' }}
+          </p>
         </div>
-        <button
-          (click)="openCreate()"
-          class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors"
-        >
-          <app-mi-icon name="add" [size]="16" /> Nuevo producto
-        </button>
+        @if (isAdmin()) {
+          <button
+            (click)="openCreate()"
+            class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors"
+          >
+            <app-mi-icon name="add" [size]="16" /> Nuevo producto
+          </button>
+        }
       </div>
 
       <!-- Filters -->
@@ -37,14 +44,25 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           placeholder="Buscar por nombre..."
           class="flex-1 min-w-48 px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
         />
+        @if (isAdmin()) {
+          <select
+            [ngModel]="statusFilterValue"
+            (ngModelChange)="onStatusFilterChange($event)"
+            class="px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+          >
+            <option value="all">Todos</option>
+            <option value="active">Activos</option>
+            <option value="inactive">Inactivos</option>
+          </select>
+        }
         <select
-          [ngModel]="statusFilterValue"
-          (ngModelChange)="onStatusFilterChange($event)"
+          [ngModel]="availabilityFilterValue"
+          (ngModelChange)="onAvailabilityFilterChange($event)"
           class="px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
         >
           <option value="all">Todos</option>
-          <option value="active">Activos</option>
-          <option value="inactive">Inactivos</option>
+          <option value="available">Disponibles</option>
+          <option value="sold_out">Agotados</option>
         </select>
       </div>
 
@@ -118,7 +136,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 @for (product of productService.products(); track product.id) {
                   <tr
                     [class.opacity-50]="!product.active"
-                    class="hover:bg-gray-50 transition-colors"
+                    (click)="onRowClick(product)"
+                    class="hover:bg-gray-50 transition-colors cursor-pointer"
                   >
                     <td class="px-5 py-4">
                       <div class="flex items-center gap-3">
@@ -186,15 +205,27 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                             class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700"
                             >Agotado</span
                           >
+                          @if (product.available_changed_at) {
+                            <span class="text-xs text-gray-400">{{
+                              product.available_changed_at | relativeTime
+                            }}</span>
+                          }
                         }
                       </div>
                     </td>
-                    <td class="px-5 py-4">
+                    <td class="px-5 py-4" (click)="$event.stopPropagation()">
                       <div class="flex items-center justify-end gap-2">
                         <button
                           (click)="onToggleAvailable(product)"
-                          [title]="product.available ? 'Marcar agotado' : 'Marcar disponible'"
-                          class="p-2 rounded-lg transition-colors"
+                          [disabled]="!product.active"
+                          [title]="
+                            !product.active
+                              ? 'Un producto inactivo no se puede marcar como agotado'
+                              : product.available
+                                ? 'Marcar agotado'
+                                : 'Marcar disponible'
+                          "
+                          class="p-2 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                           [class]="
                             product.available
                               ? 'text-gray-400 hover:text-red-600 hover:bg-red-50'
@@ -207,29 +238,39 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                             [size]="18"
                           />
                         </button>
-                        <button
-                          (click)="openEdit(product)"
-                          title="Editar"
-                          class="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                        >
-                          <app-mi-icon name="edit" ariaLabel="Editar" [size]="18" />
-                        </button>
-                        <button
-                          (click)="onToggle(product)"
-                          [title]="product.active ? 'Desactivar' : 'Activar'"
-                          class="p-2 rounded-lg transition-colors"
-                          [class]="
-                            product.active
-                              ? 'text-red-600 hover:text-red-700 hover:bg-red-50'
-                              : 'text-green-600 hover:text-green-700 hover:bg-green-50'
-                          "
-                        >
-                          <app-mi-icon
-                            name="circle"
-                            [ariaLabel]="product.active ? 'Desactivar' : 'Activar'"
-                            [size]="14"
-                          />
-                        </button>
+                        @if (isAdmin()) {
+                          <button
+                            (click)="openEdit(product)"
+                            title="Editar"
+                            class="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          >
+                            <app-mi-icon name="edit" ariaLabel="Editar" [size]="18" />
+                          </button>
+                          <button
+                            (click)="onToggle(product)"
+                            [title]="product.active ? 'Desactivar' : 'Activar'"
+                            class="p-2 rounded-lg transition-colors"
+                            [class]="
+                              product.active
+                                ? 'text-red-600 hover:text-red-700 hover:bg-red-50'
+                                : 'text-green-600 hover:text-green-700 hover:bg-green-50'
+                            "
+                          >
+                            <app-mi-icon
+                              name="circle"
+                              [ariaLabel]="product.active ? 'Desactivar' : 'Activar'"
+                              [size]="14"
+                            />
+                          </button>
+                        } @else {
+                          <button
+                            (click)="onRowClick(product)"
+                            title="Ver detalle"
+                            class="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          >
+                            <app-mi-icon name="eye" ariaLabel="Ver detalle" [size]="18" />
+                          </button>
+                        }
                       </div>
                     </td>
                   </tr>
@@ -256,12 +297,18 @@ export class ProductsPageComponent implements OnInit, OnDestroy {
   private readonly categoryService = inject(CategoryService);
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
+  private readonly auth = inject(AuthService);
+
+  /** spec 093: el Cajero comparte esta pantalla con el Admin, en solo lectura salvo
+   *  el interruptor "Agotado" -- mismo patrón que `cash-session.store.ts`. */
+  readonly isAdmin = computed(() => this.auth.currentUser()?.role === UserRole.ADMIN);
 
   /** Local echo of the search box; the actual query to the service is debounced. */
   readonly searchSignal = signal('');
   private searchDebounce: ReturnType<typeof setTimeout> | null = null;
 
   statusFilterValue: 'all' | 'active' | 'inactive' = 'all';
+  availabilityFilterValue: 'all' | 'available' | 'sold_out' = 'all';
 
   private readonly categoryMap = computed(() => {
     const map = new Map<string, string>();
@@ -293,12 +340,24 @@ export class ProductsPageComponent implements OnInit, OnDestroy {
     this.productService.setActiveFilter(value === 'all' ? '' : value);
   }
 
+  onAvailabilityFilterChange(value: 'all' | 'available' | 'sold_out'): void {
+    this.availabilityFilterValue = value;
+    this.productService.setAvailabilityFilter(value === 'all' ? '' : value);
+  }
+
   categoryName(categoryId: string): string {
     return this.categoryMap().get(categoryId) ?? '—';
   }
 
   openCreate(): void {
     this.router.navigate(['/dashboard/products/new']);
+  }
+
+  /** Escenario 9: clic en una fila / "Ver detalle". El Admin sigue yendo al
+   *  formulario de edición de siempre; el Cajero va al detalle de solo lectura. */
+  onRowClick(product: Product): void {
+    if (this.isAdmin()) this.openEdit(product);
+    else this.router.navigate(['/dashboard/products', product.id, 'detalle']);
   }
 
   openEdit(product: Product): void {
@@ -312,8 +371,11 @@ export class ProductsPageComponent implements OnInit, OnDestroy {
   async onToggleAvailable(product: Product): Promise<void> {
     const ok = await this.productService.toggleAvailable(product.id, product.available);
     if (ok)
+      // Escenario 3: texto exacto de la spec ("Fresa boom marcado como agotado").
       this.toast.success(
-        product.available ? `"${product.name}" marcado agotado` : `"${product.name}" disponible`,
+        product.available
+          ? `${product.name} marcado como agotado`
+          : `${product.name} disponible`,
       );
     else this.toast.error(this.productService.error() ?? 'No se pudo actualizar');
   }

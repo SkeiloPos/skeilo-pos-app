@@ -236,4 +236,47 @@ describe('PosCatalogDrawerComponent', () => {
     expect(store.catalogOpen()).toBe(false);
     expect(store.draftLines()).toHaveLength(1);
   });
+
+  // ─── spec 093 (escenario 5): producto agotado, atenuado y sin poder agregarse ───
+
+  function soldOutProduct(id: string, name: string): MenuProduct {
+    return { ...product(id, name), sold_out: true } as unknown as MenuProduct;
+  }
+
+  it('un producto agotado sigue visible, con la etiqueta "Agotado"', () => {
+    menuService.categories.set([
+      { id: 'c1', name: 'Bebidas', products: [soldOutProduct('p1', 'Fresa boom')] },
+    ]);
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Fresa boom');
+    expect(text).toContain('Agotado');
+  });
+
+  it('el botón de un producto agotado está deshabilitado y no abre la configuración', () => {
+    menuService.categories.set([
+      { id: 'c1', name: 'Bebidas', products: [soldOutProduct('p1', 'Fresa boom')] },
+    ]);
+    fixture.detectChanges();
+
+    const productButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Fresa boom'),
+    ) as HTMLButtonElement;
+
+    expect(productButton.disabled).toBe(true);
+    productButton.click();
+    expect(store.configuringProduct()).toBeNull();
+  });
+
+  it('un producto disponible no muestra la etiqueta "Agotado" ni queda deshabilitado', () => {
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).not.toContain('Agotado');
+    const productButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Malteada de fresa'),
+    ) as HTMLButtonElement;
+    expect(productButton.disabled).toBe(false);
+  });
 });

@@ -411,6 +411,8 @@ export class DinerService {
         // `?? true` para no romper contra un backend aún sin desplegar: sin el campo,
         // todo se comporta como antes (disponible).
         available: (p['available'] as boolean) ?? true,
+        // spec 093: marcado manual de "Agotado" (Cajero/Admin).
+        sold_out: (p['sold_out'] as boolean) ?? false,
         option_groups: mapGroups(p['option_groups']),
       })),
     };

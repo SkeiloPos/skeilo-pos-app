@@ -241,6 +241,48 @@ describe('PublicMenuComponent', () => {
     expect(fixture.nativeElement.querySelector('app-icon[name="image-off"]')).toBeNull();
   });
 
+  // ── spec 093 (escenario 6): producto agotado, atenuado, sin poder agregarse ──
+
+  it('un producto agotado sigue visible en el menú, con la etiqueta "Agotado"', async () => {
+    const categories: MenuCategory[] = [
+      { id: 'c1', name: 'Helados', products: [product({ id: 'p1', name: 'Fresa boom', sold_out: true })] },
+    ];
+    const { fixture } = await createComponent('tok-1', categories, { withSession: true });
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain('Fresa boom');
+    expect(texto).toContain('Agotado');
+  });
+
+  it('el botón de un producto agotado está deshabilitado y no abre la selección de variante', async () => {
+    const categories: MenuCategory[] = [
+      { id: 'c1', name: 'Helados', products: [product({ id: 'p1', name: 'Fresa boom', sold_out: true })] },
+    ];
+    const { fixture } = await createComponent('tok-1', categories, { withSession: true });
+
+    const productButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Fresa boom'),
+    ) as HTMLButtonElement;
+
+    expect(productButton.disabled).toBe(true);
+    productButton.click();
+    expect(fixture.componentInstance.selectedProduct()).toBeNull();
+  });
+
+  it('un producto disponible no muestra la etiqueta "Agotado" ni queda deshabilitado', async () => {
+    const categories: MenuCategory[] = [
+      { id: 'c1', name: 'Helados', products: [product({ id: 'p1', name: 'Oreo split', sold_out: false })] },
+    ];
+    const { fixture } = await createComponent('tok-1', categories, { withSession: true });
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).not.toContain('Agotado');
+    const productButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Oreo split'),
+    ) as HTMLButtonElement;
+    expect(productButton.disabled).toBe(false);
+  });
+
   // ── Notas del ítem en "Mis pedidos" (spec 061, FR-001 a FR-003) ───────────
 
   it('una nota de ítem se muestra en "Mis pedidos", asociada solo a la línea que la tiene (FR-001 a FR-003)', async () => {

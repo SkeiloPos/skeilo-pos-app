@@ -120,10 +120,12 @@ export const dashboardRoutes: Routes = [
         canActivate: [roleGuard([UserRole.ADMIN])],
       },
       {
+        // spec 093: el Cajero entra a la misma pantalla que el Admin, en solo
+        // lectura salvo el interruptor "Agotado" (ProductsPageComponent.isAdmin).
         path: 'products',
         loadComponent: () =>
           import('../products/pages/products-page.component').then((m) => m.ProductsPageComponent),
-        canActivate: [roleGuard([UserRole.ADMIN])],
+        canActivate: [roleGuard([UserRole.ADMIN, UserRole.CASHIER])],
       },
       {
         // 'new' debe ir antes de ':id' para no ser capturado como id.
@@ -131,6 +133,17 @@ export const dashboardRoutes: Routes = [
         loadComponent: () =>
           import('../products/pages/product-form.component').then((m) => m.ProductFormComponent),
         canActivate: [roleGuard([UserRole.ADMIN])],
+      },
+      {
+        // spec 093 (research.md D9/D11): vista de solo lectura a la que navega el
+        // Cajero (y, si quiere, el Admin) desde "Ver detalle" -- debe ir antes de
+        // 'products/:id' por el mismo motivo que 'new': es más específica.
+        path: 'products/:id/detalle',
+        loadComponent: () =>
+          import('../products/pages/product-detail-page.component').then(
+            (m) => m.ProductDetailPageComponent,
+          ),
+        canActivate: [roleGuard([UserRole.ADMIN, UserRole.CASHIER])],
       },
       {
         path: 'products/:id',

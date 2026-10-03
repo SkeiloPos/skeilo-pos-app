@@ -12,6 +12,7 @@ import {
   DeactivatedVariant,
   Product,
   ProductCreatePayload,
+  ProductDetail,
   ProductDraft,
   ProductForm,
   ProductUpdatePayload,
@@ -62,6 +63,9 @@ interface ProductResponse {
   image_url: string | null;
   active: boolean;
   available: boolean;
+  /** spec 093 (FR-013): quién marcó/desmarcó `available` por última vez y cuándo. */
+  available_changed_at?: string | null;
+  available_changed_by_name?: string | null;
   tracks_inventory: boolean;
   created_at: string;
   updated_at?: string | null;
@@ -76,6 +80,12 @@ interface VariantResponse {
   active: boolean;
   presentation_id: string;
   presentation_name: string;
+}
+
+/** spec 093 (escenario 9): `GET /products/{id}` -- a diferencia del listado, incluye
+ *  las presentaciones activas con su precio (sin receta ni grupos de opciones). */
+interface ProductDetailResponse extends ProductResponse {
+  variants: VariantResponse[];
 }
 
 interface RecipeItemResponse {
@@ -131,6 +141,8 @@ export class ProductService {
   readonly size = signal(20);
   readonly search = signal('');
   readonly activeFilter = signal<'' | 'active' | 'inactive'>('');
+  /** spec 093 (FR-006): filtro "Disponibles"/"Agotados" de la Carta del menú. */
+  readonly availabilityFilter = signal<'' | 'available' | 'sold_out'>('');
   /** true tras el primer `loadProducts()`; gatea el fetch para que construir el
    *  servicio vía DI (p. ej. desde otro módulo) no dispare una petición sola. */
   private readonly wantsPage = signal(false);
@@ -144,10 +156,17 @@ export class ProductService {
         size: this.size(),
         search: this.search().trim(),
         active: this.activeFilter(),
+        available: this.availabilityFilter(),
       },
     ],
     queryFn: () =>
-      this.fetchProductsPage(this.page(), this.size(), this.search().trim(), this.activeFilter()),
+      this.fetchProductsPage(
+        this.page(),
+        this.size(),
+        this.search().trim(),
+        this.activeFilter(),
+        this.availabilityFilter(),
+      ),
     enabled: () => this.wantsPage(),
   });
 
@@ -174,11 +193,14 @@ export class ProductService {
     size: number,
     search: string,
     activeFilter: '' | 'active' | 'inactive',
+    availabilityFilter: '' | 'available' | 'sold_out' = '',
   ): Promise<Page<ProductResponse>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (search) params = params.set('search', search);
     if (activeFilter === 'active') params = params.set('active', 'true');
     if (activeFilter === 'inactive') params = params.set('active', 'false');
+    if (availabilityFilter === 'available') params = params.set('available', 'true');
+    if (availabilityFilter === 'sold_out') params = params.set('available', 'false');
     return firstValueFrom(this.http.get<Page<ProductResponse>>(this.productsUrl, { params }));
   }
 
@@ -203,10 +225,34 @@ export class ProductService {
     this.loadProducts(1);
   }
 
+  /** Aplica el filtro Todos/Disponibles/Agotados (spec 093, FR-006) y recarga. */
+  setAvailabilityFilter(filter: '' | 'available' | 'sold_out'): void {
+    this.availabilityFilter.set(filter);
+    this.loadProducts(1);
+  }
+
   async getProduct(id: string): Promise<Product | null> {
     try {
       const p = await firstValueFrom(this.http.get<ProductResponse>(`${this.productsUrl}/${id}`));
       return this.toProduct(p);
+    } catch (err) {
+      this.otherError.set(this.extractError(err));
+      return null;
+    }
+  }
+
+  /** spec 093 (escenario 9): detalle de solo lectura de "Carta del menú", con las
+   *  presentaciones activas y su precio -- usa el mismo `GET /products/{id}` que
+   *  {@link getProduct}, que ahora también trae `variants`. */
+  async getProductDetail(id: string): Promise<ProductDetail | null> {
+    try {
+      const p = await firstValueFrom(
+        this.http.get<ProductDetailResponse>(`${this.productsUrl}/${id}`),
+      );
+      return {
+        ...this.toProduct(p),
+        variants: p.variants.map((v) => this.toVariant(v)),
+      };
     } catch (err) {
       this.otherError.set(this.extractError(err));
       return null;
@@ -267,11 +313,15 @@ export class ProductService {
     return ok;
   }
 
-  /** Marca el producto como disponible / agotado temporalmente (RF-006). */
+  /** Marca el producto como disponible / agotado temporalmente (RF-006). spec 093
+   *  (research.md D3): único endpoint que Cajero y Admin usan para esto -- a
+   *  diferencia de {@link updateProduct}/{@link toggleActive}, no pasa por el PATCH
+   *  completo (exclusivo de Admin). */
   async toggleAvailable(id: string, current: boolean): Promise<boolean> {
-    const payload: ProductUpdatePayload = { available: !current };
     const ok = await this.run(() =>
-      this.http.patch<ProductResponse>(`${this.productsUrl}/${id}`, payload),
+      this.http.patch<ProductResponse>(`${this.productsUrl}/${id}/availability`, {
+        available: !current,
+      }),
     );
     if (ok) await this.queryClient.invalidateQueries({ queryKey: ['products'] });
     return ok;
@@ -632,6 +682,8 @@ export class ProductService {
       image_url: p.image_url,
       active: p.active,
       available: p.available ?? true,
+      available_changed_at: p.available_changed_at ?? null,
+      available_changed_by_name: p.available_changed_by_name ?? null,
       tracks_inventory: p.tracks_inventory ?? false,
       created_at: p.created_at,
       updated_at: p.updated_at,

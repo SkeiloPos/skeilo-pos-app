@@ -38,10 +38,23 @@ export interface Product {
   active: boolean;
   /** Disponibilidad operativa ('agotado temporal'), distinta de `active` (RF-006). */
   available: boolean;
+  /** spec 093 (FR-013): quién marcó/desmarcó `available` por última vez y cuándo.
+   *  `null` = nunca se tocó el interruptor dedicado. */
+  available_changed_at: string | null;
+  available_changed_by_name: string | null;
   /** Si el producto exige y aplica descuento de inventario en sus presentaciones. */
   tracks_inventory: boolean;
   created_at: string;
   updated_at?: string | null;
+}
+
+/**
+ * `GET /products/{id}` (spec 093, escenario 9): el detalle de solo lectura de la Carta
+ * del menú, con las presentaciones activas y su precio -- sin receta ni grupos de
+ * opciones (FR-018). Usado por {@link ProductDetailPageComponent}.
+ */
+export interface ProductDetail extends Product {
+  variants: Variant[];
 }
 
 /** Editable fields captured by the product create/edit forms. */
@@ -489,6 +502,12 @@ export interface MenuProduct {
   option_groups: MenuOptionGroup[];
   /** `false` si ninguna presentación se puede pedir. */
   available: boolean;
+  /** spec 093 (FR-019/FR-020): marcado manual de "Agotado" (Cajero/Admin, Carta del
+   *  menú) -- independiente de `available` (arriba). `true` = no se puede agregar al
+   *  pedido, aunque siga visible en el menú (Terminal de mesas y menú QR). Opcional
+   *  (a diferencia de `available`) para no obligar a los fixtures de test ya
+   *  existentes en todo el repo a declararlo: ausente se trata como `false`. */
+  sold_out?: boolean;
 }
 
 export interface MenuCategory {

@@ -66,9 +66,15 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             @for (p of store.catalogProductsFiltered(); track p.id) {
               <button
                 (click)="store.openConfig(p)"
-                class="relative text-left bg-white rounded-xl border border-gray-200 p-4 hover:border-indigo-300 transition-colors"
+                [disabled]="p.sold_out"
+                class="relative text-left bg-white rounded-xl border border-gray-200 p-4 hover:border-indigo-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-200"
               >
-                @if (store.cardPromotionText(p.variants); as promo) {
+                @if (p.sold_out) {
+                  <!-- spec 093 (escenario 5): sigue visible, atenuado, sin poder agregarse. -->
+                  <span class="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
+                    Agotado
+                  </span>
+                } @else if (store.cardPromotionText(p.variants); as promo) {
                   <!-- spec 073, FR-016: condición legible del backend (spec 066), no la insignia local. -->
                   <span class="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 inline-flex items-center gap-1">
                     <app-mi-icon name="sell" [size]="10" />
