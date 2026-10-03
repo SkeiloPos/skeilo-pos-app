@@ -54,7 +54,9 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'products',
     route: '/dashboard/products',
     group: 'CATÁLOGO',
-    roles: [UserRole.ADMIN],
+    // spec 093: el Cajero entra a la misma pantalla, en solo lectura salvo el
+    // interruptor "Agotado" (ver ProductsPageComponent.isAdmin).
+    roles: [UserRole.ADMIN, UserRole.CASHIER],
   },
   {
     label: 'Categorías',

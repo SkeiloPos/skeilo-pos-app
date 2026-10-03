@@ -51,6 +51,8 @@ interface MenuProductResponse {
   variants?: MenuVariantResponse[];
   option_groups?: MenuOptionGroupResponse[];
   available?: boolean;
+  /** spec 093: marcado manual de "Agotado" (Cajero/Admin). */
+  sold_out?: boolean;
 }
 
 interface MenuCategoryResponse {
@@ -130,6 +132,7 @@ export class MenuService {
         image_url: p.image_url,
         // `?? true` para no romper contra un backend aún sin desplegar.
         available: p.available ?? true,
+        sold_out: p.sold_out ?? false,
         variants: (p.variants ?? []).map((v) => ({
           id: v.id,
           // El modelo del cliente sigue llamando `name` a lo que se muestra de la variante.
