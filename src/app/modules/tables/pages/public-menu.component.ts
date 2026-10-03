@@ -504,14 +504,21 @@ const REFRESH_DEBOUNCE_MS = 250;
                 @for (product of visibleProducts(); track product.id) {
                   <button
                     (click)="openProduct(product)"
-                    class="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:border-indigo-300 hover:shadow-md active:scale-[0.98] transition-all"
+                    [disabled]="product.sold_out"
+                    class="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:border-indigo-300 hover:shadow-md active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-100 disabled:hover:shadow-sm disabled:active:scale-100"
                   >
                     <div class="relative w-full aspect-square bg-indigo-50 flex items-center justify-center text-4xl overflow-hidden">
-                      <!-- spec 066 (A-67, FR-013): insignia **genérica**, la misma para
-                           porcentaje y para paquete. La anterior se derivaba de que
-                           hubiera precio unitario con descuento, así que una promoción
-                           de paquete no producía ninguna señal en la carta. -->
-                      @if (hasPromotion(product)) {
+                      <!-- spec 093 (escenario 6): sigue visible, atenuado, sin poder
+                           agregarse al carrito. -->
+                      @if (product.sold_out) {
+                        <span class="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
+                          Agotado
+                        </span>
+                      } @else if (hasPromotion(product)) {
+                        <!-- spec 066 (A-67, FR-013): insignia **genérica**, la misma para
+                             porcentaje y para paquete. La anterior se derivaba de que
+                             hubiera precio unitario con descuento, así que una promoción
+                             de paquete no producía ninguna señal en la carta. -->
                         <span class="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">
                           🎉 Promo
                         </span>

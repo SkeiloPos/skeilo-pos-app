@@ -27,7 +27,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
     }
     @if (discount > 0) {
       <div class="flex justify-between items-center text-[13px] text-[#15803d]">
-        <span>Descuento</span>
+        <span>{{ discountLabel }}</span>
         <span class="font-mono font-medium tabular-nums">− {{ money(discount) }}</span>
       </div>
     }
@@ -67,6 +67,13 @@ export class BillSummaryComponent {
   @Input() subtotal?: number;
   @Input() subtotalLabel = 'Subtotal';
   @Input() discount = 0;
+  /**
+   * spec 094 (FR-009): nombre de la promoción que explica el descuento, cuando
+   * una sola lo explica. El valor por defecto es el literal de siempre, así que
+   * las cuatro pantallas que ya consumen el componente y no pasan este input
+   * conservan su texto y su markup exactos (Principio II, research.md D10).
+   */
+  @Input() discountLabel = 'Descuento';
   @Input() deliveryFee = 0;
   @Input() deliveryFeeLabel = 'Domicilio';
   @Input() showDeliveryIcon = false;

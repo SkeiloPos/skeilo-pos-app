@@ -252,6 +252,48 @@ export interface PaymentAttemptConfirmCashPayload {
   amount_received: number;
 }
 
+/**
+ * Una entrada del snapshot de promociones aplicadas (`AppliedPromotionOut`).
+ *
+ * spec 094 (FR-011): es **una entrada por regla**, no por promoción — el motor
+ * guarda una por cada regla que descontó, con su monto agregado. Por eso el
+ * servidor agrupa por `promotion_id` antes de elegir la etiqueta de la fila de
+ * descuento (research.md D6) y manda el resultado ya resuelto en
+ * `OrderBilling.discount_label`. `rule_id` existe en el JSONB y el backend no
+ * lo publica.
+ */
+export interface AppliedPromotion {
+  promotion_id?: string | null;
+  name?: string | null;
+  /** Importe como `string`, igual que el resto de los montos de este archivo. */
+  amount: string;
+}
+
+/**
+ * Desglose económico del pedido, ya resuelto por el servidor (spec 094,
+ * FR-024b, `OrderBillingSummary`).
+ *
+ * La pantalla **pinta lo que recibe**: no elige entre factura y pedido, no suma
+ * y no resta (RN-001). `state` dice cuál de los tres casos de facturación es y
+ * `source` de dónde salieron los importes (`'factura'` solo con
+ * `state === 'factura_propia'`, donde FR-024 manda leer de la venta para que el
+ * total sea idéntico al del módulo de Ventas por construcción).
+ */
+export interface OrderBilling {
+  state: 'sin_factura' | 'factura_propia' | 'factura_agrupada';
+  source: 'pedido' | 'factura';
+  subtotal: string;
+  discount: string;
+  /** `null`/ausente ⇒ la fila de descuento usa la etiqueta "Descuento" (FR-009). */
+  discount_label?: string | null;
+  delivery_fee: string;
+  total: string;
+  promotions?: AppliedPromotion[];
+  /** Condición de FR-018, resuelta en el servidor: hay ≥ 1 ítem no anulado y sus
+   *  `line_total` suman `0`. Dispara el aviso de falta de detalle de precios. */
+  sin_detalle_de_precios: boolean;
+}
+
 /** Response of `POST /orders` and `GET /orders` (`OrderResponse`). */
 export interface DiningOrder {
   id: string;
@@ -284,6 +326,24 @@ export interface DiningOrder {
    * a `'pagada'` en los caminos QR/mostrador vigentes, ver `deriveTableStatus`).
    */
   paid?: boolean;
+  /**
+   * spec 094 (FR-011): descuento agregado congelado en el pedido. Campo crudo,
+   * publicado para otros consumidores — el Detalle de Orden **no lo consume**
+   * (research.md D16).
+   */
+  discount?: string;
+  /** spec 094 (FR-011): campo crudo, igual que `discount`. La pantalla no lo lee. */
+  applied_promotions?: AppliedPromotion[];
+  /**
+   * spec 094 (FR-024b): desglose ya resuelto por el servidor. **Solo lo rellena
+   * `GET /orders/{id}`**; en el listado llega `null` a propósito (D3).
+   *
+   * Los tres campos de arriba son **opcionales** para que un frontend nuevo
+   * contra un backend anterior compile y funcione: ausente o `null` significa
+   * "no pintar el resumen", **nunca** cero (D15). La pantalla lee `billing` y
+   * nada más — es su única fuente, para no crear dos fuentes de verdad (D16).
+   */
+  billing?: OrderBilling | null;
 }
 
 // ── Terminal híbrida por origen (feature 028) ──────────────────────────────
