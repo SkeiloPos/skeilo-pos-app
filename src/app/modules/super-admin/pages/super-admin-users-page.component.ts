@@ -5,6 +5,7 @@ import { AdminUser } from '../interfaces/admin-user.interface';
 import { SuperAdminUsersService } from '../services/super-admin-users.service';
 import { TenantService } from '../services/tenant.service';
 import { AdminUserFormComponent } from '../components/admin-user-form.component';
+import { displayName, initialOf } from '../../../shared/person-display';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.SUPER_ADMIN]: 'Super Admin',
@@ -117,19 +118,23 @@ const ROLE_LABELS: Record<UserRole, string> = {
                     <td class="px-5 py-4">
                       <div class="flex items-center gap-3">
                         <div
+                          data-testid="user-avatar"
                           class="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-bold shrink-0"
                         >
                           {{ initial(u) }}
                         </div>
                         <div class="min-w-0">
                           <p
+                            data-testid="user-title"
                             class="text-sm font-medium truncate"
                             [class.text-gray-400]="!u.active"
                             [class.text-gray-900]="u.active"
                           >
-                            {{ u.name || '—' }}
+                            {{ displayName(u.name, u.email) }}
                           </p>
-                          <p class="text-xs text-gray-500 truncate">{{ u.email }}</p>
+                          @if (displayName(u.name, u.email) !== u.email) {
+                            <p class="text-xs text-gray-500 truncate">{{ u.email }}</p>
+                          }
                         </div>
                       </div>
                     </td>
@@ -236,8 +241,10 @@ export class SuperAdminUsersPageComponent implements OnInit {
     return this.tenantService.tenants().find((t) => t.id === tenantId)?.name ?? `#${tenantId}`;
   }
 
+  readonly displayName = displayName;
+
   initial(user: AdminUser): string {
-    return (user.name || user.email)[0]?.toUpperCase() ?? '?';
+    return initialOf(user.name, user.email) || '?';
   }
 
   openCreate(): void {

@@ -21,8 +21,13 @@ class FakeTokenStorage {
 }
 
 class FakeTenantContext {
+  /** Lo que `TenantContextService.tenantHostHeader()` devolvería en cada contexto. */
+  static host: string | null = 'heladeria';
   tenantSlug(): string | null {
-    return 'heladeria';
+    return FakeTenantContext.host;
+  }
+  tenantHostHeader(): string | null {
+    return FakeTenantContext.host;
   }
 }
 
@@ -71,6 +76,7 @@ describe('authTokenInterceptor', () => {
     // "test module has already been instantiated". Resetear aquí hace este spec
     // independiente del orden de ejecución.
     TestBed.resetTestingModule();
+    FakeTenantContext.host = 'heladeria';
     auth = new FakeAuth();
     diner = new FakeDinerTokens();
     TestBed.configureTestingModule({
@@ -103,6 +109,30 @@ describe('authTokenInterceptor', () => {
     await promise;
   });
 
+  // ── Contexto de host (spec 091, A-99) ────────────────────────────────────
+
+  it('en la plataforma manda X-Tenant-Host: admin', async () => {
+    FakeTenantContext.host = 'admin';
+    const promise = firstValueFrom(http.post(`${API}/auth/login`, {}));
+    const req = httpMock.expectOne(`${API}/auth/login`);
+
+    expect(req.request.headers.get(environment.tenantHeaderName)).toBe('admin');
+
+    req.flush({});
+    await promise;
+  });
+
+  it('en un host no reconocido no manda X-Tenant-Host', async () => {
+    FakeTenantContext.host = null;
+    const promise = firstValueFrom(http.get(`${API}/orders`));
+    const req = httpMock.expectOne(`${API}/orders`);
+
+    expect(req.request.headers.has(environment.tenantHeaderName)).toBe(false);
+
+    req.flush({});
+    await promise;
+  });
+
   it('un 401 de staff intenta refrescar y, si falla, fuerza logout', async () => {
     const promise = firstValueFrom(http.get(`${API}/orders`)).catch(() => 'rejected');
     httpMock.expectOne(`${API}/orders`).flush(null, { status: 401, statusText: 'Unauthorized' });
@@ -124,6 +154,20 @@ describe('authTokenInterceptor', () => {
     // Aunque haya un empleado logueado en el mismo navegador, su token no viaja
     // en las peticiones anónimas del comensal.
     expect(req.request.headers.has('Authorization')).toBe(false);
+
+    req.flush({});
+    await promise;
+  });
+
+  it('el comensal funciona en un host no reconocido: sin X-Tenant-Host, con su x-session-token (spec 091)', async () => {
+    FakeTenantContext.host = null;
+    diner.set('diner-session-token');
+
+    const promise = firstValueFrom(http.get(`${API}/cart`));
+    const req = httpMock.expectOne(`${API}/cart`);
+
+    expect(req.request.headers.get('x-session-token')).toBe('diner-session-token');
+    expect(req.request.headers.has(environment.tenantHeaderName)).toBe(false);
 
     req.flush({});
     await promise;

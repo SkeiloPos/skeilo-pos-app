@@ -13,7 +13,7 @@ export function provideTenantInitializer(): EnvironmentProviders {
     const tenantContext = inject(TenantContextService);
     const context = resolveTenantContext(window.location.hostname, {
       rootDomain: environment.rootDomain,
-      devRootHosts: environment.devRootHosts,
+      platformSlug: environment.platformSlug,
       reservedSlugs: environment.reservedSlugs,
     });
     tenantContext.initialize(context);

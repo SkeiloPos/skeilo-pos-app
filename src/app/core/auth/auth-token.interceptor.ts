@@ -23,7 +23,7 @@ function isDinerPublicPath(url: string): boolean {
 
 /**
  * For requests to the own backend (`{apiBaseUrl}`):
- *  - adds `X-Tenant-Host` and `Authorization: Bearer <access_token>`
+ *  - adds `X-Tenant-Host` (tenant slug, or `admin` for the platform) and `Authorization: Bearer <access_token>`
  *    (login is public; refresh sets its own bearer explicitly);
  *  - on a `401`, refreshes the access token once (shared) and retries;
  *    if the refresh fails, forces logout.
@@ -53,7 +53,7 @@ export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
 
   const isAuthEndpoint = req.url.includes(LOGIN_PATH) || req.url.includes(REFRESH_PATH);
-  const authedReq = decorate(req, tokenStorage.getAccessToken(), tenant.tenantSlug(), isAuthEndpoint);
+  const authedReq = decorate(req, tokenStorage.getAccessToken(), tenant.tenantHostHeader(), isAuthEndpoint);
 
   return next(authedReq).pipe(
     catchError((err: unknown) => {
@@ -67,7 +67,7 @@ export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
             auth.forceLogout();
             return throwError(() => err);
           }
-          const retried = decorate(req, tokenStorage.getAccessToken(), tenant.tenantSlug(), false);
+          const retried = decorate(req, tokenStorage.getAccessToken(), tenant.tenantHostHeader(), false);
           return next(retried);
         })
       );
@@ -78,12 +78,13 @@ export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
 function decorate(
   req: HttpRequest<unknown>,
   accessToken: string | null,
-  tenantSlug: string | null,
+  tenantHost: string | null,
   isAuthEndpoint: boolean
 ): HttpRequest<unknown> {
   const setHeaders: Record<string, string> = {};
-  if (tenantSlug) {
-    setHeaders[environment.tenantHeaderName] = tenantSlug;
+  // Slug del negocio, `admin` en la plataforma; nada en un host no reconocido (spec 091).
+  if (tenantHost) {
+    setHeaders[environment.tenantHeaderName] = tenantHost;
   }
   if (accessToken && !isAuthEndpoint) {
     setHeaders['Authorization'] = `Bearer ${accessToken}`;

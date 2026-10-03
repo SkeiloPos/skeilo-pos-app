@@ -8,6 +8,7 @@ import {
   TenantPlanUpdatePayload,
 } from '../interfaces/tenant.interface';
 import { Page } from '../interfaces/page.interface';
+import { stripValueErrorPrefix } from '../../../shared/api-error.util';
 
 @Injectable({ providedIn: 'root' })
 export class TenantService {
@@ -63,13 +64,21 @@ export class TenantService {
   private extractError(err: unknown): string {
     const fallback = 'No se pudo completar la operación.';
     if (err instanceof HttpErrorResponse) {
-      const body = err.error as { detail?: unknown; message?: string } | null;
+      const body = err.error as {
+        detail?: unknown;
+        message?: string;
+        error?: { details?: { errors?: { msg?: string }[] } | null };
+      } | null;
+      // Envelope de errores del Super Admin: el 422 trae los mensajes de campo en
+      // `error.details.errors` y `detail` solo el texto genérico.
+      const fieldMsg = body?.error?.details?.errors?.[0]?.msg;
+      if (fieldMsg) return stripValueErrorPrefix(fieldMsg);
       const detail = body?.detail;
       if (typeof detail === 'string') return detail;
       // FastAPI 422: `detail` is an array of `{ msg, loc, ... }`.
       if (Array.isArray(detail) && detail.length > 0) {
         const first = detail[0] as { msg?: string };
-        return first?.msg ?? fallback;
+        return first?.msg ? stripValueErrorPrefix(first.msg) : fallback;
       }
       return body?.message ?? fallback;
     }
