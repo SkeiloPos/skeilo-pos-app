@@ -1,12 +1,15 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { HttpHeaders, HttpResponse, provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { InventoryPageComponent } from './inventory-page.component';
 import { InventoryService } from '../services/inventory.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
+import { SearchableSelectComponent } from '../../../shared/searchable-select/searchable-select.component';
+import { environment } from '../../../../environments/environment';
 
 describe('InventoryPageComponent — íconos estandarizados (spec 082)', () => {
   function crear() {
@@ -150,5 +153,64 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
     expect(errorSpy).toHaveBeenCalled();
     expect(createObjectURL).not.toHaveBeenCalled();
     expect(clicks()).toEqual([]);
+  });
+});
+
+describe('InventoryPageComponent — selector de insumo del tab Movimientos (spec 098)', () => {
+  const BASE = `${environment.apiBaseUrl}/inventory`;
+
+  function crear() {
+    TestBed.configureTestingModule({
+      imports: [InventoryPageComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })),
+      ],
+    });
+    const fixture = TestBed.createComponent(InventoryPageComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.setTab('movements');
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('busca en el servidor: encuentra un insumo aunque no esté en la lista ya cargada', async () => {
+    const fixture = crear();
+    const http = TestBed.inject(HttpTestingController);
+
+    const picker = fixture.debugElement.query(By.directive(SearchableSelectComponent));
+    expect(picker).toBeTruthy();
+    const searchFn = picker!.componentInstance.search as
+      | ((q: string) => Promise<{ id: string; label: string }[]>)
+      | undefined;
+    expect(searchFn).toBeTruthy();
+
+    const promise = searchFn!('mozar');
+
+    const req = http.expectOne(
+      (r) => r.url === `${BASE}/items` && r.params.get('search') === 'mozar',
+    );
+    req.flush({
+      items: [
+        {
+          id: 'i-105',
+          name: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS',
+          unit_measure_id: 'um-1',
+          type: 'insumo',
+          current_stock: '1',
+          min_stock: '0',
+          unit_cost: '0',
+          active: true,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+      pages: 1,
+    });
+
+    const resultado = await promise;
+    expect(resultado).toEqual([{ id: 'i-105', label: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS' }]);
   });
 });

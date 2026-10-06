@@ -53,16 +53,27 @@ export interface SearchableSelectOption {
             (keydown)="onKeydown($event)" placeholder="Buscar…"
             class="w-full px-3 py-2 text-sm border-b border-gray-100 focus:outline-none" />
           <ul class="max-h-48 overflow-y-auto py-1">
-            @for (o of filteredOptions(); track o.id; let i = $index) {
-              <li (click)="selectOption(o)" (mouseenter)="highlightedIndex.set(i)"
-                class="px-3 py-1.5 text-sm"
-                [class]="o.disabled
-                  ? 'text-gray-300 cursor-not-allowed'
-                  : i === highlightedIndex() ? 'cursor-pointer bg-indigo-50 text-indigo-700' : 'cursor-pointer hover:bg-gray-50'">
-                {{ o.label }}
+            @if (loading()) {
+              <li class="px-3 py-2 text-sm text-gray-400">Buscando…</li>
+            } @else if (error()) {
+              <li class="px-3 py-2 text-sm text-red-500 flex items-center justify-between gap-2">
+                <span class="truncate">{{ error() }}</span>
+                <button type="button" (click)="retry()" class="text-indigo-600 underline shrink-0">
+                  Reintentar
+                </button>
               </li>
-            } @empty {
-              <li class="px-3 py-2 text-sm text-gray-400">Sin resultados</li>
+            } @else {
+              @for (o of filteredOptions(); track o.id; let i = $index) {
+                <li (click)="selectOption(o)" (mouseenter)="highlightedIndex.set(i)"
+                  class="px-3 py-1.5 text-sm"
+                  [class]="o.disabled
+                    ? 'text-gray-300 cursor-not-allowed'
+                    : i === highlightedIndex() ? 'cursor-pointer bg-indigo-50 text-indigo-700' : 'cursor-pointer hover:bg-gray-50'">
+                  {{ o.label }}
+                </li>
+              } @empty {
+                <li class="px-3 py-2 text-sm text-gray-400">Sin resultados</li>
+              }
             }
           </ul>
         </div>
@@ -74,6 +85,13 @@ export class SearchableSelectComponent implements ControlValueAccessor {
   @Input() options: SearchableSelectOption[] = [];
   @Input() placeholder = 'Seleccionar…';
   @Input() id?: string;
+  /**
+   * Modo remoto opt-in (spec 098): si se provee, un texto no vacío se busca en el
+   * servidor (con debounce de 300ms) en vez de filtrarse sobre `options` — así
+   * `filteredOptions()` no se queda limitado a lo que el consumidor ya cargó de
+   * antemano. Ausente: comportamiento idéntico al de siempre (filtrado local).
+   */
+  @Input() search?: (query: string) => Promise<SearchableSelectOption[]>;
 
   private readonly elementRef = inject(ElementRef<HTMLElement>);
   private readonly filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
@@ -83,6 +101,11 @@ export class SearchableSelectComponent implements ControlValueAccessor {
   readonly open = signal(false);
   readonly query = signal('');
   readonly highlightedIndex = signal(0);
+  readonly loading = signal(false);
+  readonly error = signal<string | null>(null);
+  private readonly remoteResults = signal<SearchableSelectOption[]>([]);
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private searchSeq = 0;
 
   private onChange: (value: string) => void = () => {};
   onTouched: () => void = () => {};
@@ -100,10 +123,16 @@ export class SearchableSelectComponent implements ControlValueAccessor {
    * Filtra con `normalizeText`, que además de minúsculas quita los acentos:
    * antes se comparaba con `toLowerCase()` y escribir "cafe" no encontraba
    * "Café" ni "limon" a "Limón" — media despensa lleva tilde y nadie la teclea.
+   *
+   * Con `search` provisto y texto no vacío (spec 098), el resultado viene del
+   * servidor (`remoteResults`, actualizado por `onQueryInput()`/`retry()`) en vez
+   * de filtrarse sobre `options` — que de todas formas sigue acotado (p. ej. a
+   * 100 insumos) y es exactamente lo que no alcanza a cubrir una búsqueda remota.
    */
   filteredOptions(): SearchableSelectOption[] {
     const q = normalizeText(this.query());
     if (!q) return this.options;
+    if (this.search) return this.remoteResults();
     return this.options.filter((o) => normalizeText(o.label).includes(q));
   }
 
@@ -123,6 +152,43 @@ export class SearchableSelectComponent implements ControlValueAccessor {
   onQueryInput(v: string): void {
     this.query.set(v);
     this.highlightedIndex.set(0);
+    if (!this.search) return;
+
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    const q = v.trim();
+    if (!q) {
+      // Texto vacío: vuelve al estado inicial (muestra `options`, sin pedir nada).
+      this.remoteResults.set([]);
+      this.loading.set(false);
+      this.error.set(null);
+      this.searchSeq++; // invalida cualquier búsqueda en vuelo
+      return;
+    }
+    this.debounceTimer = setTimeout(() => this.runRemoteSearch(q), 300);
+  }
+
+  /** Reintenta la última búsqueda con el texto actual (botón "Reintentar" en error). */
+  retry(): void {
+    const q = this.query().trim();
+    if (this.search && q) this.runRemoteSearch(q);
+  }
+
+  private runRemoteSearch(q: string): void {
+    const seq = ++this.searchSeq;
+    this.loading.set(true);
+    this.error.set(null);
+    this.search!(q).then(
+      (results) => {
+        if (seq !== this.searchSeq) return; // respuesta de una búsqueda ya superada
+        this.remoteResults.set(results);
+        this.loading.set(false);
+      },
+      (err: unknown) => {
+        if (seq !== this.searchSeq) return;
+        this.loading.set(false);
+        this.error.set(err instanceof Error ? err.message : 'No se pudo buscar insumos.');
+      },
+    );
   }
 
   selectOption(opt: SearchableSelectOption): void {

@@ -286,7 +286,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
         <div class="bg-white rounded-xl border border-gray-100 p-4">
           <label class="block text-sm font-medium text-gray-700 mb-1">Insumo</label>
           <app-searchable-select [ngModel]="movementItemId()" (ngModelChange)="onMovementItemChange($event)"
-            [options]="movementItemOptions()" placeholder="Seleccionar insumo..." class="w-full max-w-md" />
+            [options]="movementItemOptions()" [search]="searchInventoryItems" placeholder="Seleccionar insumo..." class="w-full max-w-md" />
         </div>
 
         <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -434,6 +434,10 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   readonly movementItemOptions = computed(() =>
     this.service.allItems().map(i => ({ id: i.id, label: i.name }))
   );
+
+  /** Búsqueda remota del picker de insumo (spec 098): ver product-form.component.ts. */
+  readonly searchInventoryItems = (query: string): Promise<{ id: string; label: string }[]> =>
+    this.service.searchActiveItems(query).then(items => items.map(i => ({ id: i.id, label: i.name })));
   private readonly supplierMap = computed(
     () => new Map(this.suppliersService.suppliers().map(s => [s.id, s.name]))
   );

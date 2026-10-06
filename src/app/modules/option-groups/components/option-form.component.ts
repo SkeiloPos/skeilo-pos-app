@@ -61,7 +61,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               <label class="block text-sm font-medium text-gray-700 mb-1">Insumo que consume (opcional)</label>
               <!-- Buscador y no un select plano: el catálogo real pasa de 70 insumos. -->
               <app-searchable-select formControlName="inventory_item_id"
-                [options]="inventoryOptions()" placeholder="Ninguno" />
+                [options]="inventoryOptions()" [search]="searchInventoryItems" placeholder="Ninguno" />
             </div>
 
             @if (form.value.inventory_item_id) {
@@ -128,6 +128,12 @@ export class OptionFormComponent implements OnInit {
   readonly inventoryOptions = computed(() =>
     this.inventoryService.allItems().map((i) => ({ id: i.id, label: i.name })),
   );
+
+  /** Búsqueda remota del picker de insumo (spec 098): ver product-form.component.ts. */
+  readonly searchInventoryItems = (query: string): Promise<{ id: string; label: string }[]> =>
+    this.inventoryService
+      .searchActiveItems(query)
+      .then((items) => items.map((i) => ({ id: i.id, label: i.name })));
 
   /** spec 064: el grupo "Incluido" bloquea el precio de todas sus opciones en $0. */
   isIncluido(): boolean {
