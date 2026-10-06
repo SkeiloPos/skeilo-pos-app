@@ -33,4 +33,14 @@ export interface AppEnvironment {
 
   /** Base URL of the own multi-tenant backend API (e.g. `http://localhost:8000/api/v1`). */
   readonly apiBaseUrl: string;
+
+  /**
+   * Public marketing site, linked from the auth screens: the privacy policy in the
+   * footer and the "go to the SkeiloPOS site" link shown on an unrecognized host.
+   *
+   * Deliberately NOT derived from `rootDomain`: that would yield
+   * `http://localhost/privacidad` in development. The public site is the same one
+   * wherever the app runs, so both environment files carry the same value.
+   */
+  readonly publicSiteUrl: string;
 }

@@ -1,9 +1,11 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   Input,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { ControlValueAccessor, NgControl } from '@angular/forms';
 import { IconMiComponent } from '../icon-mi/icon-mi.component';
@@ -25,6 +27,7 @@ import { IconMiComponent } from '../icon-mi/icon-mi.component';
   template: `
     <div class="relative">
       <input
+        #field
         [id]="id"
         [type]="show() ? 'text' : 'password'"
         [value]="value()"
@@ -43,8 +46,7 @@ import { IconMiComponent } from '../icon-mi/icon-mi.component';
         (click)="toggle()"
         [attr.aria-label]="show() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
         [attr.aria-pressed]="show()"
-        tabindex="-1"
-        class="absolute right-3 inset-y-0 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+        class="auth-tap-target absolute right-1 inset-y-0 flex items-center justify-center text-gray-500 hover:text-gray-700 transition-colors"
       >
         <span class="w-5 h-5 block">
           <app-mi-icon [name]="show() ? 'eye-off' : 'eye'" [size]="20" />
@@ -64,6 +66,8 @@ export class PasswordInputComponent implements ControlValueAccessor {
   readonly disabled = signal(false);
   readonly show = signal(false);
 
+  private readonly field = viewChild.required<ElementRef<HTMLInputElement>>('field');
+
   private onChange: (value: string) => void = () => {};
   onTouched: () => void = () => {};
 
@@ -76,6 +80,15 @@ export class PasswordInputComponent implements ControlValueAccessor {
 
   toggle(): void {
     this.show.update((v) => !v);
+  }
+
+  /**
+   * Move focus to the real `<input>`, which lives inside this component. Parents
+   * need it after a failed submit (spec 095, FR-013) and cannot reach the element
+   * themselves without hardcoding an `id` that a rename would silently break.
+   */
+  focus(): void {
+    this.field().nativeElement.focus();
   }
 
   onInput(event: Event): void {
