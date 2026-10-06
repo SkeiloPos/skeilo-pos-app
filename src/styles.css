@@ -33,3 +33,385 @@ html, body {
   font-size: inherit;
   color: inherit;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Pantallas de autenticación — sistema de diseño SkeiloPOS (spec 095)
+   ══════════════════════════════════════════════════════════════════════════
+
+   Valores tomados **literalmente** del sistema de diseño entregado
+   (`_ds/skeilopos-design-system-.../tokens/`, tema claro) y de `Login.dc.html`.
+   No son aproximaciones a ojo: cada color, tamaño y radio sale de su token.
+
+   **Por qué van dentro de `.auth-theme` y no en `:root`**: el sistema de diseño
+   nuevo es violeta y el resto de la aplicación sigue siendo índigo. Soltar estos
+   tokens globalmente repintaría las ~40 pantallas que esta spec no toca, que es
+   justo lo que el Principio V prohíbe. Acotados al cascarón, las tres pantallas
+   de autenticación son fieles al diseño y nada más se mueve. */
+
+/* Sora (display) + Figtree (interfaz), autoalojadas como la fuente de íconos:
+   el sistema de diseño las sirve desde Google Fonts, pero este repositorio
+   decidió no depender de una CDN externa para que siga funcionando sin
+   conexión. Son variables, así que un archivo cubre todos los pesos. */
+@font-face {
+  font-family: 'Figtree';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/auth/figtree-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Figtree';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/auth/figtree-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/auth/sora-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/auth/sora-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+.auth-theme {
+  /* Marca */
+  --auth-primary: #7c3aed;
+  --auth-primary-active: #6d28d9;
+  --auth-primary-soft: rgba(124, 58, 237, 0.1);
+  --auth-primary-text: #6d28d9;
+  --auth-primary-border: #7c3aed;
+  /* Superficies */
+  --auth-surface: #ffffff;
+  --auth-surface-soft: #edf1f5;
+  /* Bordes */
+  --auth-border: #e5e9ef;
+  --auth-border-strong: #cbd5e1;
+  /* Texto */
+  --auth-text-primary: #090d16;
+  --auth-text-secondary: #334155;
+  --auth-text-muted: #64748b;
+  --auth-on-primary: #ffffff;
+  /* Semánticos */
+  --auth-error: #e11d48;
+  --auth-error-soft: #fdecef;
+  --auth-success: #6d28d9;
+  --auth-success-soft: rgba(124, 58, 237, 0.1);
+  /* Efectos */
+  --auth-overlay-hover: rgba(9, 13, 22, 0.05);
+  --auth-shadow-overlay: 0 12px 32px rgba(15, 23, 42, 0.12), 0 0 0 1px #e5e9ef;
+  --auth-focus-ring-input: 0 0 0 3px rgba(124, 58, 237, 0.18);
+  /* Tipografía */
+  --auth-font-display: 'Sora', ui-sans-serif, system-ui, sans-serif;
+  --auth-font-ui: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+
+  font-family: var(--auth-font-ui);
+  color: var(--auth-text-primary);
+}
+
+/* ── Tipografía ─────────────────────────────────────────────────────────── */
+
+.auth-theme .auth-title {
+  margin: 0;
+  font-family: var(--auth-font-display);
+  font-size: 30px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--auth-text-primary);
+}
+
+.auth-theme .auth-subtitle {
+  margin-top: 6px;
+  color: var(--auth-text-muted);
+}
+
+.auth-theme .auth-field-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--auth-text-secondary);
+}
+
+/* ── Campos ─────────────────────────────────────────────────────────────── */
+
+.auth-theme .auth-input {
+  height: 48px;
+  padding: 0 14px;
+  width: 100%;
+  background: var(--auth-surface-soft);
+  border: 1px solid var(--auth-border-strong);
+  border-radius: 8px;
+  color: var(--auth-text-primary);
+  font: inherit;
+  font-size: 15px;
+}
+
+.auth-theme .auth-input::placeholder {
+  color: var(--auth-text-muted);
+}
+
+.auth-theme .auth-input:focus {
+  border-color: var(--auth-primary-border);
+  box-shadow: var(--auth-focus-ring-input);
+  outline: none;
+}
+
+/* El campo de contraseña deja sitio al ojo, que mide 44 px y vive encima. */
+.auth-theme .auth-input-password {
+  padding-right: 52px;
+}
+
+.auth-theme .auth-input-invalid {
+  border-color: var(--auth-error);
+}
+
+/* `PasswordInputComponent` marca el error con su propia utilidad de Tailwind.
+   Como `.auth-input` la gana en especificidad, hay que devolverle el rojo aquí
+   o el campo inválido se vería normal. */
+.auth-theme .auth-input.border-red-400 {
+  border-color: var(--auth-error);
+}
+
+/* El ojo del campo de contraseña, con las medidas del diseño (44 × 44, pegado a
+   2 px del borde y con fondo solo al pasar por encima). Se ajusta desde aquí y
+   no dentro del componente compartido, que lo usan otras tres pantallas fuera
+   del alcance de esta spec. */
+.auth-theme app-password-input button {
+  inset-block: auto;
+  top: 50%;
+  right: 2px;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  color: var(--auth-text-muted);
+}
+
+.auth-theme app-password-input button:hover {
+  background: var(--auth-overlay-hover);
+  color: var(--auth-text-secondary);
+}
+
+/* ── Botones ────────────────────────────────────────────────────────────── */
+
+.auth-theme .auth-button {
+  height: 48px;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: var(--auth-primary);
+  color: var(--auth-on-primary);
+  font-family: var(--auth-font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.auth-theme .auth-button:hover:not(:disabled) {
+  background: var(--auth-primary-active);
+}
+
+.auth-theme .auth-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth-theme .auth-button-secondary {
+  background: var(--auth-surface);
+  color: var(--auth-text-secondary);
+  border: 1px solid var(--auth-border-strong);
+}
+
+.auth-theme .auth-button-secondary:hover:not(:disabled) {
+  background: var(--auth-surface-soft);
+}
+
+/* Enlace de acción en forma de botón de texto, como el "Volver a iniciar
+   sesión" del diseño: 44 px de alto, sin fondo hasta el hover. */
+.auth-theme .auth-link-button {
+  align-self: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--auth-primary-text);
+  font-family: var(--auth-font-ui);
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.auth-theme .auth-link-button:hover {
+  background: var(--auth-overlay-hover);
+}
+
+.auth-theme .auth-link-inline {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--auth-primary-text);
+  padding: 12px 0;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  text-decoration: none;
+}
+
+/* ── Insignia de contexto ───────────────────────────────────────────────── */
+
+.auth-theme .auth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--auth-primary-soft);
+  color: var(--auth-primary-text);
+  font: 600 12px/1 var(--auth-font-ui);
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* ── Avisos ─────────────────────────────────────────────────────────────── */
+
+.auth-theme .auth-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auth-theme .auth-alert-error {
+  background: var(--auth-error-soft);
+  color: var(--auth-error);
+}
+
+.auth-theme .auth-alert-success {
+  background: var(--auth-success-soft);
+  color: var(--auth-success);
+}
+
+/* ── Casilla ────────────────────────────────────────────────────────────── */
+
+.auth-theme .auth-checkbox {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--auth-surface);
+  border: 1px solid var(--auth-border-strong);
+  accent-color: var(--auth-primary);
+}
+
+/* ── Panel de marca ─────────────────────────────────────────────────────── */
+
+.auth-theme .auth-brand-panel {
+  background: var(--auth-primary);
+  border-radius: 24px;
+  padding: 48px;
+  min-height: 560px;
+  color: #fff;
+  overflow: hidden;
+}
+
+.auth-theme .auth-brand-title {
+  margin: 0;
+  font-family: var(--auth-font-display);
+  font-size: 36px;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  max-width: 520px;
+}
+
+.auth-theme .auth-brand-text {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  max-width: 480px;
+}
+
+/* La vista previa del diseño es una `<img>` contenida, con esquinas redondeadas
+   y sombra. Aquí va como `background-image` **dentro** de la media query, y
+   nunca como `<img>`: un estilo que no aplica no se solicita, así que por debajo
+   de 1024 px el archivo no se descarga (FR-005, SC-007). Con una `<img>` —aunque
+   estuviera oculta— el navegador la pediría igual, que es justo lo que esta spec
+   quiere evitar en el celular del negocio. `contain` reproduce el `object-fit`
+   del diseño, de modo que se ve la misma composición. */
+@media (min-width: 1024px) {
+  .auth-brand-preview {
+    background-image: url('/images/auth-preview.webp');
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    border-radius: 16px;
+    box-shadow: var(--auth-shadow-overlay);
+    /* La proporción del activo (1365 × 828). Sin esto la caja ocuparía todo el
+       alto disponible y la sombra quedaría muy por fuera de la imagen; con ella
+       se ciñe al contenido, igual que el `object-fit: contain` del diseño. */
+    width: 100%;
+    max-height: 100%;
+    aspect-ratio: 1365 / 828;
+  }
+}
+
+/* ── Accesibilidad ──────────────────────────────────────────────────────── */
+
+/* Área de activación de 44 × 44 px (FR-043). El mostrador es justo donde más se
+   nota: se usa con el dedo, de pie y con prisa. Se resuelve con `min-*` —no con
+   alto fijo— para no mover el diseño donde el control ya es más grande. */
+.auth-theme .auth-tap-target {
+  min-height: 44px;
+}
+
+.auth-theme button.auth-tap-target,
+.auth-theme a.auth-tap-target {
+  min-width: 44px;
+}
+
+/* Indicador de foco visible en todo lo que se pueda enfocar (FR-039, A3).
+
+   `:focus-visible` y no `:focus`: el navegador ya distingue el foco por teclado
+   del clic con ratón, así que esto aparece cuando hace falta y no molesta cuando
+   no. Nunca se apaga el contorno sin dar un reemplazo — un `outline: none`
+   suelto deja a quien navega con teclado sin saber dónde está. */
+.auth-theme a:focus-visible,
+.auth-theme button:focus-visible,
+.auth-theme input:focus-visible {
+  outline: 2px solid var(--auth-primary);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
