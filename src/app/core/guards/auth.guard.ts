@@ -4,7 +4,7 @@ import { map, take } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { TenantContextService } from '../tenant/tenant-context.service';
 
-export const authGuard: CanActivateFn = () => {
+export const authGuard: CanActivateFn = (_route, state) => {
   const authService = inject(AuthService);
   const router = inject(Router);
 
@@ -12,7 +12,10 @@ export const authGuard: CanActivateFn = () => {
     take(1),
     map(() => {
       if (authService.currentUser()) return true;
-      return router.createUrlTree(['/login']);
+      // Spec 095, FR-018: remember what the user was trying to open so login can
+      // send them there instead of to the role's home screen. Without this the
+      // destination is lost at the redirect and the requirement cannot be met.
+      return router.createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });
     }),
   );
 };
