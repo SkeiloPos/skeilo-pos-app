@@ -57,6 +57,8 @@ function toNameConflict(err: unknown): VariantNameConflict | null {
 interface ProductResponse {
   id: string;
   category_id: string;
+  /** spec 097: resuelto en el servidor, sin depender de `GET /categories`. */
+  category_name?: string | null;
   name: string;
   description: string | null;
   preparation_type: Product['preparation_type'];
@@ -676,6 +678,7 @@ export class ProductService {
     return {
       id: p.id,
       category_id: p.category_id,
+      category_name: p.category_name ?? null,
       name: p.name,
       description: p.description,
       preparation_type: p.preparation_type,

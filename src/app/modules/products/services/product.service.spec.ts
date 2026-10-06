@@ -21,6 +21,7 @@ function productResponse() {
   return {
     id: PID,
     category_id: 'c1',
+    category_name: 'Postres fríos',
     name: 'Banana Split',
     description: null,
     preparation_type: 'prepared',
@@ -324,5 +325,29 @@ describe('ProductService', () => {
         expect(service.error()).toBe(esperado);
       });
     }
+  });
+
+  describe('listado de productos — category_name resuelto por el backend (spec 097)', () => {
+    it('toProduct() mapea category_name tal cual desde la respuesta cruda', async () => {
+      service.loadProducts();
+      await tick();
+      const req = http.expectOne((r) => r.url === PRODUCTS && r.method === 'GET');
+      req.flush({ items: [productResponse()], total: 1, page: 1, size: 20, pages: 1 });
+      await tick();
+
+      expect(service.products()[0]?.category_name).toBe('Postres fríos');
+    });
+
+    it('category_name ausente en la respuesta cruda se mapea a null (defensivo, research.md D4)', async () => {
+      service.loadProducts();
+      await tick();
+      const req = http.expectOne((r) => r.url === PRODUCTS && r.method === 'GET');
+      const sinCategoryName: Record<string, unknown> = { ...productResponse() };
+      delete sinCategoryName['category_name'];
+      req.flush({ items: [sinCategoryName], total: 1, page: 1, size: 20, pages: 1 });
+      await tick();
+
+      expect(service.products()[0]?.category_name).toBeNull();
+    });
   });
 });

@@ -3,7 +3,6 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Product } from '../interfaces/product.interface';
 import { ProductService } from '../services/product.service';
-import { CategoryService } from '../../categories/services/category.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
 import { PaginationBarComponent } from '../../../shared/pagination/pagination-bar.component';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
@@ -171,9 +170,7 @@ import { UserRole } from '../../../core/interfaces/user.interface';
                       </div>
                     </td>
                     <td class="px-5 py-4 hidden md:table-cell">
-                      <span class="text-sm text-gray-500">{{
-                        categoryName(product.category_id)
-                      }}</span>
+                      <span class="text-sm text-gray-500">{{ product.category_name ?? '—' }}</span>
                     </td>
                     <td class="px-5 py-4">
                       <span
@@ -294,7 +291,6 @@ import { UserRole } from '../../../core/interfaces/user.interface';
 })
 export class ProductsPageComponent implements OnInit, OnDestroy {
   readonly productService = inject(ProductService);
-  private readonly categoryService = inject(CategoryService);
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
   private readonly auth = inject(AuthService);
@@ -310,19 +306,8 @@ export class ProductsPageComponent implements OnInit, OnDestroy {
   statusFilterValue: 'all' | 'active' | 'inactive' = 'all';
   availabilityFilterValue: 'all' | 'available' | 'sold_out' = 'all';
 
-  private readonly categoryMap = computed(() => {
-    const map = new Map<string, string>();
-    for (const cat of this.categoryService.allCategories()) {
-      map.set(cat.id, cat.name);
-    }
-    return map;
-  });
-
   ngOnInit(): void {
     this.productService.loadProducts();
-    if (this.categoryService.allCategories().length === 0) {
-      this.categoryService.loadAllCategories();
-    }
   }
 
   ngOnDestroy(): void {
@@ -343,10 +328,6 @@ export class ProductsPageComponent implements OnInit, OnDestroy {
   onAvailabilityFilterChange(value: 'all' | 'available' | 'sold_out'): void {
     this.availabilityFilterValue = value;
     this.productService.setAvailabilityFilter(value === 'all' ? '' : value);
-  }
-
-  categoryName(categoryId: string): string {
-    return this.categoryMap().get(categoryId) ?? '—';
   }
 
   openCreate(): void {
