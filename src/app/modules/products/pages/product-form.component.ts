@@ -318,7 +318,7 @@ interface SlotBreakdown {
                     <div class="flex items-center gap-2">
                       <app-searchable-select [ngModel]="line.inventory_item_id"
                         (ngModelChange)="setRecipeField(av.localId, $index, 'inventory_item_id', $event)"
-                        [options]="inventoryOptions()" placeholder="Insumo…" class="flex-1" />
+                        [options]="inventoryOptions()" [search]="searchInventoryItems" placeholder="Insumo…" class="flex-1" />
                       <input type="number" min="0" step="0.001" [value]="line.quantity"
                         (input)="setRecipeField(av.localId, $index, 'quantity', +$any($event.target).value)" placeholder="Cant."
                         class="w-24 px-2 py-2 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500" />
@@ -548,6 +548,17 @@ export class ProductFormComponent implements OnInit, OnDestroy {
   readonly inventoryOptions = computed(() =>
     this.inventoryService.allItems().map((i) => ({ id: i.id, label: i.name })),
   );
+
+  /**
+   * Búsqueda remota del picker de "Insumos fijos" (spec 098): a diferencia de
+   * `inventoryOptions` (acotado a `allItems()`, una sola página de 100), esto busca en
+   * el servidor con el texto escrito, así que un insumo fuera de esa página sigue
+   * siendo encontrable.
+   */
+  readonly searchInventoryItems = (query: string): Promise<{ id: string; label: string }[]> =>
+    this.inventoryService
+      .searchActiveItems(query)
+      .then((items) => items.map((i) => ({ id: i.id, label: i.name })));
 
   /**
    * Grupos elegibles en una fila: los activos, menos los que ya usa **esta misma

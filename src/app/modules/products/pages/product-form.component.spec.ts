@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
@@ -21,6 +22,7 @@ import { PlanSummaryService } from '../../plan/services/plan-summary.service';
 import { PlanSummary } from '../../plan/interfaces/plan-summary.interface';
 import { PresentationService } from '../../presentations/services/presentation.service';
 import type { Presentation } from '../../presentations/interfaces/presentation.interface';
+import { SearchableSelectComponent } from '../../../shared/searchable-select/searchable-select.component';
 
 const API = environment.apiBaseUrl;
 const PRODUCTS = `${API}/products`;
@@ -61,6 +63,10 @@ class FakeCategoryService {
 class FakeInventoryService {
   allItems = signal<unknown[]>([]);
   loadAllItems(): void {}
+  /** spec 098: búsqueda remota del picker de "Insumos fijos" — por defecto, sin resultados. */
+  searchActiveItems(_query: string): Promise<{ id: string; name: string }[]> {
+    return Promise.resolve([]);
+  }
 }
 class FakeUnitMeasureService {
   unitMeasures = signal<unknown[]>([]);
@@ -295,6 +301,34 @@ describe('ProductFormComponent', () => {
     expect(component.draft().tracks_inventory).toBe(true);
     expect(component.activeVariant()!.recipe.length).toBe(1);
     expect(text()).toContain('Insumos fijos');
+  });
+
+  it('el selector de "Insumos fijos" busca en el servidor: encuentra un insumo aunque no esté en la lista ya cargada (spec 098)', async () => {
+    await createNew();
+    switchButton().click();
+    fixture.detectChanges();
+    const localId = component.activeVariant()!.localId;
+    component.addRecipeLine(localId);
+    fixture.detectChanges();
+
+    // `allItems()` (la lista cargada por defecto) sigue vacía -- simula exactamente el
+    // caso reportado: un insumo que existe y está activo, pero fuera de la página ya
+    // cargada. La búsqueda remota es la única forma de encontrarlo.
+    const inventoryService = TestBed.inject(InventoryService) as unknown as FakeInventoryService;
+    const insumoLejano = { id: 'i-105', name: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS' };
+    inventoryService.searchActiveItems = vi.fn().mockResolvedValue([insumoLejano]);
+
+    const picker = fixture.debugElement.query(By.directive(SearchableSelectComponent));
+    expect(picker).toBeTruthy();
+    const searchFn = picker!.componentInstance.search as
+      | ((q: string) => Promise<{ id: string; label: string }[]>)
+      | undefined;
+    expect(searchFn).toBeTruthy();
+
+    const resultado = await searchFn!('mozar');
+
+    expect(inventoryService.searchActiveItems).toHaveBeenCalledWith('mozar');
+    expect(resultado).toEqual([{ id: 'i-105', label: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS' }]);
   });
 
   it('guardar un producto nuevo sin insumos no produce ningún error de validación', async () => {

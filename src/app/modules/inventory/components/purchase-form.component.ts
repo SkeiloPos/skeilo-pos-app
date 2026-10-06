@@ -77,7 +77,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 <div class="grid grid-cols-12 gap-2 items-center">
                   <app-searchable-select class="col-span-5"
                     [ngModel]="row.inventory_item_id" (ngModelChange)="updateRow($index, 'inventory_item_id', $event)"
-                    [options]="itemOptions()" placeholder="Buscar insumo…" />
+                    [options]="itemOptions()" [search]="searchInventoryItems" placeholder="Buscar insumo…" />
                   <input type="number" min="0" step="0.001"
                     class="col-span-2 px-2 py-2 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     [ngModel]="row.quantity" (ngModelChange)="updateRow($index, 'quantity', $event)">
@@ -155,6 +155,17 @@ export class PurchaseFormComponent implements OnInit {
       return { id: i.id, label: unidad ? `${i.name} · ${unidad}` : i.name };
     });
   });
+
+  /** Búsqueda remota del picker de insumo (spec 098): mismo formato de etiqueta que `itemOptions`. */
+  readonly searchInventoryItems = (query: string): Promise<{ id: string; label: string }[]> => {
+    const abbr = this.unitAbbr();
+    return this.service.searchActiveItems(query).then((items) =>
+      items.map((i) => {
+        const unidad = abbr.get(i.unit_measure_id);
+        return { id: i.id, label: unidad ? `${i.name} · ${unidad}` : i.name };
+      }),
+    );
+  };
 
   readonly supplierId = signal('');
   readonly invoiceNumber = signal('');

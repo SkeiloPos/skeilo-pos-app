@@ -1,12 +1,15 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { OptionFormComponent } from './option-form.component';
 import { InventoryService } from '../../inventory/services/inventory.service';
 import { UnitMeasureService } from '../../../core/services/unit-measure.service';
 import { Option, OptionGroup } from '../../products/interfaces/product.interface';
+import { SearchableSelectComponent } from '../../../shared/searchable-select/searchable-select.component';
 
 const API = environment.apiBaseUrl;
 const GROUPS = `${API}/option-groups`;
@@ -15,6 +18,10 @@ const OPTIONS = `${API}/options`;
 class FakeInventoryService {
   allItems = signal<unknown[]>([{ id: 'i1', name: 'Fresa', current_stock: 100 }]);
   loadAllItems(): void {}
+  /** spec 098: búsqueda remota del picker de insumo — por defecto, sin resultados. */
+  searchActiveItems(_query: string): Promise<{ id: string; name: string }[]> {
+    return Promise.resolve([]);
+  }
 }
 class FakeUnitMeasureService {
   unitMeasures = signal<unknown[]>([]);
@@ -161,6 +168,26 @@ describe('OptionFormComponent', () => {
     req.flush(makeOption({ inventory_item_id: 'i1', item_quantity: 80 }));
     await Promise.resolve();
     http.expectOne(GROUPS).flush([]);
+  });
+
+  it('el selector de insumo busca en el servidor: encuentra un insumo aunque no esté en la lista ya cargada (spec 098)', async () => {
+    await create(makeGroup({ pricing_type: 'con_recargo' }), null, true);
+
+    const inventoryService = TestBed.inject(InventoryService) as unknown as FakeInventoryService;
+    const insumoLejano = { id: 'i-105', name: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS' };
+    inventoryService.searchActiveItems = vi.fn().mockResolvedValue([insumoLejano]);
+
+    const picker = fixture.debugElement.query(By.directive(SearchableSelectComponent));
+    expect(picker).toBeTruthy();
+    const searchFn = picker!.componentInstance.search as
+      | ((q: string) => Promise<{ id: string; label: string }[]>)
+      | undefined;
+    expect(searchFn).toBeTruthy();
+
+    const resultado = await searchFn!('mozar');
+
+    expect(inventoryService.searchActiveItems).toHaveBeenCalledWith('mozar');
+    expect(resultado).toEqual([{ id: 'i-105', label: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS' }]);
   });
 
   it('el botón de cerrar ya no es un SVG artesanal (spec 082)', async () => {
