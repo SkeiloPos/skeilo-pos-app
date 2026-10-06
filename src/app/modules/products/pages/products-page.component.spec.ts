@@ -11,6 +11,7 @@ import { ToastService } from '../../../shared/feedback/toast.service';
 const PRODUCT = {
   id: 'p1',
   category_id: 'c1',
+  category_name: 'Postres fríos',
   name: 'Fresa boom',
   description: null,
   preparation_type: 'prepared',
@@ -135,5 +136,34 @@ describe('ProductsPageComponent — Carta del menú para Cajero (spec 093)', () 
     expect(el.querySelector('[title="Marcar agotado"]')).not.toBeNull();
     expect(el.querySelector('[title="Marcar disponible"]')).toBeNull();
     expect(toast.toasts().some((t) => t.kind === 'error')).toBe(true);
+  });
+});
+
+describe('ProductsPageComponent — nombre de categoría sin depender de GET /categories (spec 097)', () => {
+  it('pinta el category_name que ya llega resuelto en GET /products, en la columna Categoría', async () => {
+    const { el } = await crear(UserRole.ADMIN);
+    expect(el.textContent).toContain('Postres fríos');
+  });
+
+  it('no hace ninguna petición a GET /categories (ya no depende de categoryMap/CategoryService)', async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ProductsPageComponent],
+      providers: [
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })),
+        { provide: AuthService, useValue: { currentUser: () => ({ role: UserRole.ADMIN }) } },
+      ],
+    });
+    const fixture = TestBed.createComponent(ProductsPageComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    await tick();
+
+    const pending = http.match(() => true);
+    expect(pending.some((r) => r.request.url.includes('/categories'))).toBe(false);
+    pending.forEach((req) => req.flush({ items: [PRODUCT], total: 1, page: 1, size: 20, pages: 1 }));
   });
 });

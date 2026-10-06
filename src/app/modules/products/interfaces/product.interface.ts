@@ -31,6 +31,9 @@ export type OptionGroupSelectionMode = 'conteo' | 'cantidad';
 export interface Product {
   id: string;
   category_id: string;
+  /** spec 097: resuelto por el backend, sin depender de `GET /categories` (tope 100
+   *  por página) cargado aparte en el cliente. */
+  category_name: string | null;
   name: string;
   description: string | null;
   preparation_type: PreparationType;
