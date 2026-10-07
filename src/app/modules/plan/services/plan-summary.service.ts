@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom, Observable } from 'rxjs';
 import { environment } from '../../../../environments/environment';
+import { createCachedLoader } from '../../../shared/cached-loader.util';
 import { PlanSummary } from '../interfaces/plan-summary.interface';
 
 /** Transport for `GET /api/v1/plan` (spec 033) — consumo del tenant y datos
@@ -28,7 +29,17 @@ export class PlanSummaryService {
     this.summary.set(value);
   }
 
-  async load(): Promise<void> {
+  private readonly cachedLoad = createCachedLoader(
+    () => this.summary() !== null,
+    () => this.fetchAndStore(),
+  );
+
+  /** Caché y deduplicación: ver `createCachedLoader` (spec 101). */
+  load(options?: { force?: boolean }): Promise<void> {
+    return this.cachedLoad.load(options);
+  }
+
+  private async fetchAndStore(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
     try {
