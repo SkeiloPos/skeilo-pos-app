@@ -36,14 +36,55 @@ export class NotificationCenterService {
     () => this.items().filter((n) => n.attended_at === null).length,
   );
 
+  /**
+   * Spec 100: guarda de una sola carga inicial entre la recuperación por
+   * `lastSeenId` (RF-008, ver constructor) y la hidratación desde el
+   * agregador (`hydrate()`). La que marca esta guarda primero gana; la otra
+   * queda no-operativa.
+   *
+   * Antes de esta spec, el constructor disparaba siempre su propio `GET
+   * /notifications` (vía un `bootstrap()` privado) — HeaderComponent lo
+   * inyecta como campo de clase, y Angular construye los componentes de
+   * forma síncrona de padre a hijo, así que ese auto-arranque corría
+   * **siempre** antes de que `ngOnInit()` del shell llegara a pedir
+   * `GET /bootstrap` (research.md Decisión 8 asumía una carrera que, en la
+   * práctica, el auto-arranque ganaba de forma determinista, no aleatoria —
+   * JS es de un solo hilo y la construcción es síncrona). Se retira ese
+   * auto-arranque incondicional para que la carga común (sesión nueva, sin
+   * `lastSeenId`) llegue **solo** vía `hydrate()`, sin disparar una petición
+   * aparte (SC-001). La única fuente que sigue disparando su propia petición
+   * de forma independiente es la recuperación por `lastSeenId` (abajo), que
+   * ya estaba fuera del alcance del agregador (research.md §5: el modo
+   * `after_id` no participa de `/bootstrap`).
+   */
+  private initialized = false;
+
   constructor() {
     this.realtime.on('notification.created', (ev) => this.onNotificationCreated(ev));
     // `reconnected` solo se emite tras una caída con el stream ya abierto en
-    // esta misma pestaña (US5, quickstart.md §5); la recuperación tras
-    // recargar la pestaña completa la cubre `bootstrap()` con lo persistido
-    // en `localStorage` (T036).
+    // esta misma pestaña (US5, quickstart.md §5).
     this.realtime.on('reconnected', () => void this.recoverMissed());
-    void this.bootstrap();
+
+    // RF-008: si ya hay un `lastSeenId` persistido de una pestaña anterior,
+    // recupera lo que llegó desde entonces — el agregador no ofrece el modo
+    // `after_id`, así que esta recuperación sigue siendo una petición propia,
+    // independiente de `hydrate()`. Marca la guarda de forma síncrona para
+    // que un `hydrate()` que llegue después (con el bloque `notifications`
+    // del agregador, que trae page=1/size=20, no la recuperación) no compita.
+    if (this.readLastSeenId()) {
+      this.initialized = true;
+      void this.recoverMissed();
+    }
+  }
+
+  /** Hidrata desde el bloque `notifications` del arranque agregado
+   * (`BootstrapService`), sin disparar `GET /notifications` — salvo que la
+   * recuperación por `lastSeenId` del constructor ya haya ganado la guarda,
+   * en cuyo caso no hace nada. */
+  hydrate(value: NotificationListResponse | null): void {
+    if (this.initialized) return;
+    this.initialized = true;
+    if (value) this.merge(value.items);
   }
 
   /** Marca una notificación como atendida (compartido por tenant, idempotente). */
@@ -61,30 +102,6 @@ export class NotificationCenterService {
           : n,
       ),
     );
-  }
-
-  /**
-   * Primera carga de la sesión (T036): si ya hay un `lastSeenId` persistido de
-   * una pestaña anterior, recupera lo que llegó desde entonces (RF-008); si
-   * no hay ninguno (primera vez), siembra con las notificaciones recientes.
-   */
-  private async bootstrap(): Promise<void> {
-    const lastSeenId = this.readLastSeenId();
-    try {
-      if (lastSeenId) {
-        await this.recoverMissed();
-      } else {
-        const res = await firstValueFrom(
-          this.http.get<NotificationListResponse>(this.baseUrl, {
-            params: { page: 1, size: 20 },
-          }),
-        );
-        this.merge(res.items);
-      }
-    } catch {
-      // Sin conexión al arrancar: el aviso en vivo (SSE) sigue funcionando
-      // en cuanto vuelva; no bloquea el resto de la app.
-    }
   }
 
   /** US5: notificaciones generadas mientras el cajero estuvo desconectado. */

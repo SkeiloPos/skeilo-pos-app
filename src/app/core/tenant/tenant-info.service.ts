@@ -70,6 +70,12 @@ export class TenantInfoService {
     () => this.info()?.receipt_message?.trim() || DEFAULT_RECEIPT_MESSAGE,
   );
 
+  /** Fija el signal directamente desde el arranque agregado (`BootstrapService`),
+   * sin disparar ninguna petición HTTP propia (spec 100, research.md Decisión 7). */
+  hydrate(value: TenantInfo | null): void {
+    this.info.set(value);
+  }
+
   async load(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
