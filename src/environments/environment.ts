@@ -7,4 +7,5 @@ export const environment: AppEnvironment = {
   reservedSlugs: ['www', 'app', 'admin', 'assets', 'api', 'docs'],
   tenantHeaderName: 'X-Tenant-Host',
   apiBaseUrl: 'https://api.skeilopos.com/api/v1',
+  publicSiteUrl: 'https://skeilopos.com',
 };

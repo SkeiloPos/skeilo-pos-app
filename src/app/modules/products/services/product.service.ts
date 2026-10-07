@@ -57,6 +57,8 @@ function toNameConflict(err: unknown): VariantNameConflict | null {
 interface ProductResponse {
   id: string;
   category_id: string;
+  /** spec 097: resuelto en el servidor, sin depender de `GET /categories`. */
+  category_name?: string | null;
   name: string;
   description: string | null;
   preparation_type: Product['preparation_type'];
@@ -80,6 +82,9 @@ interface VariantResponse {
   active: boolean;
   presentation_id: string;
   presentation_name: string;
+  /** spec 099: ausente contra un backend sin desplegar. */
+  name?: string;
+  display_name?: string;
 }
 
 /** spec 093 (escenario 9): `GET /products/{id}` -- a diferencia del listado, incluye
@@ -457,6 +462,7 @@ export class ProductService {
         price: v.price,
         presentationId: v.presentation_id,
         presentationName: v.presentation_name,
+        name: v.name ?? '',
         recipe: recipe.map((r) => ({ ...r })),
         optionGroups,
       });
@@ -600,6 +606,7 @@ export class ProductService {
       ...(v.id ? { id: v.id } : {}),
       price: v.price,
       presentation_id: v.presentationId,
+      name: v.name ?? '',
       recipe,
       option_groups: optionGroups,
     };
@@ -676,6 +683,7 @@ export class ProductService {
     return {
       id: p.id,
       category_id: p.category_id,
+      category_name: p.category_name ?? null,
       name: p.name,
       description: p.description,
       preparation_type: p.preparation_type,
@@ -699,6 +707,8 @@ export class ProductService {
       active: v.active,
       presentation_id: v.presentation_id,
       presentation_name: v.presentation_name,
+      name: v.name,
+      display_name: v.display_name,
     };
   }
 

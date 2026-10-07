@@ -184,6 +184,18 @@ export class InventoryService {
     this.wantsAllItems.set(true);
   }
 
+  /**
+   * Búsqueda server-side para pickers de insumo (spec 098): a diferencia de `allItems()`
+   * (una sola página de 100, sin `search` ni `active`), esto reutiliza la misma
+   * `fetchItemsPage()` que ya usa la tabla de Insumos, así que un insumo fuera de esa
+   * primera página de 100 sigue siendo encontrable escribiendo su nombre.
+   */
+  searchActiveItems(query: string): Promise<InventoryItem[]> {
+    return this.fetchItemsPage(1, 20, query.trim(), '', 'active', false).then((page) =>
+      page.items.map((i) => this.toItem(i)),
+    );
+  }
+
   async loadLowStock(): Promise<void> {
     try {
       const data = await firstValueFrom(

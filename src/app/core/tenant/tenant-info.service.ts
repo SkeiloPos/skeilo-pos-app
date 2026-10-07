@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { createCachedLoader } from '../../shared/cached-loader.util';
 import { TenantContextService } from './tenant-context.service';
 
 /** `TenantInfoResponse` — datos del negocio del tenant actual. */
@@ -70,7 +71,23 @@ export class TenantInfoService {
     () => this.info()?.receipt_message?.trim() || DEFAULT_RECEIPT_MESSAGE,
   );
 
-  async load(): Promise<void> {
+  /** Fija el signal directamente desde el arranque agregado (`BootstrapService`),
+   * sin disparar ninguna petición HTTP propia (spec 100, research.md Decisión 7). */
+  hydrate(value: TenantInfo | null): void {
+    this.info.set(value);
+  }
+
+  private readonly cachedLoad = createCachedLoader(
+    () => this.info() !== null,
+    () => this.fetchAndStore(),
+  );
+
+  /** Caché y deduplicación: ver `createCachedLoader` (spec 101). */
+  load(options?: { force?: boolean }): Promise<void> {
+    return this.cachedLoad.load(options);
+  }
+
+  private async fetchAndStore(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
     try {

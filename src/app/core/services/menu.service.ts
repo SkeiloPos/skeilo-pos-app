@@ -32,9 +32,11 @@ interface MenuOptionGroupResponse {
 
 interface MenuVariantResponse {
   id: string;
-  /** spec 084 (A-79): la variante no tiene nombre propio; este es el de su presentación. */
   presentation_id: string;
   presentation_name: string;
+  /** spec 099: la etiqueta que debe ver el comensal. Ausente contra un backend sin
+   *  desplegar; se cae a `presentation_name`. */
+  display_name?: string;
   price: string;
   discounted_price?: string | null;
   discount_kind?: string | null;
@@ -135,8 +137,10 @@ export class MenuService {
         sold_out: p.sold_out ?? false,
         variants: (p.variants ?? []).map((v) => ({
           id: v.id,
-          // El modelo del cliente sigue llamando `name` a lo que se muestra de la variante.
-          name: v.presentation_name,
+          // El modelo del cliente sigue llamando `name` a lo que se muestra de la
+          // variante (spec 099: ahora es `display_name` -- el nombre propio si lo
+          // tiene, si no el de la presentación; `??` cubre un backend sin desplegar).
+          name: v.display_name ?? v.presentation_name,
           presentation_id: v.presentation_id,
           price: Number(v.price),
           discounted_price: v.discounted_price != null ? Number(v.discounted_price) : null,

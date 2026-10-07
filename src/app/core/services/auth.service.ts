@@ -10,6 +10,22 @@ import { displayNameFromEmail, mapBackendRole, User, UserRole } from '../interfa
 import { PushRegistrationService } from '../notifications/push-registration.service';
 
 /**
+ * Outcome of an unauthenticated auth call. `status` carries the HTTP code so the
+ * screen can tell apart cases that need different wording — a `429` rate limit
+ * from a dropped connection, say — without re-parsing the backend's `detail`,
+ * which is configurable and must not be echoed verbatim (spec 095, FR-023, D5).
+ */
+export interface AuthCallResult {
+  error: string | null;
+  /** HTTP status of the failure; `0` for a network error, `null` on success. */
+  status: number | null;
+}
+
+function statusOf(err: unknown): number | null {
+  return err instanceof HttpErrorResponse ? err.status : null;
+}
+
+/**
  * Session state machine backed by the own backend (`{apiBaseUrl}/auth/*`).
  * Supabase Auth is no longer used. Preserves the `currentUser` / `isLoading` /
  * `authReady$` contract consumed by guards and `App`.
@@ -46,8 +62,30 @@ export class AuthService {
       this.currentUser.set(user);
       return { error: null };
     } catch (err) {
-      return { error: this.extractError(err) };
+      return { error: this.loginError(err) };
     }
+  }
+
+  /**
+   * Error mapping for the login path **only** (spec 095, FR-012 / SC-003).
+   *
+   * The backend tells the three failures apart: an unknown email and a wrong
+   * password both come back `401 "Invalid credentials"`, while a **disabled**
+   * account comes back `403 "User account is inactive"` — in English, and
+   * confirming that the account exists in this tenant. Probing emails one by one
+   * would then reveal which are registered, so both codes collapse into one
+   * literal here.
+   *
+   * Deliberately NOT inside `extractError()`: that one is shared with the
+   * password change, the reset-link request and the reset itself, where
+   * "Credenciales inválidas" would be nonsense. The server is untouched (FR-044)
+   * — it keeps returning `403` and its detail for logs and support.
+   */
+  private loginError(err: unknown): string {
+    if (err instanceof HttpErrorResponse && (err.status === 401 || err.status === 403)) {
+      return 'Credenciales inválidas';
+    }
+    return this.extractError(err, 'No pudimos procesar la solicitud. Intenta de nuevo.');
   }
 
   /**
@@ -93,12 +131,15 @@ export class AuthService {
    * with the backend's generic message (or a fallback) — the endpoint never
    * reveals whether the email belongs to an account (FR-003).
    */
-  async forgotPassword(email: string): Promise<{ error: string | null }> {
+  async forgotPassword(email: string): Promise<AuthCallResult> {
     try {
       await firstValueFrom(this.authApi.forgotPassword({ email }));
-      return { error: null };
+      return { error: null, status: null };
     } catch (err) {
-      return { error: this.extractError(err, 'No se pudo procesar la solicitud. Intenta de nuevo.') };
+      return {
+        error: this.extractError(err, 'No se pudo procesar la solicitud. Intenta de nuevo.'),
+        status: statusOf(err),
+      };
     }
   }
 
@@ -107,12 +148,15 @@ export class AuthService {
    * Any existing session was already cleared by the reset-password screen
    * before this call (FR-006) — this never touches stored tokens.
    */
-  async resetPassword(token: string, newPassword: string): Promise<{ error: string | null }> {
+  async resetPassword(token: string, newPassword: string): Promise<AuthCallResult> {
     try {
       await firstValueFrom(this.authApi.resetPassword({ token, new_password: newPassword }));
-      return { error: null };
+      return { error: null, status: null };
     } catch (err) {
-      return { error: this.extractError(err, 'No se pudo restablecer la contraseña. Intenta de nuevo.') };
+      return {
+        error: this.extractError(err, 'No se pudo restablecer la contraseña. Intenta de nuevo.'),
+        status: statusOf(err),
+      };
     }
   }
 

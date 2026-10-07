@@ -107,6 +107,125 @@ describe('TenantInfoService', () => {
     });
   });
 
+  describe('hydrate (spec 100: arranque agregado del panel)', () => {
+    it('fija info() sin disparar ninguna petición HTTP', () => {
+      service.hydrate(tenantInfo({ name: 'Heladería del Bosque' }));
+
+      expect(service.info()?.name).toBe('Heladería del Bosque');
+      http.verify();
+    });
+
+    it('acepta null (Super Admin, sin tenant resuelto)', () => {
+      service.info.set(tenantInfo());
+
+      service.hydrate(null);
+
+      expect(service.info()).toBeNull();
+      http.verify();
+    });
+  });
+
+  describe('load (spec 101: caché y deduplicación, Historia 1)', () => {
+    it('con info() ya cacheada no dispara ninguna petición (Escenario 1)', async () => {
+      service.info.set(tenantInfo());
+
+      await service.load();
+
+      http.expectNone(TENANT);
+    });
+
+    it('dos llamadas casi simultáneas se unen a una sola petición (Escenario 2)', async () => {
+      const first = service.load();
+      const second = service.load();
+
+      const req = http.expectOne(TENANT);
+      req.flush(tenantInfo({ name: 'Nueva' }));
+
+      await expect(first).resolves.toBeUndefined();
+      await expect(second).resolves.toBeUndefined();
+      expect(service.info()?.name).toBe('Nueva');
+    });
+
+    it('tras un load() que termina en error, una llamada posterior sin forzar dispara una nueva petición (Escenario 3)', async () => {
+      const first = service.load();
+      http.expectOne(TENANT).flush('Error interno', {
+        status: 500,
+        statusText: 'Internal Server Error',
+      });
+      await first;
+      expect(service.error()).toBeTruthy();
+
+      const second = service.load();
+      http.expectOne(TENANT).flush(tenantInfo());
+      await second;
+      expect(service.info()).not.toBeNull();
+    });
+
+    it('un cache-hit no modifica loading() ni error() (FR-011)', async () => {
+      service.info.set(tenantInfo());
+
+      await service.load();
+
+      expect(service.loading()).toBe(false);
+      expect(service.error()).toBeNull();
+      http.expectNone(TENANT);
+    });
+
+    it('unirse a una petición en curso no modifica loading()/error() por sí mismo (FR-011)', async () => {
+      const first = service.load();
+      expect(service.loading()).toBe(true);
+
+      const second = service.load();
+      expect(service.loading()).toBe(true);
+      expect(service.error()).toBeNull();
+
+      http.expectOne(TENANT).flush(tenantInfo());
+      await first;
+      await second;
+      expect(service.loading()).toBe(false);
+    });
+  });
+
+  describe('load({ force: true }) (spec 101: forzado, Historia 2)', () => {
+    it('con info() ya cacheada, dispara una petición HTTP real (Escenario 1)', async () => {
+      service.info.set(tenantInfo({ name: 'Vieja' }));
+
+      const done = service.load({ force: true });
+      http.expectOne(TENANT).flush(tenantInfo({ name: 'Nueva' }));
+      await done;
+
+      expect(service.info()?.name).toBe('Nueva');
+    });
+
+    it('tras la recarga forzada, una llamada sin forzar no dispara otra petición (Escenario 3)', async () => {
+      service.info.set(tenantInfo({ name: 'Vieja' }));
+      const forced = service.load({ force: true });
+      http.expectOne(TENANT).flush(tenantInfo({ name: 'Nueva' }));
+      await forced;
+
+      await service.load();
+
+      http.expectNone(TENANT);
+      expect(service.info()?.name).toBe('Nueva');
+    });
+
+    it('un force que llega mientras ya hay un load() normal en curso dispara una segunda petición independiente (Caso 4 del contrato)', async () => {
+      const normal = service.load();
+      const req1 = http.expectOne(TENANT);
+
+      const forced = service.load({ force: true });
+      const req2 = http.expectOne(TENANT);
+
+      req2.flush(tenantInfo({ name: 'Forzada' }));
+      await forced;
+      expect(service.info()?.name).toBe('Forzada');
+
+      req1.flush(tenantInfo({ name: 'Vieja respuesta tardía' }));
+      await normal;
+      expect(service.info()?.name).toBe('Vieja respuesta tardía');
+    });
+  });
+
   describe('update (spec 088: nunca reenvía el logo)', () => {
     it('solo envía lo que se le pasa, sin logo_url ni logo_url_base', async () => {
       service.info.set(tenantInfo({ logo_url: 'https://assets.skeilopos.com/acme/logo/vigente.png' }));
