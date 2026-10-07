@@ -5,8 +5,7 @@ import { filter } from 'rxjs/operators';
 import { SidebarComponent } from './sidebar.component';
 import { HeaderComponent } from './header.component';
 import { LayoutService } from './layout.service';
-import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
-import { PlanSummaryService } from '../../plan/services/plan-summary.service';
+import { BootstrapService } from '../../../core/bootstrap/bootstrap.service';
 import { ToastContainerComponent } from '../../../shared/feedback/toast-container.component';
 import { ConfirmDialogComponent } from '../../../shared/feedback/confirm-dialog.component';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
@@ -98,18 +97,16 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
 })
 export class DashboardLayoutComponent implements OnInit, OnDestroy {
   readonly layoutService = inject(LayoutService);
-  private readonly tenantInfo = inject(TenantInfoService);
-  private readonly planSummaryService = inject(PlanSummaryService);
+  private readonly bootstrapService = inject(BootstrapService);
   private readonly realtime = inject(RealtimeService);
 
-  /** Carga branding y plan una vez para todo el dashboard (los lee el sidebar
-   * para pintar el logo/nombre y para ocultar ítems que el plan no incluye,
-   * spec 033 Historias 4/5). Para super admin `GET /plan` no aplica (sin
-   * tenant); falla en silencio igual que ya hace `tenantInfo` en ese caso, y
-   * el sidebar de super admin no usa `moduleKey` de todos modos. */
+  /** Carga branding, plan y notificaciones recientes en una sola petición
+   * agregada (spec 100) para todo el dashboard (los lee el sidebar para
+   * pintar el logo/nombre y para ocultar ítems que el plan no incluye, spec
+   * 033 Historias 4/5). Para super admin los 3 bloques llegan en `null`
+   * (FR-007) y el sidebar de super admin no usa `moduleKey` de todos modos. */
   ngOnInit(): void {
-    void this.tenantInfo.load();
-    void this.planSummaryService.load();
+    void this.bootstrapService.load();
     // Spec 077 (research.md §2): la conexión SSE del staff vive aquí, en el
     // shell autenticado, en vez de en una página hija (`pos-terminal.store.ts`
     // antes). Así sobrevive a la navegación entre secciones del POS — el
