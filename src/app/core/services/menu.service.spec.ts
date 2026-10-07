@@ -113,3 +113,80 @@ describe('MenuService — la terminal gana la condición, ningún importe (spec 
     expect(variant.discount_kind ?? null).toBeNull();
   });
 });
+
+/**
+ * spec 099-nombre-tamano-variante (US1, research.md D8): el comensal debe ver el
+ * nombre comercial propio de la variante, no el de su presentación, cuando el
+ * administrador le puso uno.
+ */
+describe('MenuService — nombre comercial propio de la variante (spec 099)', () => {
+  let http: HttpTestingController;
+  let service: MenuService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    http = TestBed.inject(HttpTestingController);
+    service = TestBed.inject(MenuService);
+  });
+
+  afterEach(() => {
+    http.verify();
+  });
+
+  function responderCon(variantExtra: Record<string, unknown>): void {
+    const req = http.expectOne((r) => r.url.endsWith('/menu'));
+    req.flush([
+      {
+        id: 'c1',
+        name: 'Granizados',
+        products: [
+          {
+            id: 'p1',
+            name: 'Granizado de café',
+            description: null,
+            image_url: null,
+            available: true,
+            option_groups: [],
+            variants: [
+              {
+                id: 'v1',
+                presentation_id: 'pr1',
+                presentation_name: 'Grande 16 onz',
+                price: '18000',
+                option_groups: [],
+                available: true,
+                ...variantExtra,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  }
+
+  it('usa `display_name` cuando el backend lo trae, aunque difiera de `presentation_name`', async () => {
+    const cargando = service.loadMenu();
+    responderCon({ display_name: 'Para compartir' });
+    await cargando;
+
+    expect(service.categories()[0].products[0].variants[0].name).toBe('Para compartir');
+  });
+
+  it('cae a `presentation_name` si `display_name` viene ausente (backend sin desplegar)', async () => {
+    const cargando = service.loadMenu();
+    responderCon({});
+    await cargando;
+
+    expect(service.categories()[0].products[0].variants[0].name).toBe('Grande 16 onz');
+  });
+
+  it('escapa contenido HTML del nombre: se interpola como texto, nunca como marcado', async () => {
+    const cargando = service.loadMenu();
+    responderCon({ display_name: '<b>x</b>' });
+    await cargando;
+
+    expect(service.categories()[0].products[0].variants[0].name).toBe('<b>x</b>');
+  });
+});

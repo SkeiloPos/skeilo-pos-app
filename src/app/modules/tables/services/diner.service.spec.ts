@@ -120,6 +120,35 @@ describe('DinerService', () => {
     expect(variants.map((v) => v.presentation_id)).toEqual(['pr-grande', 'pr-mediano']);
   });
 
+  it('el nombre de la variante usa `display_name` cuando el backend lo trae (spec 099)', async () => {
+    const promise = service.resolveByToken('signed.jwt');
+    const req = http.expectOne(`${API}/menu/qr-token/signed.jwt`);
+    req.flush({
+      table: { id: 't1', number: 5, name: 'Terraza' },
+      business: { name: 'Heladería', logo_url: null },
+      menu: [{
+        id: 'c1', name: 'Granizados',
+        products: [{
+          id: 'p1', name: 'Granizado del diablo', description: null, image_url: null,
+          variants: [
+            {
+              id: 'v1', presentation_id: 'pr-grande', presentation_name: 'Grande 16 onz',
+              display_name: 'Para compartir', price: '16000.00',
+            },
+            {
+              id: 'v2', presentation_id: 'pr-mediano', presentation_name: 'Mediano',
+              price: '11000.00',
+            },
+          ],
+        }],
+      }],
+    });
+
+    const variants = (await promise).categories[0].products[0].variants;
+    // v1 tiene nombre propio; v2 cae a `presentation_name` (ausente, backend viejo).
+    expect(variants.map((v) => v.name)).toEqual(['Para compartir', 'Mediano']);
+  });
+
   it('abre sesión y persiste el session_token', async () => {
     const promise = service.openSession('signed.jwt', 'Ana');
     const req = http.expectOne(`${API}/cart/sessions`);

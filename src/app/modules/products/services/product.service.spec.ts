@@ -118,6 +118,49 @@ describe('ProductService', () => {
       // Una sola presentación viva: el toggle de tamaños queda apagado.
       expect(result!.hasSizes).toBe(false);
     });
+
+    it('mapea el nombre propio de la variante (spec 099)', async () => {
+      const promise = service.getProductDraft(PID);
+
+      http.expectOne(`${PRODUCTS}/${PID}`).flush(productResponse());
+      await tick();
+
+      const list = http.expectOne(`${PRODUCTS}/${PID}/variants`);
+      list.flush([
+        variantResponse({
+          id: 'con-nombre', presentation_id: 'pr-grande', presentation_name: 'Grande 16 onz',
+          name: 'Para compartir', display_name: 'Para compartir',
+        }),
+      ]);
+      await tick();
+
+      http.expectOne(`${VARIANTS}/con-nombre/recipe`).flush([]);
+      http.expectOne(`${VARIANTS}/con-nombre/option-groups`).flush([]);
+      http.expectOne(`${API}/option-groups`).flush([]);
+
+      const result = await promise;
+      expect(result!.variants.map((v) => v.name)).toEqual(['Para compartir']);
+    });
+
+    it('deja el nombre propio en \'\' si el backend no lo trae (spec 099, Escenario 15)', async () => {
+      const promise = service.getProductDraft(PID);
+
+      http.expectOne(`${PRODUCTS}/${PID}`).flush(productResponse());
+      await tick();
+
+      const list = http.expectOne(`${PRODUCTS}/${PID}/variants`);
+      list.flush([
+        variantResponse({ id: 'sin-nombre', presentation_id: 'pr-pequeña', presentation_name: 'Pequeña' }),
+      ]);
+      await tick();
+
+      http.expectOne(`${VARIANTS}/sin-nombre/recipe`).flush([]);
+      http.expectOne(`${VARIANTS}/sin-nombre/option-groups`).flush([]);
+      http.expectOne(`${API}/option-groups`).flush([]);
+
+      const result = await promise;
+      expect(result!.variants.map((v) => v.name)).toEqual(['']);
+    });
   });
 
   describe('saveProduct para un producto nuevo (spec 043: guardado consolidado)', () => {
@@ -135,8 +178,27 @@ describe('ProductService', () => {
       const req = http.expectOne(PRODUCTS);
       expect(req.request.method).toBe('POST');
       expect(req.request.body.variants).toEqual([
-        { price: 6000, presentation_id: 'pr-pequeña', recipe: [], option_groups: [] },
-        { price: 9000, presentation_id: 'pr-grande', recipe: [], option_groups: [] },
+        { price: 6000, presentation_id: 'pr-pequeña', name: '', recipe: [], option_groups: [] },
+        { price: 9000, presentation_id: 'pr-grande', name: '', recipe: [], option_groups: [] },
+      ]);
+      req.flush({ ...productResponse(), variants: [] });
+
+      expect(await promise).toBe(PID);
+    });
+
+    it('envía el nombre propio de cada presentación (spec 099)', async () => {
+      const promise = service.saveProduct(
+        draft({
+          id: null,
+          variants: [
+            { id: null, localId: 'l1', price: 6000, presentationId: 'pr-grande', presentationName: 'Grande 16 onz', name: 'Para compartir', recipe: [], optionGroups: [] },
+          ],
+        }),
+      );
+
+      const req = http.expectOne(PRODUCTS);
+      expect(req.request.body.variants).toEqual([
+        { price: 6000, presentation_id: 'pr-grande', name: 'Para compartir', recipe: [], option_groups: [] },
       ]);
       req.flush({ ...productResponse(), variants: [] });
 
@@ -158,7 +220,7 @@ describe('ProductService', () => {
       const req = http.expectOne(`${PRODUCTS}/${PID}`);
       expect(req.request.method).toBe('PATCH');
       expect(req.request.body.variants).toEqual([
-        { id: 'viva', price: 9000, presentation_id: 'pr-mediana', recipe: [], option_groups: [] },
+        { id: 'viva', price: 9000, presentation_id: 'pr-mediana', name: '', recipe: [], option_groups: [] },
       ]);
       req.flush({ ...productResponse(), variants: [] });
 

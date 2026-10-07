@@ -26,6 +26,10 @@ import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { PlanSummaryService } from '../../plan/services/plan-summary.service';
 import { PresentationService } from '../../presentations/services/presentation.service';
 import {
+  normalizeVariantName,
+  VARIANT_NAME_MESSAGE,
+} from '../../../shared/validators/variant-name.validator';
+import {
   DEFAULT_PRESENTATION_NAME,
   DeactivatedVariant,
   PreparationType,
@@ -177,10 +181,11 @@ interface SlotBreakdown {
 
           @if (draft().hasSizes) {
             <div class="mt-4 rounded-xl border border-gray-200 overflow-hidden">
-              <div class="grid grid-cols-[28px_28px_1fr_140px_88px] gap-x-3 items-center px-3 py-2 bg-gray-50 text-[11px] font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200">
+              <div class="grid grid-cols-[28px_28px_1fr_1fr_140px_88px] gap-x-3 items-center px-3 py-2 bg-gray-50 text-[11px] font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200">
                 <span></span>
                 <span class="text-center">#</span>
                 <span>Presentación</span>
+                <span>Nombre (opcional)</span>
                 <span>Precio</span>
                 <span></span>
               </div>
@@ -188,7 +193,7 @@ interface SlotBreakdown {
                 class="divide-y divide-gray-100">
                 @for (v of draft().variants; track v.localId; let i = $index) {
                   <div cdkDrag (click)="activeLocalId.set(v.localId)"
-                    class="grid grid-cols-[28px_28px_1fr_140px_88px] gap-x-3 items-center px-3 py-2 cursor-pointer transition-colors"
+                    class="grid grid-cols-[28px_28px_1fr_1fr_140px_88px] gap-x-3 items-center px-3 py-2 cursor-pointer transition-colors"
                     [class]="v.localId === activeLocalId() ? 'bg-indigo-50' : 'hover:bg-gray-50'">
                     <span cdkDragHandle (click)="$event.stopPropagation()"
                       class="text-center text-gray-300 hover:text-gray-500 cursor-move">⠿</span>
@@ -211,6 +216,14 @@ interface SlotBreakdown {
                         </p>
                       }
                     </div>
+                    <div class="min-w-0">
+                      <input type="text" [ngModel]="v.name ?? ''"
+                        (ngModelChange)="setVariantField(v.localId, 'name', $event)"
+                        (click)="$event.stopPropagation()"
+                        [placeholder]="variantNamePlaceholder(v)"
+                        maxlength="200"
+                        class="w-full min-w-0 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-gray-400" />
+                    </div>
                     <div class="flex items-center gap-1 border border-gray-200 rounded-lg px-2 py-1 bg-white">
                       <span class="text-gray-400 text-sm">$</span>
                       <app-money-input [ngModel]="v.price"
@@ -224,6 +237,9 @@ interface SlotBreakdown {
                       </button>
                     }
                   </div>
+                }
+                @if (variantNameError()) {
+                  <p class="text-xs text-red-600 px-3 py-2">{{ variantNameError() }}</p>
                 }
               </div>
               <button type="button" (click)="addVariant()"
@@ -615,6 +631,38 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     }));
   }
 
+  /** spec 099 (FR-010): ayuda del campo "Nombre (opcional)" de una fila. */
+  variantNamePlaceholder(v: VariantDraft): string {
+    return v.presentationName
+      ? `Se mostrará: ${v.presentationName}`
+      : 'Se mostrará la presentación';
+  }
+
+  /**
+   * spec 099 (FR-007/FR-008): mensaje de error del nombre propio -- longitud o nombre
+   * duplicado dentro del producto (insensible a mayúsculas, sobre la etiqueta que
+   * resultaría, no sobre el texto crudo) -- o `null` si todas las filas están bien.
+   */
+  readonly variantNameError = computed<string | null>(() => {
+    const variants = this.draft().variants;
+    const normalizados: string[] = [];
+    for (const v of variants) {
+      const resultado = normalizeVariantName(v.name ?? '');
+      if ('error' in resultado) return resultado.error;
+      normalizados.push(resultado.value);
+    }
+    const vistos = new Set<string>();
+    for (let i = 0; i < variants.length; i++) {
+      const etiqueta = (normalizados[i] || variants[i].presentationName || '').toLowerCase();
+      if (!etiqueta) continue;
+      if (vistos.has(etiqueta)) {
+        return 'Ya existe un tamaño con ese nombre en este producto';
+      }
+      vistos.add(etiqueta);
+    }
+    return null;
+  });
+
   groupOptionsFor(localId: string, index: number) {
     const variant = this.draft().variants.find((v) => v.localId === localId);
     const usados = new Set(
@@ -640,7 +688,9 @@ export class ProductFormComponent implements OnInit, OnDestroy {
       (!d.hasSizes || d.variants.every((v) => !!v.presentationId)) &&
       // Una fila sin grupo o con min/max incoherentes la rechaza el backend con 422;
       // mejor bloquear el botón que perder el guardado a medias.
-      d.variants.every((v) => v.optionGroups.every((g) => !this.groupError(g)))
+      d.variants.every((v) => v.optionGroups.every((g) => !this.groupError(g))) &&
+      // spec 099 (FR-007/FR-008): nombre propio dentro del límite y sin duplicados.
+      !this.variantNameError()
     );
   });
 
@@ -908,6 +958,7 @@ export class ProductFormComponent implements OnInit, OnDestroy {
       price,
       presentationId: presentation?.id ?? null,
       presentationName: presentation?.name ?? '',
+      name: '',
       recipe: [],
       optionGroups: [],
     };
