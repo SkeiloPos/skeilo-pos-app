@@ -107,6 +107,24 @@ describe('TenantInfoService', () => {
     });
   });
 
+  describe('hydrate (spec 100: arranque agregado del panel)', () => {
+    it('fija info() sin disparar ninguna petición HTTP', () => {
+      service.hydrate(tenantInfo({ name: 'Heladería del Bosque' }));
+
+      expect(service.info()?.name).toBe('Heladería del Bosque');
+      http.verify();
+    });
+
+    it('acepta null (Super Admin, sin tenant resuelto)', () => {
+      service.info.set(tenantInfo());
+
+      service.hydrate(null);
+
+      expect(service.info()).toBeNull();
+      http.verify();
+    });
+  });
+
   describe('update (spec 088: nunca reenvía el logo)', () => {
     it('solo envía lo que se le pasa, sin logo_url ni logo_url_base', async () => {
       service.info.set(tenantInfo({ logo_url: 'https://assets.skeilopos.com/acme/logo/vigente.png' }));
