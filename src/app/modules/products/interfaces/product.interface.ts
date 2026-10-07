@@ -128,9 +128,11 @@ export interface VariantSavePayload {
   active?: boolean;
   recipe: RecipeItem[];
   option_groups: VariantOptionGroup[];
-  /** spec 084 (A-79): la variante no tiene nombre propio; lo da su presentación del
-   *  catálogo. `null` = "Presentación única" (productos sin tamaños). */
+  /** spec 084 (A-79): presentación del catálogo que nombra estructuralmente a esta
+   *  variante. `null` = "Presentación única" (productos sin tamaños). */
   presentation_id: string | null;
+  /** spec 099: alias comercial opcional, puramente cosmético. */
+  name?: string;
 }
 
 // --- Variants ---
@@ -142,9 +144,13 @@ export interface Variant {
   sku: string | null;
   price: number;
   active: boolean;
-  /** spec 084 (A-79): presentación del catálogo que nombra a la variante (siempre presente). */
+  /** spec 084 (A-79): presentación del catálogo que nombra estructuralmente a la
+   *  variante (siempre presente). */
   presentation_id: string;
   presentation_name: string;
+  /** spec 099: alias comercial opcional, puramente cosmético. */
+  name?: string;
+  display_name?: string;
 }
 
 /** Editable fields captured by the variant form. */
@@ -358,6 +364,11 @@ export interface VariantDraft {
   /** Nombre de esa presentación, para pintar la fila sin esperar al catálogo. `''` si aún
    *  no eligió. */
   presentationName: string;
+  /** spec 099: alias comercial opcional, puramente cosmético, tal como lo escribe el
+   *  administrador (sin normalizar todavía). `''` si no tiene. Campo opcional con
+   *  default seguro -- ver memoria del proyecto sobre interfaces de dominio muy usadas
+   *  por fixtures de tests no relacionados. */
+  name?: string;
   recipe: RecipeLineDraft[];
   optionGroups: VariantOptionGroupDraft[];
 }

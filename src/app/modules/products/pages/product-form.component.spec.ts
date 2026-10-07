@@ -340,13 +340,13 @@ describe('ProductFormComponent', () => {
     const savePromise = component.save();
 
     // Spec 043: una sola petición trae el producto y su única variante (con su receta/
-    // grupos vacíos). Spec 084 (A-79): sin `name`; `presentation_id: null` = "Presentación
-    // única", que el backend resuelve.
+    // grupos vacíos). Spec 084 (A-79): `presentation_id: null` = "Presentación única",
+    // que el backend resuelve. Spec 099: `name` siempre viaja, `''` por defecto.
     const created = http.expectOne(PRODUCTS);
     expect(created.request.method).toBe('POST');
     expect(created.request.body.tracks_inventory).toBe(false);
     expect(created.request.body.variants).toEqual([
-      { price: 0, presentation_id: null, recipe: [], option_groups: [] },
+      { price: 0, presentation_id: null, name: '', recipe: [], option_groups: [] },
     ]);
     created.flush({
       id: 'p1',
@@ -627,17 +627,83 @@ describe('ProductFormComponent', () => {
   const variantRowSelect = (localId: string): HTMLSelectElement =>
     variantRow(localId).querySelector('select')!;
 
+  /** spec 099: el input de texto del "Nombre (opcional)" de una fila. */
+  const variantRowNameInput = (localId: string): HTMLInputElement =>
+    variantRow(localId).querySelector('input[type="text"]')!;
+
   /** Texto de la tarjeta a partir de un ancla, para comparar el orden vertical. */
   const position = (needle: string): number => fixture.nativeElement.innerHTML.indexOf(needle);
 
-  it('la tabla de tamaños no tiene columna ni campo "Nombre"', async () => {
+  it('la tabla de tamaños tiene un campo "Nombre (opcional)" junto a la presentación (spec 099)', async () => {
     await createEdit('p9', true);
     const row = variantRow(component.draft().variants[0].localId);
 
-    // Solo queda el input del precio (app-money-input); ningún input de nombre.
-    expect(row.querySelectorAll('input').length).toBe(1);
+    // El input del precio (app-money-input) y el nuevo input de nombre propio.
+    expect(row.querySelectorAll('input').length).toBe(2);
     expect(row.querySelector('select')).not.toBeNull();
-    expect(text()).not.toMatch(/\bNombre\s+Presentación\b/);
+    expect(text()).toContain('Nombre (opcional)');
+  });
+
+  // ── Nombre comercial propio de la variante (spec 099) ───────────────────
+
+  it('el placeholder dice "Se mostrará: <presentación>" cuando ya se eligió una', async () => {
+    await createEdit('p9', true);
+    const v1 = component.draft().variants[0];
+    expect(v1.presentationName).toBe('Grande');
+
+    expect(variantRowNameInput(v1.localId).placeholder).toBe('Se mostrará: Grande');
+  });
+
+  it('el placeholder dice "Se mostrará la presentación" si aún no se eligió ninguna', async () => {
+    await createEdit('p9', true);
+    component.addVariant();
+    fixture.detectChanges();
+    const nueva = component.draft().variants[2];
+
+    expect(variantRowNameInput(nueva.localId).placeholder).toBe('Se mostrará la presentación');
+  });
+
+  it('escribir un nombre y guardar lo persiste; borrarlo hace que la fila vuelva a mostrar la presentación', async () => {
+    await createEdit('p9', true);
+    const v1 = component.draft().variants[0];
+
+    const input = variantRowNameInput(v1.localId);
+    input.value = 'Para compartir';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(component.draft().variants[0].name).toBe('Para compartir');
+
+    input.value = '';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(component.draft().variants[0].name).toBe('');
+  });
+
+  it('61 caracteres en el nombre bloquea el guardado con el mensaje del límite (Escenario 8)', async () => {
+    await createEdit('p9', true);
+    const v1 = component.draft().variants[0];
+
+    component.setVariantField(v1.localId, 'name', 'a'.repeat(61));
+    fixture.detectChanges();
+
+    expect(component.canSave()).toBe(false);
+    expect(text()).toContain('El nombre admite hasta 60 caracteres');
+  });
+
+  it('dos variantes que resolverían al mismo nombre dentro del producto bloquean el guardado (Escenario 9)', async () => {
+    await createEdit('p9', true);
+    const [v1, v2] = component.draft().variants;
+    // v1 = "Grande", v2 = "Pequeña" (FakePresentationService). Ponerle a v2 el nombre
+    // "Grande" hace que ambas resuelvan a la misma etiqueta.
+    component.setVariantField(v2.localId, 'name', 'Grande');
+    fixture.detectChanges();
+
+    expect(component.canSave()).toBe(false);
+    expect(text()).toContain('Ya existe un tamaño con ese nombre en este producto');
+
+    void v1;
   });
 
   it('el select no ofrece "Sin presentación"', async () => {
@@ -698,7 +764,7 @@ describe('ProductFormComponent', () => {
     expect(component.canSave()).toBe(true);
   });
 
-  it('el guardado envía presentation_id y ningún name en cada variante', async () => {
+  it('el guardado envía presentation_id y el nombre propio (spec 099, \'\' por defecto) de cada variante', async () => {
     await createEdit('p9', true);
     const [v1, v2] = component.draft().variants;
     component.setVariantPresentation(v1.localId, 'p-mediana');
@@ -710,7 +776,7 @@ describe('ProductFormComponent', () => {
     const variants = req.request.body.variants as Array<Record<string, unknown>>;
     expect(variants.find((v) => v['id'] === v1.id)?.['presentation_id']).toBe('p-mediana');
     expect(variants.find((v) => v['id'] === v2.id)?.['presentation_id']).toBe('p-pequena');
-    expect(variants.every((v) => !('name' in v))).toBe(true);
+    expect(variants.every((v) => v['name'] === '')).toBe(true);
     req.flush({
       id: 'p9', category_id: 'c1', name: 'Cono doble', description: null,
       preparation_type: 'prepared', image_url: null, active: true, available: true,
