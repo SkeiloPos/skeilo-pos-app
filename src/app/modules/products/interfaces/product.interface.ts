@@ -336,6 +336,14 @@ export interface VariantOptionGroupSetPayload {
 export interface RecipeLineDraft {
   inventory_item_id: string | null;
   quantity: number;
+  /**
+   * spec 105 (research.md): nombre/unidad del insumo, denormalizados por el backend
+   * (como `category_name`/`presentation_name`) para una línea ya guardada -- evita
+   * resolverlos por id. Opcionales: ausentes en una línea recién agregada sin elegir
+   * insumo todavía, o en fixtures de test que no los necesitan.
+   */
+  inventory_item_name?: string;
+  unit_measure_id?: string;
 }
 
 /** Un grupo ofrecido por la variante, en el draft. `name` se resuelve para mostrarlo. */

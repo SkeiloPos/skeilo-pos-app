@@ -104,6 +104,11 @@ interface ProductDetailResponse extends ProductResponse {
 interface RecipeItemResponse {
   id: string;
   inventory_item_id: string;
+  /** spec 105 (research.md): denormalizados por el backend desde el insumo, igual que
+   *  `category_name`/`presentation_name` -- evita un `GET /inventory/items/{id}` por cada
+   *  línea de receta al mostrar el nombre/unidad de un insumo ya guardado. */
+  inventory_item_name: string;
+  unit_measure_id: string;
   quantity: string;
 }
 
@@ -529,6 +534,8 @@ export class ProductService {
       recipe: (v.recipe ?? []).map((r) => ({
         inventory_item_id: r.inventory_item_id,
         quantity: Number(r.quantity),
+        inventory_item_name: r.inventory_item_name,
+        unit_measure_id: r.unit_measure_id,
       })),
       optionGroups: (v.option_groups ?? []).map((l) => ({
         option_group_id: l.option_group_id,
