@@ -196,6 +196,38 @@ export class InventoryService {
     );
   }
 
+  /**
+   * Insumos resueltos por id (spec 102) porque un `inventory_item_id` ya referenciado por una
+   * receta o un detalle de opción no estaba en `allItems()` (la página de hasta 100). Se combina
+   * con `allItems()` en el consumidor (p. ej. `ProductFormComponent`) — nunca se mezcla aquí
+   * dentro de `allItems()` misma (research.md D1 de la spec 102).
+   */
+  readonly resolvedExtraItems = signal<InventoryItem[]>([]);
+
+  /**
+   * Resuelve por id, en paralelo, los ids que no estén ya en `allItems()` ni en
+   * `resolvedExtraItems()`, reutilizando `GET /items/{id}` (ya existente). Un id que responda 404
+   * se descarta en silencio (no hay insumo real que resolver).
+   */
+  async resolveMissingItems(ids: string[]): Promise<void> {
+    const known = new Set([...this.allItems(), ...this.resolvedExtraItems()].map((i) => i.id));
+    const missing = [...new Set(ids)].filter((id) => !known.has(id));
+    if (missing.length === 0) return;
+
+    const resolved = await Promise.all(
+      missing.map((id) =>
+        firstValueFrom(this.http.get<InventoryItemResponse>(`${this.baseUrl}/items/${id}`)).then(
+          (i) => this.toItem(i),
+          () => null,
+        ),
+      ),
+    );
+    const found = resolved.filter((i): i is InventoryItem => i !== null);
+    if (found.length > 0) {
+      this.resolvedExtraItems.update((prev) => [...prev, ...found]);
+    }
+  }
+
   async loadLowStock(): Promise<void> {
     try {
       const data = await firstValueFrom(
