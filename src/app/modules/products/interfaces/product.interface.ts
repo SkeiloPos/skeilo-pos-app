@@ -390,6 +390,13 @@ export interface ProductDraft {
   id: string | null;
   name: string;
   category_id: string;
+  /** spec 102 (D4): nombre de la categoría ya elegida, tal como lo resuelve el backend en
+   *  `GET /products/{id}` (spec 097). Permite mostrar su nombre real en el selector aunque haya
+   *  quedado fuera de `allCategories()` (la primera página de 100) — mismo patrón ya usado por
+   *  `presentationName` en `VariantDraft`. Opcional/`''` en fixtures existentes y en un producto
+   *  nuevo (sin categoría elegida aún) — ver memoria del proyecto sobre interfaces de dominio muy
+   *  usadas por fixtures de tests no relacionados. */
+  category_name?: string;
   description: string;
   preparation_type: PreparationType;
   image_url: string;

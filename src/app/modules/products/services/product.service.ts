@@ -85,12 +85,20 @@ interface VariantResponse {
   /** spec 099: ausente contra un backend sin desplegar. */
   name?: string;
   display_name?: string;
+  /** spec 103 (D1): solo presente cuando viene de `GET /products/{id}` (no de
+   *  `GET /products/{id}/variants`, que no los trae). `recipe` puede venir ausente o
+   *  vacío para el rol Cajero (D3) -- ambos casos se tratan igual, receta vacía. */
+  recipe?: RecipeItemResponse[];
+  option_groups?: VariantOptionGroupResponse[];
 }
 
 /** spec 093 (escenario 9): `GET /products/{id}` -- a diferencia del listado, incluye
  *  las presentaciones activas con su precio (sin receta ni grupos de opciones). */
 interface ProductDetailResponse extends ProductResponse {
   variants: VariantResponse[];
+  /** Ajuste posterior a la spec 103: las desactivadas, ya en la misma respuesta --
+   *  `GET /products/{id}/variants` deja de hacer falta solo para listarlas. */
+  deactivated: VariantResponse[];
 }
 
 interface RecipeItemResponse {
@@ -386,8 +394,13 @@ export class ProductService {
 
   // --- Recipes (per variant, consume inventory items) ---
 
-  /** Fetch a variant's recipe. A missing recipe (404) is a valid empty state. */
-  async getVariantRecipe(variantId: string): Promise<RecipeItem[]> {
+  /**
+   * Petición cruda, sin atrapar errores de red/servidor (spec 102, D2): un 404 es un
+   * estado vacío válido (`return []`), pero cualquier otro error se propaga para que el
+   * llamador decida — `getProductDraft` lo aísla por variante (`Promise.allSettled`);
+   * `getVariantRecipe` (abajo) lo atrapa para mantener su contrato de siempre resolver.
+   */
+  private async fetchVariantRecipeRaw(variantId: string): Promise<RecipeItem[]> {
     try {
       const data = await firstValueFrom(
         this.http.get<RecipeItemResponse[]>(`${this.variantsUrl}/${variantId}/recipe`),
@@ -398,6 +411,15 @@ export class ProductService {
       }));
     } catch (err) {
       if (err instanceof HttpErrorResponse && err.status === 404) return [];
+      throw err;
+    }
+  }
+
+  /** Fetch a variant's recipe. A missing recipe (404) is a valid empty state. */
+  async getVariantRecipe(variantId: string): Promise<RecipeItem[]> {
+    try {
+      return await this.fetchVariantRecipeRaw(variantId);
+    } catch (err) {
       this.otherError.set(this.extractError(err));
       return [];
     }
@@ -406,10 +428,12 @@ export class ProductService {
   // --- Option groups (per variant) ---
 
   /**
-   * Grupos que ofrece una variante, con su nombre resuelto contra el catálogo (el
-   * endpoint solo devuelve ids).
+   * Misma razón de ser que `fetchVariantRecipeRaw`: 404 es vacío válido, lo demás se propaga.
+   * El GET de los links y el catálogo de grupos se piden EN PARALELO (como ya hacía el código
+   * original) — no uno tras otro — para no introducir latencia nueva en las llamadas de una
+   * sola variante (`restoreVariant()`, `retryVariant()`).
    */
-  async getVariantOptionGroups(variantId: string): Promise<VariantOptionGroupDraft[]> {
+  private async fetchVariantOptionGroupsRaw(variantId: string): Promise<VariantOptionGroupDraft[]> {
     try {
       const [links] = await Promise.all([
         firstValueFrom(
@@ -417,9 +441,7 @@ export class ProductService {
             `${this.variantsUrl}/${variantId}/option-groups`,
           ),
         ),
-        this.optionGroupService.groups().length
-          ? Promise.resolve()
-          : this.optionGroupService.loadGroups(),
+        this.ensureOptionGroupsLoaded(),
       ]);
       const byId = new Map(this.optionGroupService.groups().map((g) => [g.id, g]));
       return links.map((l) => ({
@@ -431,6 +453,37 @@ export class ProductService {
       }));
     } catch (err) {
       if (err instanceof HttpErrorResponse && err.status === 404) return [];
+      throw err;
+    }
+  }
+
+  /** En vuelo (si existe) la carga del catálogo de grupos de opciones — ver `ensureOptionGroupsLoaded`. */
+  private optionGroupsLoadPromise: Promise<void> | null = null;
+
+  /**
+   * Asegura el catálogo de grupos de opciones cargado antes de resolver nombres, sin volver a
+   * pedirlo si ya hay una carga en curso o completa (spec 102, D2). A diferencia de la guarda
+   * original (`groups().length ? ... : loadGroups()`), esto NO confunde "catálogo vacío porque el
+   * tenant no tiene ningún grupo" con "catálogo nunca cargado": una respuesta `[]` también cuenta
+   * como cargado, así que no se reintenta en cada llamada concurrente (lo que, con varias
+   * variantes en paralelo, dispararía una `GET /option-groups` por variante en vez de una sola).
+   */
+  private async ensureOptionGroupsLoaded(): Promise<void> {
+    if (this.optionGroupService.groups().length > 0) return;
+    if (!this.optionGroupsLoadPromise) {
+      this.optionGroupsLoadPromise = this.optionGroupService.loadGroups();
+    }
+    await this.optionGroupsLoadPromise;
+  }
+
+  /**
+   * Grupos que ofrece una variante, con su nombre resuelto contra el catálogo (el
+   * endpoint solo devuelve ids).
+   */
+  async getVariantOptionGroups(variantId: string): Promise<VariantOptionGroupDraft[]> {
+    try {
+      return await this.fetchVariantOptionGroupsRaw(variantId);
+    } catch (err) {
       this.otherError.set(this.extractError(err));
       return [];
     }
@@ -443,35 +496,56 @@ export class ProductService {
    * into a single editable {@link ProductDraft}.
    */
   async getProductDraft(id: string): Promise<ProductDraft | null> {
-    const product = await this.getProduct(id);
-    if (!product) return null;
-
-    // Una sola lectura, partida por estado: las desactivadas se listan aparte para
-    // restaurarlas, y no se les pide receta ni grupos porque no se editan. Mezclarlas con
-    // las vivas hacía que una presentación borrada reapareciera como si se vendiera.
-    const variants = await this.loadVariants(id);
-    const variantDrafts: VariantDraft[] = [];
-    for (const v of variants.filter((v) => v.active)) {
-      const [recipe, optionGroups] = await Promise.all([
-        this.getVariantRecipe(v.id),
-        this.getVariantOptionGroups(v.id),
-      ]);
-      variantDrafts.push({
-        id: v.id,
-        localId: v.id,
-        price: v.price,
-        presentationId: v.presentation_id,
-        presentationName: v.presentation_name,
-        name: v.name ?? '',
-        recipe: recipe.map((r) => ({ ...r })),
-        optionGroups,
-      });
+    // Spec 103-detalle-producto-consolidado (research.md D4): `GET /products/{id}` ya
+    // trae, por cada variante activa, su receta y sus grupos de opciones embebidos --
+    // se lee directo de aquí, sin disparar ninguna petición adicional por tamaño (no se
+    // reusa `getProduct()`, que descarta `variants`, para no pedir el detalle dos veces).
+    let raw: ProductDetailResponse;
+    try {
+      raw = await firstValueFrom(
+        this.http.get<ProductDetailResponse>(`${this.productsUrl}/${id}`),
+      );
+    } catch (err) {
+      this.otherError.set(this.extractError(err));
+      return null;
     }
+    const product = this.toProduct(raw);
+
+    // El nombre de cada grupo de opciones (el link embebido solo trae su id) se resuelve
+    // contra el catálogo local, cargado una sola vez -- igual que antes (research.md D4),
+    // ya no una vez por variante en paralelo.
+    if (raw.variants.length > 0) {
+      await this.ensureOptionGroupsLoaded();
+    }
+    const groupById = new Map(this.optionGroupService.groups().map((g) => [g.id, g]));
+
+    const variantDrafts: VariantDraft[] = raw.variants.map((v) => ({
+      id: v.id,
+      localId: v.id,
+      price: Number(v.price),
+      presentationId: v.presentation_id,
+      presentationName: v.presentation_name,
+      name: v.name ?? '',
+      recipe: (v.recipe ?? []).map((r) => ({
+        inventory_item_id: r.inventory_item_id,
+        quantity: Number(r.quantity),
+      })),
+      optionGroups: (v.option_groups ?? []).map((l) => ({
+        option_group_id: l.option_group_id,
+        name: groupById.get(l.option_group_id)?.name ?? 'Grupo',
+        min_select: l.min_select,
+        max_select: l.max_select,
+        quantity_per_option: Number(l.quantity_per_option),
+      })),
+    }));
 
     return {
       id: product.id,
       name: product.name,
       category_id: product.category_id,
+      // spec 102 (D4): nombre ya resuelto por el backend (spec 097), para el resguardo del
+      // selector de categoría si quedó fuera de `allCategories()`.
+      category_name: product.category_name ?? '',
       description: product.description ?? '',
       preparation_type: product.preparation_type,
       image_url: product.image_url ?? '',
@@ -482,14 +556,15 @@ export class ProductService {
       hasSizes: variantDrafts.length > 1,
       tracks_inventory: product.tracks_inventory,
       variants: variantDrafts,
-      deactivated: variants
-        .filter((v) => !v.active)
-        .map((v) => ({
-          id: v.id,
-          price: v.price,
-          presentationId: v.presentation_id,
-          presentationName: v.presentation_name,
-        })),
+      // Ajuste posterior a la spec 103: las desactivadas ya vienen en la misma
+      // respuesta de `GET /products/{id}` -- deja de hacer falta un segundo
+      // `GET /products/{id}/variants` solo para listarlas.
+      deactivated: raw.deactivated.map((v) => ({
+        id: v.id,
+        price: Number(v.price),
+        presentationId: v.presentation_id,
+        presentationName: v.presentation_name,
+      })),
     };
   }
 
