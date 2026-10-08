@@ -29,6 +29,13 @@ function productResponse() {
     active: true,
     available: true,
     created_at: '2026-08-06T00:00:00',
+    // Spec 103 (D1/D4): `GET /products/{id}` siempre trae `variants[]`, embebiendo
+    // receta/grupos de opciones por variante activa -- vacío por defecto, cada test lo
+    // sobrescribe con `variantDetailResponse(...)` cuando necesita una variante activa.
+    variants: [] as unknown[],
+    // Ajuste posterior a la spec 103: las desactivadas vienen en la misma respuesta --
+    // `GET /products/{id}/variants` deja de llamarse desde `getProductDraft()`.
+    deactivated: [] as unknown[],
   };
 }
 
@@ -41,6 +48,17 @@ function variantResponse(partial: Partial<Record<string, unknown>>) {
     active: true,
     presentation_id: 'pr-unica',
     presentation_name: 'Única',
+    ...partial,
+  };
+}
+
+/** Spec 103 (D1): forma de una variante dentro de `variants[]` de `GET /products/{id}`,
+ *  con `recipe`/`option_groups` embebidos (vacíos por defecto). */
+function variantDetailResponse(partial: Partial<Record<string, unknown>> = {}) {
+  return {
+    ...variantResponse({}),
+    recipe: [] as unknown[],
+    option_groups: [] as unknown[],
     ...partial,
   };
 }
@@ -93,21 +111,21 @@ describe('ProductService', () => {
     it('separa las desactivadas y no les pide receta ni grupos', async () => {
       const promise = service.getProductDraft(PID);
 
-      http.expectOne(`${PRODUCTS}/${PID}`).flush(productResponse());
+      http.expectOne(`${PRODUCTS}/${PID}`).flush({
+        ...productResponse(),
+        variants: [
+          variantDetailResponse({
+            id: 'viva', presentation_id: 'pr-mediana', presentation_name: 'Mediana', price: '9000',
+          }),
+        ],
+        // Ajuste posterior a la spec 103: las desactivadas ya vienen en la misma
+        // respuesta -- ya no hace falta un segundo `GET /products/{id}/variants`.
+        deactivated: [
+          variantResponse({ id: 'muerta', presentation_id: 'pr-pequeña', presentation_name: 'Pequeña', price: '6000', active: false }),
+        ],
+      });
       await tick();
 
-      // Sin `?active=`: una sola lectura que trae ambos estados.
-      const list = http.expectOne(`${PRODUCTS}/${PID}/variants`);
-      expect(list.request.params.has('active')).toBe(false);
-      list.flush([
-        variantResponse({ id: 'viva', presentation_id: 'pr-mediana', presentation_name: 'Mediana', price: '9000', active: true }),
-        variantResponse({ id: 'muerta', presentation_id: 'pr-pequeña', presentation_name: 'Pequeña', price: '6000', active: false }),
-      ]);
-      await tick();
-
-      // Solo la viva pide su configuración; la desactivada no se edita.
-      http.expectOne(`${VARIANTS}/viva/recipe`).flush([]);
-      http.expectOne(`${VARIANTS}/viva/option-groups`).flush([]);
       http.expectOne(`${API}/option-groups`).flush([]);
 
       const result = await promise;
@@ -122,20 +140,17 @@ describe('ProductService', () => {
     it('mapea el nombre propio de la variante (spec 099)', async () => {
       const promise = service.getProductDraft(PID);
 
-      http.expectOne(`${PRODUCTS}/${PID}`).flush(productResponse());
+      http.expectOne(`${PRODUCTS}/${PID}`).flush({
+        ...productResponse(),
+        variants: [
+          variantDetailResponse({
+            id: 'con-nombre', presentation_id: 'pr-grande', presentation_name: 'Grande 16 onz',
+            name: 'Para compartir', display_name: 'Para compartir',
+          }),
+        ],
+      });
       await tick();
 
-      const list = http.expectOne(`${PRODUCTS}/${PID}/variants`);
-      list.flush([
-        variantResponse({
-          id: 'con-nombre', presentation_id: 'pr-grande', presentation_name: 'Grande 16 onz',
-          name: 'Para compartir', display_name: 'Para compartir',
-        }),
-      ]);
-      await tick();
-
-      http.expectOne(`${VARIANTS}/con-nombre/recipe`).flush([]);
-      http.expectOne(`${VARIANTS}/con-nombre/option-groups`).flush([]);
       http.expectOne(`${API}/option-groups`).flush([]);
 
       const result = await promise;
@@ -145,21 +160,79 @@ describe('ProductService', () => {
     it('deja el nombre propio en \'\' si el backend no lo trae (spec 099, Escenario 15)', async () => {
       const promise = service.getProductDraft(PID);
 
-      http.expectOne(`${PRODUCTS}/${PID}`).flush(productResponse());
+      http.expectOne(`${PRODUCTS}/${PID}`).flush({
+        ...productResponse(),
+        variants: [
+          variantDetailResponse({ id: 'sin-nombre', presentation_id: 'pr-pequeña', presentation_name: 'Pequeña' }),
+        ],
+      });
       await tick();
 
-      const list = http.expectOne(`${PRODUCTS}/${PID}/variants`);
-      list.flush([
-        variantResponse({ id: 'sin-nombre', presentation_id: 'pr-pequeña', presentation_name: 'Pequeña' }),
-      ]);
-      await tick();
-
-      http.expectOne(`${VARIANTS}/sin-nombre/recipe`).flush([]);
-      http.expectOne(`${VARIANTS}/sin-nombre/option-groups`).flush([]);
       http.expectOne(`${API}/option-groups`).flush([]);
 
       const result = await promise;
       expect(result!.variants.map((v) => v.name)).toEqual(['']);
+    });
+
+    // ── Historia única (spec 103): receta y grupos de opciones embebidos ────
+
+    it('no dispara ninguna petición de receta ni grupos de opciones por variante: vienen embebidos en GET /products/{id}', async () => {
+      const promise = service.getProductDraft(PID);
+
+      http.expectOne(`${PRODUCTS}/${PID}`).flush({
+        ...productResponse(),
+        variants: [
+          variantDetailResponse({
+            id: 'v1', presentation_id: 'pr-grande', presentation_name: 'Grande', price: '9000',
+            recipe: [{ id: 'r1', inventory_item_id: 'i1', quantity: '1' }],
+            option_groups: [
+              { id: 'og1', product_variant_id: 'v1', option_group_id: 'og-sabores', min_select: 1, max_select: 1, quantity_per_option: '0' },
+            ],
+          }),
+        ],
+      });
+      await tick();
+
+      http.expectOne(`${API}/option-groups`).flush([]);
+
+      const result = await promise;
+      expect(result!.variants[0].recipe).toEqual([{ inventory_item_id: 'i1', quantity: 1 }]);
+      expect(result!.variants[0].optionGroups).toEqual([
+        { option_group_id: 'og-sabores', name: 'Grupo', min_select: 1, max_select: 1, quantity_per_option: 0 },
+      ]);
+
+      // Ningún endpoint por variante llegó a pedirse (http.verify() en afterEach ya lo
+      // exige, pero se deja explícito el porqué de esta historia).
+      http.expectNone(`${VARIANTS}/v1/recipe`);
+      http.expectNone(`${VARIANTS}/v1/option-groups`);
+    });
+
+    it('cada una de 3 variantes mapea su propio recipe/option_groups embebido, no solo la primera', async () => {
+      const promise = service.getProductDraft(PID);
+
+      http.expectOne(`${PRODUCTS}/${PID}`).flush({
+        ...productResponse(),
+        variants: [
+          variantDetailResponse({ id: 'v1', presentation_id: 'pr-grande', presentation_name: 'Grande', recipe: [{ id: 'r1', inventory_item_id: 'i1', quantity: '1' }] }),
+          variantDetailResponse({ id: 'v2', presentation_id: 'pr-mediana', presentation_name: 'Mediana', recipe: [{ id: 'r2', inventory_item_id: 'i2', quantity: '2' }] }),
+          variantDetailResponse({ id: 'v3', presentation_id: 'pr-pequeña', presentation_name: 'Pequeña', recipe: [{ id: 'r3', inventory_item_id: 'i3', quantity: '3' }] }),
+        ],
+      });
+      await tick();
+
+      http.expectOne(`${API}/option-groups`).flush([]);
+
+      const result = await promise;
+      expect(result!.variants.map((v) => v.recipe[0].inventory_item_id)).toEqual(['i1', 'i2', 'i3']);
+    });
+
+    it('si GET /products/{id} falla, getProductDraft devuelve null sin pedir nada más (sin degradación parcial)', async () => {
+      const promise = service.getProductDraft(PID);
+
+      http.expectOne(`${PRODUCTS}/${PID}`).flush('boom', { status: 500, statusText: 'Server Error' });
+
+      const result = await promise;
+      expect(result).toBeNull();
     });
   });
 
@@ -284,8 +357,6 @@ describe('ProductService', () => {
       it('getProductDraft guarda la imagen cargada como base', async () => {
         const promise = service.getProductDraft(PID);
         http.expectOne(`${PRODUCTS}/${PID}`).flush({ ...productResponse(), image_url: ASSET });
-        await tick();
-        http.expectOne(`${PRODUCTS}/${PID}/variants`).flush([]);
         const result = await promise;
         expect(result!.image_url).toBe(ASSET);
         expect(result!.image_url_base).toBe(ASSET);
@@ -294,8 +365,6 @@ describe('ProductService', () => {
       it('getProductDraft de un producto sin imagen deja la base en null', async () => {
         const promise = service.getProductDraft(PID);
         http.expectOne(`${PRODUCTS}/${PID}`).flush(productResponse());
-        await tick();
-        http.expectOne(`${PRODUCTS}/${PID}/variants`).flush([]);
         const result = await promise;
         expect(result!.image_url_base).toBeNull();
       });

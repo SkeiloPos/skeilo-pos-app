@@ -90,6 +90,17 @@ export class PresentationService {
     this.wantsAll.set(true);
   }
 
+  /**
+   * Búsqueda server-side para el picker de presentación del formulario de producto (spec 102,
+   * D3): a diferencia de `allPresentations()` (una sola página de 100, sin `search`), esto
+   * reutiliza `fetchPresentationsPage()` (la misma función que ya usa el listado de
+   * Presentaciones), así que una presentación fuera de esa primera página de 100 sigue siendo
+   * encontrable escribiendo su nombre.
+   */
+  searchActivePresentations(query: string): Promise<Presentation[]> {
+    return this.fetchPresentationsPage(1, 20, query.trim(), 'active').then((page) => page.items);
+  }
+
   /** Aplica el término de búsqueda y recarga desde la página 1. */
   setSearch(term: string): void {
     this.search.set(term);

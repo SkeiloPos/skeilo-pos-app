@@ -59,13 +59,23 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 class FakeCategoryService {
   allCategories = signal<{ id: string; name: string }[]>([{ id: 'c1', name: 'Helados' }]);
   loadAllCategories(): void {}
+  /** spec 102: búsqueda remota del picker de Categoría — por defecto, sin resultados. */
+  searchActiveCategories(_query: string): Promise<{ id: string; name: string }[]> {
+    return Promise.resolve([]);
+  }
 }
 class FakeInventoryService {
-  allItems = signal<unknown[]>([]);
+  allItems = signal<{ id: string; name: string }[]>([]);
+  /** spec 102: insumos resueltos por id porque no estaban en `allItems()`. */
+  resolvedExtraItems = signal<{ id: string; name: string }[]>([]);
   loadAllItems(): void {}
   /** spec 098: búsqueda remota del picker de "Insumos fijos" — por defecto, sin resultados. */
   searchActiveItems(_query: string): Promise<{ id: string; name: string }[]> {
     return Promise.resolve([]);
+  }
+  /** spec 102: por defecto no-op; los tests de Historia 1 lo espían/sobrescriben. */
+  resolveMissingItems(_ids: string[]): Promise<void> {
+    return Promise.resolve();
   }
 }
 class FakeUnitMeasureService {
@@ -84,6 +94,10 @@ class FakePresentationService {
     { id: 'p-pequena', name: 'Pequeña', active: true, created_at: '2026-01-01T00:00:00' },
   ]);
   loadAllPresentations(): void {}
+  /** spec 102: búsqueda remota del picker de Presentación — por defecto, sin resultados. */
+  searchActivePresentations(_query: string): Promise<Presentation[]> {
+    return Promise.resolve([]);
+  }
 }
 
 describe('ProductFormComponent', () => {
@@ -318,7 +332,11 @@ describe('ProductFormComponent', () => {
     const insumoLejano = { id: 'i-105', name: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS' };
     inventoryService.searchActiveItems = vi.fn().mockResolvedValue([insumoLejano]);
 
-    const picker = fixture.debugElement.query(By.directive(SearchableSelectComponent));
+    // Spec 102: ya no es el único `app-searchable-select` del formulario (categoría y
+    // presentación también lo usan ahora) -- se identifica por su placeholder.
+    const picker = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find((el) => el.componentInstance.placeholder === 'Insumo…');
     expect(picker).toBeTruthy();
     const searchFn = picker!.componentInstance.search as
       | ((q: string) => Promise<{ id: string; label: string }[]>)
@@ -329,6 +347,121 @@ describe('ProductFormComponent', () => {
 
     expect(inventoryService.searchActiveItems).toHaveBeenCalledWith('mozar');
     expect(resultado).toEqual([{ id: 'i-105', label: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS' }]);
+  });
+
+  // ── Historia 3 (spec 102): búsqueda remota en categorías y presentaciones ─
+
+  it('el selector de Categoría busca en el servidor: encuentra una categoría aunque no esté en allCategories() (D3)', async () => {
+    await createNew();
+
+    const categoryService = TestBed.inject(CategoryService) as unknown as FakeCategoryService;
+    const categoriaLejana = { id: 'cat-105', name: 'Postres fríos' };
+    categoryService.searchActiveCategories = vi.fn().mockResolvedValue([categoriaLejana]);
+
+    const picker = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find((el) => el.componentInstance.placeholder === 'Seleccionar categoría…')!;
+    expect(picker).toBeTruthy();
+    const searchFn = picker.componentInstance.search as (
+      q: string,
+    ) => Promise<{ id: string; label: string }[]>;
+
+    const resultado = await searchFn('postre');
+
+    expect(categoryService.searchActiveCategories).toHaveBeenCalledWith('postre');
+    expect(resultado).toEqual([{ id: 'cat-105', label: 'Postres fríos' }]);
+  });
+
+  it('el selector de Presentación de una fila busca en el servidor: encuentra una presentación aunque no esté en allPresentations() (D3)', async () => {
+    await createEdit('p9', true);
+
+    const presentationService = TestBed.inject(
+      PresentationService,
+    ) as unknown as FakePresentationService;
+    const presentacionLejana = { id: 'pres-105', name: 'Familiar 32 onz', active: true, created_at: '2026-01-01T00:00:00' };
+    presentationService.searchActivePresentations = vi.fn().mockResolvedValue([presentacionLejana]);
+
+    const v1 = component.draft().variants[0];
+    const row = variantRow(v1.localId);
+    const picker = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find(
+        (el) =>
+          row.contains(el.nativeElement as Node) &&
+          el.componentInstance.placeholder === 'Elige una presentación',
+      )!;
+    expect(picker).toBeTruthy();
+    const searchFn = picker.componentInstance.search as (
+      q: string,
+    ) => Promise<{ id: string; label: string }[]>;
+
+    const resultado = await searchFn('familiar');
+
+    expect(presentationService.searchActivePresentations).toHaveBeenCalledWith('familiar');
+    expect(resultado).toEqual([{ id: 'pres-105', label: 'Familiar 32 onz' }]);
+  });
+
+  it('el selector de Categoría conserva visible la categoría ya elegida aunque quede fuera de allCategories() (D4)', async () => {
+    navigate = vi.fn().mockResolvedValue(true);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ProductFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+        { provide: CategoryService, useClass: FakeCategoryService },
+        { provide: InventoryService, useClass: FakeInventoryService },
+        { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
+        { provide: OptionGroupService, useClass: FakeOptionGroupService },
+        { provide: PresentationService, useClass: FakePresentationService },
+        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
+        },
+        { provide: Router, useValue: { navigate } },
+      ],
+    });
+    fixture = TestBed.createComponent(ProductFormComponent);
+    component = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+
+    fixture.detectChanges();
+    await tick();
+
+    // 'cat-105' no está en allCategories() (FakeCategoryService solo trae 'c1' = Helados):
+    // simula estar fuera de los primeros 100.
+    http.expectOne(`${PRODUCTS}/p9`).flush({
+      id: 'p9',
+      category_id: 'cat-105',
+      category_name: 'Postres fríos',
+      name: 'Cono doble',
+      description: null,
+      preparation_type: 'prepared',
+      image_url: null,
+      active: true,
+      available: true,
+      tracks_inventory: false,
+      created_at: '2026-08-19T00:00:00',
+      variants: [],
+      deactivated: [],
+    });
+    await tick();
+    fixture.detectChanges();
+    await tick();
+    fixture.detectChanges();
+
+    expect(component.draft().category_id).toBe('cat-105');
+    expect(component.categoryOptions()).toContainEqual({ id: 'cat-105', label: 'Postres fríos' });
+
+    const picker = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find((el) => el.componentInstance.placeholder === 'Seleccionar categoría…')!;
+    const boton = (picker.nativeElement as HTMLElement).querySelector('button')!;
+    expect(boton.textContent).toContain('Postres fríos');
   });
 
   it('guardar un producto nuevo sin insumos no produce ningún error de validación', async () => {
@@ -401,6 +534,8 @@ describe('ProductFormComponent', () => {
     fixture.detectChanges(); // dispara ngOnInit
     await tick();
 
+    // Spec 103: receta y grupos de opciones ya vienen embebidos por variante en la misma
+    // respuesta de detalle -- v1 ya tiene un insumo guardado; v2 no.
     http.expectOne(`${PRODUCTS}/${id}`).flush({
       id,
       category_id: 'c1',
@@ -412,23 +547,23 @@ describe('ProductFormComponent', () => {
       available: true,
       tracks_inventory: tracksInventory,
       created_at: '2026-08-19T00:00:00',
+      variants: [
+        {
+          id: 'v1', product_id: id, sku: null, price: '8000', active: true,
+          presentation_id: 'p-grande', presentation_name: 'Grande',
+          recipe: [{ id: 'r1', inventory_item_id: 'i1', quantity: '1' }],
+          option_groups: [],
+        },
+        {
+          id: 'v2', product_id: id, sku: null, price: '5000', active: true,
+          presentation_id: 'p-pequena', presentation_name: 'Pequeña',
+          recipe: [], option_groups: [],
+        },
+      ],
+      // Ajuste posterior a la spec 103: las desactivadas ya vienen en la misma
+      // respuesta -- ya no hace falta un segundo `GET /products/{id}/variants`.
+      deactivated: [] as unknown[],
     });
-    await tick();
-
-    http.expectOne(`${PRODUCTS}/${id}/variants`).flush([
-      { id: 'v1', product_id: id, sku: null, price: '8000', active: true, presentation_id: 'p-grande', presentation_name: 'Grande' },
-      { id: 'v2', product_id: id, sku: null, price: '5000', active: true, presentation_id: 'p-pequena', presentation_name: 'Pequeña' },
-    ]);
-    await tick();
-
-    // v1 ya tiene un insumo guardado; v2 no.
-    http.expectOne(`${VARIANTS}/v1/recipe`).flush([
-      { inventory_item_id: 'i1', quantity: '1', unit_measure_id: 'u1' },
-    ]);
-    http.expectOne(`${VARIANTS}/v1/option-groups`).flush([]);
-    await tick();
-    http.expectOne(`${VARIANTS}/v2/recipe`).flush([]);
-    http.expectOne(`${VARIANTS}/v2/option-groups`).flush([]);
     await tick();
     fixture.detectChanges();
   }
@@ -624,8 +759,10 @@ describe('ProductFormComponent', () => {
       component.draft().variants.findIndex((v) => v.localId === localId)
     ];
 
-  const variantRowSelect = (localId: string): HTMLSelectElement =>
-    variantRow(localId).querySelector('select')!;
+  /** spec 102 (D3): el selector de presentación de una fila dejó de ser un `<select>`
+   *  nativo -- ahora es `app-searchable-select`; esto devuelve su botón cerrado. */
+  const variantRowPresentationButton = (localId: string): HTMLButtonElement =>
+    variantRow(localId).querySelector('app-searchable-select button')!;
 
   /** spec 099: el input de texto del "Nombre (opcional)" de una fila. */
   const variantRowNameInput = (localId: string): HTMLInputElement =>
@@ -640,7 +777,7 @@ describe('ProductFormComponent', () => {
 
     // El input del precio (app-money-input) y el nuevo input de nombre propio.
     expect(row.querySelectorAll('input').length).toBe(2);
-    expect(row.querySelector('select')).not.toBeNull();
+    expect(row.querySelector('app-searchable-select')).not.toBeNull();
     expect(text()).toContain('Nombre (opcional)');
   });
 
@@ -706,13 +843,12 @@ describe('ProductFormComponent', () => {
     void v1;
   });
 
-  it('el select no ofrece "Sin presentación"', async () => {
+  it('el selector de presentación no ofrece "Sin presentación"', async () => {
     await createEdit('p9', true);
-    const options = Array.from(
-      variantRowSelect(component.draft().variants[0].localId).options,
-    ).map((o) => o.textContent?.trim());
+    const v1 = component.draft().variants[0];
+    const labels = component.presentationSelectOptionsFor(v1).map((o) => o.label);
 
-    expect(options).not.toContain('Sin presentación');
+    expect(labels).not.toContain('Sin presentación');
   });
 
   it('el select excluye las presentaciones ya elegidas en otras filas, pero conserva la propia', async () => {
@@ -736,13 +872,18 @@ describe('ProductFormComponent', () => {
     expect(component.draft().variants[1].presentationName).toBe('Mediana');
   });
 
-  it('el select refleja la elección al cambiarlo desde el DOM', async () => {
+  it('elegir una presentación en el desplegable (DOM) actualiza el id y el nombre en la fila', async () => {
     await createEdit('p9', true);
     const v1 = component.draft().variants[0];
-    const select = variantRowSelect(v1.localId);
+    const row = variantRow(v1.localId);
 
-    select.value = 'p-mediana';
-    select.dispatchEvent(new Event('change'));
+    variantRowPresentationButton(v1.localId).click();
+    fixture.detectChanges();
+
+    const option = (
+      Array.from(row.querySelectorAll('app-searchable-select li')) as HTMLLIElement[]
+    ).find((li) => li.textContent?.trim() === 'Mediana')!;
+    option.click();
     fixture.detectChanges();
 
     expect(component.draft().variants[0].presentationId).toBe('p-mediana');
@@ -891,7 +1032,7 @@ describe('ProductFormComponent', () => {
 
     expect(component.draft().tracks_inventory).toBe(false);
     expect(variantRow(component.draft().variants[0].localId)).toBeTruthy();
-    expect(variantRowSelect(component.draft().variants[0].localId).disabled).toBe(false);
+    expect(variantRowPresentationButton(component.draft().variants[0].localId).disabled).toBe(false);
   });
 
   it('sin tamaños no hay tabla y "Maneja inventario" queda bajo el encabezado', async () => {
@@ -900,4 +1041,227 @@ describe('ProductFormComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('[cdkDrag]').length).toBe(0);
     expect(position('Maneja inventario')).toBeGreaterThan(position('Tamaños del producto'));
   });
+
+  // ── Historia 1 (spec 102): nombre real de insumos ya guardados ───────────
+
+  it('tras cargar un producto, resuelve por id el insumo de la receta que no está en allItems(), y el selector muestra su nombre real', async () => {
+    navigate = vi.fn().mockResolvedValue(true);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ProductFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+        { provide: CategoryService, useClass: FakeCategoryService },
+        { provide: InventoryService, useClass: FakeInventoryService },
+        { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
+        { provide: OptionGroupService, useClass: FakeOptionGroupService },
+        { provide: PresentationService, useClass: FakePresentationService },
+        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
+        },
+        { provide: Router, useValue: { navigate } },
+      ],
+    });
+    fixture = TestBed.createComponent(ProductFormComponent);
+    component = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+    const inventory = TestBed.inject(InventoryService) as unknown as FakeInventoryService;
+    const resolveSpy = vi
+      .spyOn(inventory, 'resolveMissingItems')
+      .mockImplementation(async (ids: string[]) => {
+        // Simula la resolución real contra `GET /items/{id}`: cada id pedido obtiene un
+        // insumo con nombre real.
+        inventory.resolvedExtraItems.set(ids.map((id) => ({ id, name: `Insumo resuelto ${id}` })));
+      });
+
+    fixture.detectChanges(); // dispara ngOnInit
+    await tick();
+
+    // Spec 103: receta embebida directamente en GET /products/{id}. 'i1' no está en
+    // allItems() (FakeInventoryService la deja vacía): simula estar fuera de los
+    // primeros 100.
+    http.expectOne(`${PRODUCTS}/p9`).flush({
+      id: 'p9',
+      category_id: 'c1',
+      name: 'Cono doble',
+      description: null,
+      preparation_type: 'prepared',
+      image_url: null,
+      active: true,
+      available: true,
+      tracks_inventory: true,
+      created_at: '2026-08-19T00:00:00',
+      variants: [
+        {
+          id: 'v1', product_id: 'p9', sku: null, price: '8000', active: true,
+          presentation_id: 'p-grande', presentation_name: 'Grande',
+          recipe: [{ id: 'r1', inventory_item_id: 'i1', quantity: '1' }],
+          option_groups: [],
+        },
+      ],
+      deactivated: [],
+    });
+    await tick();
+    await tick(); // deja completar la microtarea de `void resolveMissingItems(...)`
+    fixture.detectChanges();
+
+    expect(resolveSpy).toHaveBeenCalledWith(['i1']);
+    expect(component.inventoryOptions()).toEqual([{ id: 'i1', label: 'Insumo resuelto i1' }]);
+
+    // Se identifica por su placeholder: categoría y presentación también son
+    // `app-searchable-select` ahora (spec 102, D3).
+    const picker = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find((el) => el.componentInstance.placeholder === 'Insumo…')!;
+    const boton = (picker.nativeElement as HTMLElement).querySelector('button')!;
+    expect(boton.textContent).toContain('Insumo resuelto i1');
+    expect(boton.textContent).not.toContain('Insumo…');
+  });
+
+  it('recolecta también el insumo del desglose de consumo de una opción, no solo el de la receta', async () => {
+    navigate = vi.fn().mockResolvedValue(true);
+    TestBed.resetTestingModule();
+
+    class FakeOptionGroupServiceConInsumo {
+      groups = signal([
+        {
+          id: 'og1',
+          name: 'Sabores',
+          options: [
+            {
+              id: 'o1',
+              option_group_id: 'og1',
+              name: 'Fresa',
+              extra_price: 0,
+              inventory_item_id: 'i2',
+              item_quantity: 1,
+              active: true,
+            },
+          ],
+        },
+      ]);
+      async loadGroups(): Promise<void> {}
+    }
+
+    TestBed.configureTestingModule({
+      imports: [ProductFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+        { provide: CategoryService, useClass: FakeCategoryService },
+        { provide: InventoryService, useClass: FakeInventoryService },
+        { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
+        { provide: OptionGroupService, useClass: FakeOptionGroupServiceConInsumo },
+        { provide: PresentationService, useClass: FakePresentationService },
+        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
+        },
+        { provide: Router, useValue: { navigate } },
+      ],
+    });
+    fixture = TestBed.createComponent(ProductFormComponent);
+    component = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+    const inventory = TestBed.inject(InventoryService) as unknown as FakeInventoryService;
+    const resolveSpy = vi
+      .spyOn(inventory, 'resolveMissingItems')
+      .mockImplementation(async () => {});
+
+    fixture.detectChanges();
+    await tick();
+
+    http.expectOne(`${PRODUCTS}/p9`).flush({
+      id: 'p9',
+      category_id: 'c1',
+      name: 'Cono doble',
+      description: null,
+      preparation_type: 'prepared',
+      image_url: null,
+      active: true,
+      available: true,
+      tracks_inventory: true,
+      created_at: '2026-08-19T00:00:00',
+      variants: [
+        {
+          id: 'v1', product_id: 'p9', sku: null, price: '8000', active: true,
+          presentation_id: 'p-grande', presentation_name: 'Grande',
+          recipe: [],
+          option_groups: [
+            { id: 'vog1', product_variant_id: 'v1', option_group_id: 'og1', min_select: 1, max_select: 1, quantity_per_option: '0' },
+          ],
+        },
+      ],
+      deactivated: [],
+    });
+    await tick();
+    await tick();
+    fixture.detectChanges();
+
+    expect(resolveSpy).toHaveBeenCalledWith(['i2']);
+  });
+
+  // ── Historia única (spec 103): sin control de "Reintentar" por tamaño ─────
+
+  it('nunca existe un control de "Reintentar" por tamaño: la carga deja de ser parcial (FR-009)', async () => {
+    await createEdit('p9', true);
+
+    const retryButton = (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find(
+      (b) => b.textContent?.includes('Reintentar'),
+    );
+    expect(retryButton).toBeUndefined();
+    expect((component as unknown as { retryVariantLoad?: unknown }).retryVariantLoad).toBeUndefined();
+  });
+
+  it('si GET /products/{id} falla por completo, el formulario navega fuera sin mostrar ningún control por tamaño', async () => {
+    navigate = vi.fn().mockResolvedValue(true);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ProductFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+        { provide: CategoryService, useClass: FakeCategoryService },
+        { provide: InventoryService, useClass: FakeInventoryService },
+        { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
+        { provide: OptionGroupService, useClass: FakeOptionGroupService },
+        { provide: PresentationService, useClass: FakePresentationService },
+        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
+        },
+        { provide: Router, useValue: { navigate } },
+      ],
+    });
+    fixture = TestBed.createComponent(ProductFormComponent);
+    component = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+
+    fixture.detectChanges();
+    await tick();
+
+    // Falla total de GET /products/{id} -- no hay degradación parcial que mostrar por
+    // tamaño (research.md D4/Edge Cases): ningún otro endpoint llega a pedirse.
+    http.expectOne(`${PRODUCTS}/p9`).flush('boom', { status: 500, statusText: 'Server Error' });
+    await tick();
+    fixture.detectChanges();
+
+    expect(navigate).toHaveBeenCalledWith(['/dashboard/products']);
+    http.expectNone(`${PRODUCTS}/p9/variants`);
+  });
+
 });

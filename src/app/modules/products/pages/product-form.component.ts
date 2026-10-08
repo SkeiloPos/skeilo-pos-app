@@ -136,13 +136,8 @@ interface SlotBreakdown {
               </div>
               <div>
                 <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Categoría</label>
-                <select [ngModel]="draft().category_id" (ngModelChange)="setField('category_id', $event)"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="">Seleccionar categoría…</option>
-                  @for (c of categoryService.allCategories(); track c.id) {
-                    <option [value]="c.id">{{ c.name }}</option>
-                  }
-                </select>
+                <app-searchable-select [ngModel]="draft().category_id" (ngModelChange)="setField('category_id', $event)"
+                  [options]="categoryOptions()" [search]="searchCategories" placeholder="Seleccionar categoría…" />
               </div>
               <div>
                 <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Tipo de preparación</label>
@@ -199,17 +194,12 @@ interface SlotBreakdown {
                       class="text-center text-gray-300 hover:text-gray-500 cursor-move">⠿</span>
                     <span class="text-center text-xs text-gray-400">{{ i + 1 }}</span>
                     <div class="min-w-0">
-                      <select [ngModel]="v.presentationId ?? ''"
+                      <app-searchable-select [ngModel]="v.presentationId ?? ''"
                         (ngModelChange)="setVariantPresentation(v.localId, $event || null)"
                         (click)="$event.stopPropagation()"
                         [attr.aria-invalid]="isPresentationMissing(v)"
-                        class="w-full min-w-0 px-2 py-1.5 border rounded-lg text-sm font-semibold text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        [class]="isPresentationMissing(v) ? 'border-red-300' : 'border-gray-200'">
-                        <option value="" disabled>Elige una presentación</option>
-                        @for (p of presentationOptionsFor(v); track p.id) {
-                          <option [value]="p.id">{{ p.name }}</option>
-                        }
-                      </select>
+                        [options]="presentationSelectOptionsFor(v)" [search]="searchPresentations"
+                        placeholder="Elige una presentación" />
                       @if (isPresentationMissing(v)) {
                         <p class="text-xs text-red-600 mt-1">
                           @if (hasFreePresentations()) { Elige una presentación } @else { No hay más presentaciones disponibles: créalas en Presentaciones }
@@ -556,13 +546,26 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     () => this.draft().variants.find((v) => v.localId === this.activeLocalId()) ?? null,
   );
 
+  /**
+   * `allItems()` (una sola página de 100) combinada con los insumos resueltos por id
+   * (spec 102, `InventoryService.resolveMissingItems()`) porque ya estaban referenciados por una
+   * receta o un detalle de opción guardados, pero quedaron fuera de esa página. Así, cualquier
+   * insumo ya asociado muestra su nombre real sin importar cuántos insumos tenga el tenant.
+   */
+  private readonly combinedInventoryItems = computed(() => {
+    const extra = this.inventoryService.resolvedExtraItems();
+    if (extra.length === 0) return this.inventoryService.allItems();
+    const known = new Set(this.inventoryService.allItems().map((i) => i.id));
+    return [...this.inventoryService.allItems(), ...extra.filter((i) => !known.has(i.id))];
+  });
+
   private readonly unitLookup = computed(() =>
-    buildUnitLookup(this.inventoryService.allItems(), this.unitMeasureService.unitMeasures()),
+    buildUnitLookup(this.combinedInventoryItems(), this.unitMeasureService.unitMeasures()),
   );
 
   /** Opciones para el select con buscador de insumos de la receta. */
   readonly inventoryOptions = computed(() =>
-    this.inventoryService.allItems().map((i) => ({ id: i.id, label: i.name })),
+    this.combinedInventoryItems().map((i) => ({ id: i.id, label: i.name })),
   );
 
   /**
@@ -575,6 +578,34 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     this.inventoryService
       .searchActiveItems(query)
       .then((items) => items.map((i) => ({ id: i.id, label: i.name })));
+
+  /**
+   * Opciones del selector de categoría (spec 102, D3/D4): el catálogo cargado
+   * (`allCategories()`, hasta 100), más un resguardo para no perder de vista la categoría ya
+   * elegida del producto si quedó fuera de esa página — usando `category_name`, ya
+   * denormalizado en el draft (mismo patrón que `presentationOptionsFor` ya usa para la
+   * presentación de cada tamaño).
+   */
+  readonly categoryOptions = computed(() => {
+    const options = this.categoryService
+      .allCategories()
+      .map((c) => ({ id: c.id, label: c.name }));
+    const id = this.draft().category_id;
+    if (id && !options.some((o) => o.id === id)) {
+      options.push({ id, label: this.draft().category_name || '' });
+    }
+    return options;
+  });
+
+  /**
+   * Búsqueda remota del picker de Categoría (spec 102, D3): mismo patrón que
+   * `searchInventoryItems`, para que una categoría fuera de `allCategories()` (100) siga
+   * siendo encontrable escribiendo su nombre.
+   */
+  readonly searchCategories = (query: string): Promise<{ id: string; label: string }[]> =>
+    this.categoryService
+      .searchActiveCategories(query)
+      .then((items) => items.map((c) => ({ id: c.id, label: c.name })));
 
   /**
    * Grupos elegibles en una fila: los activos, menos los que ya usa **esta misma
@@ -601,6 +632,23 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     }
     return options.sort((a, b) => a.name.localeCompare(b.name));
   }
+
+  /**
+   * Igual que `presentationOptionsFor()` pero en la forma `{id, label}` que espera
+   * `app-searchable-select` (spec 102, D3) — sin duplicar la lógica de exclusión/resguardo.
+   */
+  presentationSelectOptionsFor(v: VariantDraft): { id: string; label: string }[] {
+    return this.presentationOptionsFor(v).map((p) => ({ id: p.id, label: p.name }));
+  }
+
+  /**
+   * Búsqueda remota del picker de Presentación de una fila (spec 102, D3): mismo patrón que
+   * `searchInventoryItems`/`searchCategories`.
+   */
+  readonly searchPresentations = (query: string): Promise<{ id: string; label: string }[]> =>
+    this.presentationService
+      .searchActivePresentations(query)
+      .then((items) => items.map((p) => ({ id: p.id, label: p.name })));
 
   /** Cuántas presentaciones activas quedan sin usar en el producto (para el aviso de lista vacía). */
   readonly hasFreePresentations = computed(() => {
@@ -874,6 +922,27 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     return this.optionGroupService.groups().find((g) => g.id === groupId)?.options ?? [];
   }
 
+  /**
+   * Todo `inventory_item_id` referenciado por la receta o por el detalle de consumo de una
+   * opción, en todas las variantes del draft (spec 102, Historia 1). Se usa una sola vez, tras
+   * cargar el draft, para pedirle a `InventoryService.resolveMissingItems()` solo los que
+   * realmente falten.
+   */
+  private referencedInventoryItemIds(d: ProductDraft): string[] {
+    const ids = new Set<string>();
+    for (const v of d.variants) {
+      for (const line of v.recipe) {
+        if (line.inventory_item_id) ids.add(line.inventory_item_id);
+      }
+      for (const g of v.optionGroups) {
+        for (const o of this.groupOptions(g.option_group_id)) {
+          if (o.inventory_item_id) ids.add(o.inventory_item_id);
+        }
+      }
+    }
+    return [...ids];
+  }
+
   /** Igual que `group_discounts` del backend: manda la cantidad del tamaño, y si no
    *  la define, alguna opción activa con insumo propio y cantidad mayor a cero. */
   private groupHasConsumption(g: VariantOptionGroupDraft): boolean {
@@ -926,6 +995,11 @@ export class ProductFormComponent implements OnInit, OnDestroy {
       this.draft.set(draft);
       this.productActive.set(draft.active);
       this.activeLocalId.set(draft.variants[0]?.localId ?? '');
+      // Spec 102, Historia 1: resuelve por id cualquier insumo ya referenciado por la receta o
+      // por el detalle de consumo de una opción que haya quedado fuera de `allItems()`. No se
+      // espera (`void`): `inventoryOptions()`/`unitLookup` son reactivos a `resolvedExtraItems()`
+      // y actualizan la plantilla solos cuando la resolución llega, sin bloquear el render inicial.
+      void this.inventoryService.resolveMissingItems(this.referencedInventoryItemIds(draft));
     } else {
       const d = this.emptyDraft();
       this.draft.set(d);
