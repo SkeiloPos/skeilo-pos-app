@@ -865,7 +865,12 @@ describe('ProductFormComponent', () => {
     await createEdit('p9', true);
     const v2 = component.draft().variants[1];
 
+    // Spec 105 (Decisión D1): el id y el nombre llegan por dos salidas distintas del
+    // mismo clic de selección -- `(ngModelChange)` fija el id, `(optionPicked)` fija el
+    // nombre con el dato que trae la propia opción elegida (ya no se busca en
+    // `allPresentations()`, vacío tras quitar la precarga).
     component.setVariantPresentation(v2.localId, 'p-mediana');
+    component.onPresentationPicked(v2.localId, { id: 'p-mediana', label: 'Mediana' });
     fixture.detectChanges();
 
     expect(component.draft().variants[1].presentationId).toBe('p-mediana');
@@ -977,6 +982,21 @@ describe('ProductFormComponent', () => {
 
   it('encender tamaños preselecciona Grande/Mediana/Pequeña si el catálogo las tiene', async () => {
     await createNew();
+    // Spec 105: la preselección ya no lee `allPresentations()` (precarga eliminada,
+    // FR-002) -- reutiliza el mismo catálogo perezoso que `hasFreePresentations`
+    // (Decisión D2), así que hay que dejarlo resuelto antes de activar el switch.
+    const presentationService = TestBed.inject(
+      PresentationService,
+    ) as unknown as FakePresentationService;
+    presentationService.searchActivePresentations = vi.fn().mockResolvedValue([
+      { id: 'p-grande', name: 'Grande', active: true, created_at: '2026-01-01T00:00:00' },
+      { id: 'p-mediana', name: 'Mediana', active: true, created_at: '2026-01-01T00:00:00' },
+      { id: 'p-pequena', name: 'Pequeña', active: true, created_at: '2026-01-01T00:00:00' },
+    ]);
+    component.hasFreePresentations(); // dispara la carga perezosa del catálogo
+    await tick();
+    fixture.detectChanges();
+
     component.toggleHasSizes();
     fixture.detectChanges();
 
@@ -1044,7 +1064,7 @@ describe('ProductFormComponent', () => {
 
   // ── Historia 1 (spec 102): nombre real de insumos ya guardados ───────────
 
-  it('tras cargar un producto, resuelve por id el insumo de la receta que no está en allItems(), y el selector muestra su nombre real', async () => {
+  it('tras cargar un producto, el insumo de la receta que no está en allItems() muestra su nombre real sin pedirlo por id (spec 105)', async () => {
     navigate = vi.fn().mockResolvedValue(true);
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
@@ -1072,20 +1092,16 @@ describe('ProductFormComponent', () => {
     component = fixture.componentInstance;
     http = TestBed.inject(HttpTestingController);
     const inventory = TestBed.inject(InventoryService) as unknown as FakeInventoryService;
-    const resolveSpy = vi
-      .spyOn(inventory, 'resolveMissingItems')
-      .mockImplementation(async (ids: string[]) => {
-        // Simula la resolución real contra `GET /items/{id}`: cada id pedido obtiene un
-        // insumo con nombre real.
-        inventory.resolvedExtraItems.set(ids.map((id) => ({ id, name: `Insumo resuelto ${id}` })));
-      });
+    const resolveSpy = vi.spyOn(inventory, 'resolveMissingItems');
 
     fixture.detectChanges(); // dispara ngOnInit
     await tick();
 
-    // Spec 103: receta embebida directamente en GET /products/{id}. 'i1' no está en
-    // allItems() (FakeInventoryService la deja vacía): simula estar fuera de los
-    // primeros 100.
+    // Spec 105 (research.md): `inventory_item_name`/`unit_measure_id` viajan
+    // denormalizados en la propia línea de receta, igual que `category_name`/
+    // `presentation_name` -- 'i1' no está en allItems() (FakeInventoryService la deja
+    // vacía, simulando estar fuera de los primeros 100), pero ya no hace falta pedirlo
+    // por id: el detalle del producto ya trae su nombre y su unidad.
     http.expectOne(`${PRODUCTS}/p9`).flush({
       id: 'p9',
       category_id: 'c1',
@@ -1101,17 +1117,26 @@ describe('ProductFormComponent', () => {
         {
           id: 'v1', product_id: 'p9', sku: null, price: '8000', active: true,
           presentation_id: 'p-grande', presentation_name: 'Grande',
-          recipe: [{ id: 'r1', inventory_item_id: 'i1', quantity: '1' }],
+          recipe: [{
+            id: 'r1', inventory_item_id: 'i1', quantity: '1',
+            inventory_item_name: 'Insumo resuelto i1', unit_measure_id: 'u1',
+          }],
           option_groups: [],
         },
       ],
       deactivated: [],
     });
     await tick();
-    await tick(); // deja completar la microtarea de `void resolveMissingItems(...)`
+    fixture.detectChanges();
+    // Deja asentarse el `NgModel` del picker de insumo (su `ngOnChanges` agenda, vía
+    // microtarea, un `setValue` con el valor inicial) antes de leer el botón cerrado --
+    // mismo ajuste que las pruebas de "elegir por búsqueda" (spec 105, D1).
+    await tick();
     fixture.detectChanges();
 
-    expect(resolveSpy).toHaveBeenCalledWith(['i1']);
+    // Spec 105: el insumo de una línea de receta ya guardada ya no se resuelve por id --
+    // no hay ningún `GET /inventory/items/{id}` disparado al abrir el formulario.
+    expect(resolveSpy).not.toHaveBeenCalled();
     expect(component.inventoryOptions()).toEqual([{ id: 'i1', label: 'Insumo resuelto i1' }]);
 
     // Se identifica por su placeholder: categoría y presentación también son
@@ -1124,7 +1149,7 @@ describe('ProductFormComponent', () => {
     expect(boton.textContent).not.toContain('Insumo…');
   });
 
-  it('recolecta también el insumo del desglose de consumo de una opción, no solo el de la receta', async () => {
+  it('no resuelve por id los insumos de las opciones de un grupo de sabores (spec 105)', async () => {
     navigate = vi.fn().mockResolvedValue(true);
     TestBed.resetTestingModule();
 
@@ -1174,9 +1199,7 @@ describe('ProductFormComponent', () => {
     component = fixture.componentInstance;
     http = TestBed.inject(HttpTestingController);
     const inventory = TestBed.inject(InventoryService) as unknown as FakeInventoryService;
-    const resolveSpy = vi
-      .spyOn(inventory, 'resolveMissingItems')
-      .mockImplementation(async () => {});
+    const resolveSpy = vi.spyOn(inventory, 'resolveMissingItems');
 
     fixture.detectChanges();
     await tick();
@@ -1205,10 +1228,19 @@ describe('ProductFormComponent', () => {
       deactivated: [],
     });
     await tick();
-    await tick();
     fixture.detectChanges();
 
-    expect(resolveSpy).toHaveBeenCalledWith(['i2']);
+    // Spec 105: a diferencia del comportamiento previo (spec 102), ya no se resuelve por id el
+    // insumo de cada opción de cada grupo de sabores usado -- sin la precarga completa de
+    // `allItems()` (FR-002), ese conjunto puede ser grande (todas las opciones de todos los
+    // grupos de todas las variantes) y el backend no tiene un endpoint de resolución por lote,
+    // así que cada uno dispararía su propia petición individual en paralelo. El resumen
+    // "Descuenta de:" de ese grupo queda sin resolver ("Sin insumo asignado") hasta que ese
+    // insumo se conozca por otra vía (p. ej. elegido en el selector de Insumos fijos).
+    expect(resolveSpy).not.toHaveBeenCalled();
+    expect(component.groupBreakdown(component.draft().variants[0].optionGroups[0]).rows).toEqual([
+      expect.objectContaining({ optionName: 'Fresa', itemName: '' }),
+    ]);
   });
 
   // ── Historia única (spec 103): sin control de "Reintentar" por tamaño ─────
@@ -1262,6 +1294,352 @@ describe('ProductFormComponent', () => {
 
     expect(navigate).toHaveBeenCalledWith(['/dashboard/products']);
     http.expectNone(`${PRODUCTS}/p9/variants`);
+  });
+
+  // ── Historia 1 (spec 105): ngOnInit ya no precarga los tres catálogos completos ──
+
+  it('ngOnInit (crear) no invoca loadAllCategories/loadAllItems/loadAllPresentations, pero sí loadUnitMeasures/loadGroups (FR-001/FR-002)', async () => {
+    navigate = vi.fn().mockResolvedValue(true);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ProductFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+        { provide: CategoryService, useClass: FakeCategoryService },
+        { provide: InventoryService, useClass: FakeInventoryService },
+        { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
+        { provide: OptionGroupService, useClass: FakeOptionGroupService },
+        { provide: PresentationService, useClass: FakePresentationService },
+        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({}) } } },
+        { provide: Router, useValue: { navigate } },
+      ],
+    });
+    fixture = TestBed.createComponent(ProductFormComponent);
+    component = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+
+    const category = TestBed.inject(CategoryService) as unknown as FakeCategoryService;
+    const inventory = TestBed.inject(InventoryService) as unknown as FakeInventoryService;
+    const presentation = TestBed.inject(PresentationService) as unknown as FakePresentationService;
+    const unitMeasure = TestBed.inject(UnitMeasureService) as unknown as FakeUnitMeasureService;
+    const optionGroup = TestBed.inject(OptionGroupService) as unknown as FakeOptionGroupService;
+    const loadCategories = vi.spyOn(category, 'loadAllCategories');
+    const loadItems = vi.spyOn(inventory, 'loadAllItems');
+    const loadPresentations = vi.spyOn(presentation, 'loadAllPresentations');
+    const loadUnitMeasures = vi.spyOn(unitMeasure, 'loadUnitMeasures');
+    const loadGroups = vi.spyOn(optionGroup, 'loadGroups');
+
+    fixture.detectChanges(); // dispara ngOnInit
+    await tick();
+    await tick();
+    fixture.detectChanges();
+
+    expect(loadCategories).not.toHaveBeenCalled();
+    expect(loadItems).not.toHaveBeenCalled();
+    expect(loadPresentations).not.toHaveBeenCalled();
+    expect(loadUnitMeasures).toHaveBeenCalled();
+    expect(loadGroups).toHaveBeenCalled();
+  });
+
+  it('ngOnInit (editar) tampoco invoca loadAllCategories/loadAllItems/loadAllPresentations (FR-001/FR-002)', async () => {
+    navigate = vi.fn().mockResolvedValue(true);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ProductFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+        { provide: CategoryService, useClass: FakeCategoryService },
+        { provide: InventoryService, useClass: FakeInventoryService },
+        { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
+        { provide: OptionGroupService, useClass: FakeOptionGroupService },
+        { provide: PresentationService, useClass: FakePresentationService },
+        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
+        },
+        { provide: Router, useValue: { navigate } },
+      ],
+    });
+    fixture = TestBed.createComponent(ProductFormComponent);
+    component = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+
+    const category = TestBed.inject(CategoryService) as unknown as FakeCategoryService;
+    const inventory = TestBed.inject(InventoryService) as unknown as FakeInventoryService;
+    const presentation = TestBed.inject(PresentationService) as unknown as FakePresentationService;
+    const loadCategories = vi.spyOn(category, 'loadAllCategories');
+    const loadItems = vi.spyOn(inventory, 'loadAllItems');
+    const loadPresentations = vi.spyOn(presentation, 'loadAllPresentations');
+
+    fixture.detectChanges();
+    await tick();
+
+    http.expectOne(`${PRODUCTS}/p9`).flush({
+      id: 'p9', category_id: 'c1', name: 'Cono doble', description: null,
+      preparation_type: 'prepared', image_url: null, active: true, available: true,
+      tracks_inventory: false, created_at: '2026-08-19T00:00:00',
+      variants: [
+        {
+          id: 'v1', product_id: 'p9', sku: null, price: '8000', active: true,
+          presentation_id: 'p-grande', presentation_name: 'Grande', recipe: [], option_groups: [],
+        },
+      ],
+      deactivated: [],
+    });
+    await tick();
+    fixture.detectChanges();
+
+    expect(loadCategories).not.toHaveBeenCalled();
+    expect(loadItems).not.toHaveBeenCalled();
+    expect(loadPresentations).not.toHaveBeenCalled();
+  });
+
+  // ── hasFreePresentations ya no depende de allPresentations() (spec 105, Decisión D2) ──
+
+  it('hasFreePresentations() usa searchActivePresentations(\'\'), no allPresentations(): false cuando ninguna queda libre', async () => {
+    await createEdit('p9', true); // v1 usa 'p-grande', v2 usa 'p-pequena'
+    const presentation = TestBed.inject(PresentationService) as unknown as FakePresentationService;
+    presentation.allPresentations.set([]); // simula que ya no hay precarga (FR-002)
+    presentation.searchActivePresentations = vi.fn().mockResolvedValue([
+      { id: 'p-grande', name: 'Grande', active: true, created_at: '2026-01-01T00:00:00' },
+      { id: 'p-pequena', name: 'Pequeña', active: true, created_at: '2026-01-01T00:00:00' },
+    ]); // ambas ya usadas por v1/v2: no queda ninguna libre
+
+    expect(component.hasFreePresentations()).toBe(true); // valor optimista antes de resolver
+    await tick();
+    fixture.detectChanges();
+
+    expect(component.hasFreePresentations()).toBe(false);
+  });
+
+  it('hasFreePresentations() devuelve true cuando queda alguna presentación activa libre', async () => {
+    await createEdit('p9', true);
+    const presentation = TestBed.inject(PresentationService) as unknown as FakePresentationService;
+    presentation.allPresentations.set([]);
+    presentation.searchActivePresentations = vi.fn().mockResolvedValue([
+      { id: 'p-grande', name: 'Grande', active: true, created_at: '2026-01-01T00:00:00' },
+      { id: 'p-mediana', name: 'Mediana', active: true, created_at: '2026-01-01T00:00:00' }, // libre
+      { id: 'p-pequena', name: 'Pequeña', active: true, created_at: '2026-01-01T00:00:00' },
+    ]);
+
+    component.hasFreePresentations(); // dispara la carga perezosa
+    await tick();
+    fixture.detectChanges();
+
+    expect(component.hasFreePresentations()).toBe(true);
+  });
+
+  // ── Historia 2 (spec 105): valores ya guardados muestran su nombre real sin precarga ──
+
+  it('US2: categoría, presentación e insumo ya guardados muestran su nombre real sin precarga, incluso ya desactivados (FR-003/FR-007)', async () => {
+    navigate = vi.fn().mockResolvedValue(true);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ProductFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+        { provide: CategoryService, useClass: FakeCategoryService },
+        { provide: InventoryService, useClass: FakeInventoryService },
+        { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
+        { provide: OptionGroupService, useClass: FakeOptionGroupService },
+        { provide: PresentationService, useClass: FakePresentationService },
+        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
+        },
+        { provide: Router, useValue: { navigate } },
+      ],
+    });
+    fixture = TestBed.createComponent(ProductFormComponent);
+    component = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+    const inventory = TestBed.inject(InventoryService) as unknown as FakeInventoryService;
+    const resolveSpy = vi.spyOn(inventory, 'resolveMissingItems');
+
+    fixture.detectChanges();
+    await tick();
+
+    // 'cat-105'/'i-105' no están en allCategories()/allItems() (ambas vacías tras FR-002):
+    // simulan estar fuera de los primeros 100 de su catálogo -- la categoría
+    // (category_name) y el insumo (inventory_item_name/unit_measure_id, spec 105) viajan
+    // denormalizados en el propio detalle del producto, sin ninguna resolución por id. La
+    // presentación desactivada ('activa: false' no viaja en este payload porque spec 103 no
+    // modela eso en la variante -- se simula igual que la spec 102: el nombre viene siempre
+    // del propio detalle del producto, sin importar si el registro se desactivó después).
+    http.expectOne(`${PRODUCTS}/p9`).flush({
+      id: 'p9',
+      category_id: 'cat-105',
+      category_name: 'Postres fríos',
+      name: 'Cono doble',
+      description: null,
+      preparation_type: 'prepared',
+      image_url: null,
+      active: true,
+      available: true,
+      tracks_inventory: true,
+      created_at: '2026-08-19T00:00:00',
+      // Dos variantes para que `hasSizes` resulte `true` (product.service.ts deriva
+      // `hasSizes: variantDrafts.length > 1`) y la tabla con el picker de presentación
+      // por fila se renderice -- con una sola variante el formulario no muestra ese
+      // selector (presentación única, sin tabla).
+      variants: [
+        {
+          id: 'v1', product_id: 'p9', sku: null, price: '8000', active: true,
+          presentation_id: 'pres-105', presentation_name: 'Familiar 32 onz',
+          recipe: [{
+            id: 'r1', inventory_item_id: 'i-105', quantity: '1',
+            inventory_item_name: 'Insumo lejano i-105', unit_measure_id: 'u1',
+          }],
+          option_groups: [],
+        },
+        {
+          id: 'v2', product_id: 'p9', sku: null, price: '5000', active: true,
+          presentation_id: 'p-pequena', presentation_name: 'Pequeña',
+          recipe: [], option_groups: [],
+        },
+      ],
+      deactivated: [],
+    });
+    await tick();
+    fixture.detectChanges();
+    // Deja asentarse el `NgModel` de los tres pickers (su `ngOnChanges` agenda, vía
+    // microtarea, un `setValue` con el valor inicial) antes de leer los botones cerrados.
+    await tick();
+    fixture.detectChanges();
+
+    // Spec 105: nada de esto depende de resolver ningún insumo por id al abrir el
+    // formulario -- todo viene ya resuelto en el propio detalle del producto.
+    expect(resolveSpy).not.toHaveBeenCalled();
+    expect(component.draft().category_name).toBe('Postres fríos');
+    expect(component.draft().variants[0].presentationName).toBe('Familiar 32 onz');
+    expect(component.inventoryOptions()).toContainEqual({ id: 'i-105', label: 'Insumo lejano i-105' });
+
+    const categoryButton = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find((el) => el.componentInstance.placeholder === 'Seleccionar categoría…')!
+      .nativeElement.querySelector('button')!;
+    expect(categoryButton.textContent).toContain('Postres fríos');
+
+    const presentationButton = variantRowPresentationButton(component.draft().variants[0].localId);
+    expect(presentationButton.textContent).toContain('Familiar 32 onz');
+
+    const insumoButton = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find((el) => el.componentInstance.placeholder === 'Insumo…')!
+      .nativeElement.querySelector('button')!;
+    expect(insumoButton.textContent).toContain('Insumo lejano i-105');
+  });
+
+  it('US2: crear un producto nuevo (sin id), los tres selectores aparecen sin ningún valor preseleccionado (FR-004)', async () => {
+    await createNew();
+
+    expect(component.draft().category_id).toBe('');
+    expect(component.draft().variants[0].presentationId).toBeNull();
+    expect(component.draft().variants[0].recipe).toEqual([]);
+
+    const categoryButton = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find((el) => el.componentInstance.placeholder === 'Seleccionar categoría…')!
+      .nativeElement.querySelector('button')!;
+    // El botón incluye también el texto del ícono del chevron (expand_more) --
+    // `toContain` evita acoplarse a ese detalle de implementación del ícono.
+    expect(categoryButton.textContent).toContain('Seleccionar categoría…');
+  });
+
+  // ── Historia 3 (spec 105): elegir por búsqueda fija el nombre real, sin precarga (Decisión D1) ──
+
+  it('elegir, en Categoría, un resultado de búsqueda fuera de allCategories() fija category_id y category_name de inmediato (D1)', async () => {
+    await createNew();
+
+    const picker = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find((el) => el.componentInstance.placeholder === 'Seleccionar categoría…')!;
+
+    picker.componentInstance.selectOption({ id: 'cat-105', label: 'Postres fríos' });
+    fixture.detectChanges();
+
+    expect(component.draft().category_id).toBe('cat-105');
+    expect(component.draft().category_name).toBe('Postres fríos');
+    const boton = (picker.nativeElement as HTMLElement).querySelector('button')!;
+    expect(boton.textContent).toContain('Postres fríos');
+  });
+
+  it('elegir, en Presentación de una fila, un resultado de búsqueda fuera de allPresentations() fija presentationId y presentationName de inmediato (D1)', async () => {
+    await createEdit('p9', true); // v1 Grande, v2 Pequeña
+    const v1 = component.draft().variants[0];
+    const row = variantRow(v1.localId);
+    const picker = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find(
+        (el) =>
+          row.contains(el.nativeElement as Node) &&
+          el.componentInstance.placeholder === 'Elige una presentación',
+      )!;
+
+    picker.componentInstance.selectOption({ id: 'pres-105', label: 'Familiar 32 onz' });
+    fixture.detectChanges();
+
+    expect(component.draft().variants[0].presentationId).toBe('pres-105');
+    expect(component.draft().variants[0].presentationName).toBe('Familiar 32 onz');
+    expect(variantRowPresentationButton(v1.localId).textContent).toContain('Familiar 32 onz');
+  });
+
+  it('elegir, en Insumo de una fila de receta, un resultado de búsqueda fuera de allItems() lo registra en resolvedExtraItems y muestra su nombre de inmediato (D1)', async () => {
+    await createNew();
+    switchButton().click();
+    fixture.detectChanges();
+    const localId = component.activeVariant()!.localId;
+    component.addRecipeLine(localId);
+    fixture.detectChanges();
+    // Deja asentarse el `NgModel` recién creado (su primer `ngOnChanges` agenda, vía
+    // microtarea, un `setValue` con el valor inicial `null`) antes de elegir algo --
+    // si no, esa microtarea pendiente llega tarde y pisa la elección hecha después.
+    await tick();
+    fixture.detectChanges();
+
+    const inventory = TestBed.inject(InventoryService) as unknown as FakeInventoryService;
+    const resolveSpy = vi.spyOn(inventory, 'resolveMissingItems').mockImplementation(async (ids) => {
+      if (ids.length === 0) return;
+      const known = new Set(inventory.resolvedExtraItems().map((i) => i.id));
+      inventory.resolvedExtraItems.update((prev) => [
+        ...prev,
+        ...ids.filter((id) => !known.has(id)).map((id) => ({ id, name: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS' })),
+      ]);
+    });
+
+    const picker = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find((el) => el.componentInstance.placeholder === 'Insumo…')!;
+    picker.componentInstance.selectOption({
+      id: 'i-105',
+      label: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS',
+    });
+    fixture.detectChanges();
+    await tick();
+    fixture.detectChanges();
+
+    expect(resolveSpy).toHaveBeenCalledWith(['i-105']);
+    expect(component.inventoryOptions()).toContainEqual({
+      id: 'i-105',
+      label: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS',
+    });
+    const boton = (picker.nativeElement as HTMLElement).querySelector('button')!;
+    expect(boton.textContent).toContain('QUESO MOZARELA BLOQUE X 2500 GRAMOS');
   });
 
 });

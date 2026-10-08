@@ -99,6 +99,32 @@ describe('SearchableSelectComponent', () => {
     const icon = el.querySelector('app-mi-icon .material-icons-outlined');
     expect(icon?.textContent?.trim()).toBe('expand_more');
   });
+
+  // ── `optionPicked` (spec 105, contrato aditivo) ──────────────────────────
+
+  it('al elegir una opción local, emite optionPicked con la opción completa además de onChange (spec 105)', () => {
+    const cambios: string[] = [];
+    const elegidas: SearchableSelectOption[] = [];
+    component.registerOnChange((v) => cambios.push(v));
+    component.optionPicked.subscribe((o) => elegidas.push(o));
+    component.open.set(true);
+
+    component.selectOption(OPCIONES[1]);
+
+    expect(cambios).toEqual(['2']);
+    expect(elegidas).toEqual([OPCIONES[1]]);
+  });
+
+  it('una opción disabled no emite optionPicked (igual que no emite onChange)', () => {
+    const elegidas: SearchableSelectOption[] = [];
+    component.optionPicked.subscribe((o) => elegidas.push(o));
+    component.open.set(true);
+    const opcionDeshabilitada = { id: '5', label: 'Mesa 5 · Ocupada', disabled: true };
+
+    component.selectOption(opcionDeshabilitada);
+
+    expect(elegidas).toEqual([]);
+  });
 });
 
 /**
@@ -250,5 +276,56 @@ describe('SearchableSelectComponent — modo remoto (spec 098)', () => {
 
     component.onQueryInput('');
     expect(component.filteredOptions()).toEqual(OPCIONES);
+  });
+
+  it('al elegir un resultado remoto, emite optionPicked con la opción completa (spec 105)', async () => {
+    vi.useFakeTimers();
+    const resultadoRemoto = { id: '2', label: 'Queso mozarela' };
+    component.search = vi.fn().mockResolvedValue([resultadoRemoto]);
+    const elegidas: SearchableSelectOption[] = [];
+    component.optionPicked.subscribe((o) => elegidas.push(o));
+
+    component.onQueryInput('mozar');
+    await vi.advanceTimersByTimeAsync(300);
+    component.selectOption(component.filteredOptions()[0]);
+
+    expect(elegidas).toEqual([resultadoRemoto]);
+  });
+});
+
+/**
+ * Mensaje del listado vacío (spec 105, FR-006): con `options` vacío (ya no hay precarga)
+ * y sin texto escrito, un "Sin resultados" genérico sugiere, equivocadamente, que no hay
+ * nada que buscar -- debe invitar a escribir en su lugar.
+ */
+describe('SearchableSelectComponent — mensaje de vacío (spec 105)', () => {
+  let component: SearchableSelectComponent;
+  let fixture: ComponentFixture<SearchableSelectComponent>;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ imports: [SearchableSelectComponent] });
+    fixture = TestBed.createComponent(SearchableSelectComponent);
+    component = fixture.componentInstance;
+  });
+
+  it('con [search] y sin texto escrito, invita a buscar (no "Sin resultados")', () => {
+    component.search = vi.fn();
+    component.options = [];
+
+    expect(component.emptyMessage()).not.toBe('Sin resultados');
+    expect(component.filteredOptions()).toEqual([]);
+  });
+
+  it('con [search] y texto escrito sin coincidencias remotas, sigue mostrando "Sin resultados"', () => {
+    component.search = vi.fn();
+    component.query.set('algo');
+
+    expect(component.emptyMessage()).toBe('Sin resultados');
+  });
+
+  it('sin [search] (modo local), el mensaje de vacío no cambia aunque `options` esté vacío', () => {
+    component.options = [];
+
+    expect(component.emptyMessage()).toBe('Sin resultados');
   });
 });

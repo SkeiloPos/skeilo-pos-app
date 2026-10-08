@@ -2,8 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  EventEmitter,
   HostListener,
   Input,
+  Output,
   inject,
   signal,
   viewChild,
@@ -72,7 +74,7 @@ export interface SearchableSelectOption {
                   {{ o.label }}
                 </li>
               } @empty {
-                <li class="px-3 py-2 text-sm text-gray-400">Sin resultados</li>
+                <li class="px-3 py-2 text-sm text-gray-400">{{ emptyMessage() }}</li>
               }
             }
           </ul>
@@ -92,6 +94,15 @@ export class SearchableSelectComponent implements ControlValueAccessor {
    * antemano. Ausente: comportamiento idéntico al de siempre (filtrado local).
    */
   @Input() search?: (query: string) => Promise<SearchableSelectOption[]>;
+
+  /**
+   * Emite la opción completa (spec 105) en el momento en que se elige, de `options` o de
+   * un resultado de `search` — junto con, no en reemplazo de, el `onChange(opt.id)` del
+   * `ControlValueAccessor`. Permite a un consumidor (p. ej. el formulario de producto)
+   * fijar de inmediato el nombre de un valor recién elegido por búsqueda, sin depender de
+   * un catálogo precargado para resolverlo (research.md, Decisión D1).
+   */
+  @Output() readonly optionPicked = new EventEmitter<SearchableSelectOption>();
 
   private readonly elementRef = inject(ElementRef<HTMLElement>);
   private readonly filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
@@ -134,6 +145,18 @@ export class SearchableSelectComponent implements ControlValueAccessor {
     if (!q) return this.options;
     if (this.search) return this.remoteResults();
     return this.options.filter((o) => normalizeText(o.label).includes(q));
+  }
+
+  /**
+   * Mensaje del listado vacío (spec 105, FR-006): con `search` provisto y sin texto
+   * escrito, invita a buscar en vez del "Sin resultados" genérico — ese mensaje seguía
+   * apareciendo incluso cuando `options` ya no trae ningún valor por defecto (sin
+   * precarga), dando a entender que no hay nada que buscar. Con texto escrito y cero
+   * coincidencias remotas, o en modo local (sin `search`), el texto no cambia.
+   */
+  emptyMessage(): string {
+    if (this.search && !this.query().trim()) return 'Escribe para buscar…';
+    return 'Sin resultados';
   }
 
   toggle(): void {
@@ -195,6 +218,7 @@ export class SearchableSelectComponent implements ControlValueAccessor {
     if (opt.disabled) return;
     this.value.set(opt.id);
     this.onChange(opt.id);
+    this.optionPicked.emit(opt);
     this.open.set(false);
   }
 

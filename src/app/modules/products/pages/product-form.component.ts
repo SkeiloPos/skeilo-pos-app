@@ -137,6 +137,7 @@ interface SlotBreakdown {
               <div>
                 <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Categoría</label>
                 <app-searchable-select [ngModel]="draft().category_id" (ngModelChange)="setField('category_id', $event)"
+                  (optionPicked)="onCategoryPicked($event)"
                   [options]="categoryOptions()" [search]="searchCategories" placeholder="Seleccionar categoría…" />
               </div>
               <div>
@@ -196,6 +197,7 @@ interface SlotBreakdown {
                     <div class="min-w-0">
                       <app-searchable-select [ngModel]="v.presentationId ?? ''"
                         (ngModelChange)="setVariantPresentation(v.localId, $event || null)"
+                        (optionPicked)="onPresentationPicked(v.localId, $event)"
                         (click)="$event.stopPropagation()"
                         [attr.aria-invalid]="isPresentationMissing(v)"
                         [options]="presentationSelectOptionsFor(v)" [search]="searchPresentations"
@@ -324,6 +326,7 @@ interface SlotBreakdown {
                     <div class="flex items-center gap-2">
                       <app-searchable-select [ngModel]="line.inventory_item_id"
                         (ngModelChange)="setRecipeField(av.localId, $index, 'inventory_item_id', $event)"
+                        (optionPicked)="onInventoryItemPicked($event)"
                         [options]="inventoryOptions()" [search]="searchInventoryItems" placeholder="Insumo…" class="flex-1" />
                       <input type="number" min="0" step="0.001" [value]="line.quantity"
                         (input)="setRecipeField(av.localId, $index, 'quantity', +$any($event.target).value)" placeholder="Cant."
@@ -548,9 +551,9 @@ export class ProductFormComponent implements OnInit, OnDestroy {
 
   /**
    * `allItems()` (una sola página de 100) combinada con los insumos resueltos por id
-   * (spec 102, `InventoryService.resolveMissingItems()`) porque ya estaban referenciados por una
-   * receta o un detalle de opción guardados, pero quedaron fuera de esa página. Así, cualquier
-   * insumo ya asociado muestra su nombre real sin importar cuántos insumos tenga el tenant.
+   * (spec 102, `InventoryService.resolveMissingItems()`) porque el Administrador los eligió
+   * por búsqueda durante esta sesión y quedaron fuera de esa página. Así, cualquier insumo
+   * elegido muestra su nombre real sin importar cuántos insumos tenga el tenant.
    */
   private readonly combinedInventoryItems = computed(() => {
     const extra = this.inventoryService.resolvedExtraItems();
@@ -563,10 +566,42 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     buildUnitLookup(this.combinedInventoryItems(), this.unitMeasureService.unitMeasures()),
   );
 
-  /** Opciones para el select con buscador de insumos de la receta. */
-  readonly inventoryOptions = computed(() =>
-    this.combinedInventoryItems().map((i) => ({ id: i.id, label: i.name })),
-  );
+  /**
+   * Nombre/unidad de cada insumo de receta ya guardado, denormalizados directamente en el
+   * detalle del producto (spec 105, research.md -- mismo patrón que `category_name`/
+   * `presentationName`): resguardo para pintar una línea de receta ya guardada sin ninguna
+   * resolución por id, sin importar cuántos insumos tenga el tenant ni si ese insumo está en
+   * `allItems()`/`resolvedExtraItems()`.
+   */
+  private readonly recipeItemLookup = computed(() => {
+    const map = new Map<string, { name: string; unitMeasureId?: string }>();
+    for (const v of this.draft().variants) {
+      for (const line of v.recipe) {
+        if (line.inventory_item_id && line.inventory_item_name) {
+          map.set(line.inventory_item_id, {
+            name: line.inventory_item_name,
+            unitMeasureId: line.unit_measure_id,
+          });
+        }
+      }
+    }
+    return map;
+  });
+
+  /**
+   * Opciones para el select con buscador de insumos de la receta: `combinedInventoryItems()`
+   * (insumos elegidos por búsqueda en esta sesión) más un resguardo por cada insumo de receta
+   * ya guardado que no esté ahí (spec 105, Decisión D1 de `research.md`) -- mismo patrón que
+   * `categoryOptions()`.
+   */
+  readonly inventoryOptions = computed(() => {
+    const options = this.combinedInventoryItems().map((i) => ({ id: i.id, label: i.name }));
+    const known = new Set(options.map((o) => o.id));
+    for (const [id, info] of this.recipeItemLookup()) {
+      if (!known.has(id)) options.push({ id, label: info.name });
+    }
+    return options;
+  });
 
   /**
    * Búsqueda remota del picker de "Insumos fijos" (spec 098): a diferencia de
@@ -578,6 +613,17 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     this.inventoryService
       .searchActiveItems(query)
       .then((items) => items.map((i) => ({ id: i.id, label: i.name })));
+
+  /**
+   * Registra el insumo recién elegido por búsqueda (spec 105, Decisión D1 de
+   * `research.md`): `app-searchable-select` solo entrega `{id, label}`, sin el
+   * `InventoryItem` completo (unidad de medida, stock), así que se resuelve por id -- igual
+   * que cualquier insumo ya guardado que quedó fuera de `allItems()` (spec 102) -- en vez de
+   * duplicar esa información en el resultado de búsqueda.
+   */
+  onInventoryItemPicked(opt: { id: string; label: string }): void {
+    void this.inventoryService.resolveMissingItems([opt.id]);
+  }
 
   /**
    * Opciones del selector de categoría (spec 102, D3/D4): el catálogo cargado
@@ -606,6 +652,15 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     this.categoryService
       .searchActiveCategories(query)
       .then((items) => items.map((c) => ({ id: c.id, label: c.name })));
+
+  /**
+   * Fija el nombre real de la categoría recién elegida por búsqueda (spec 105, Decisión D1
+   * de `research.md`): el resultado de búsqueda ya trae el nombre, así que no hace falta
+   * ninguna petición adicional para mostrarlo de inmediato.
+   */
+  onCategoryPicked(opt: { id: string; label: string }): void {
+    this.draft.update((d) => ({ ...d, category_name: opt.label }));
+  }
 
   /**
    * Grupos elegibles en una fila: los activos, menos los que ya usa **esta misma
@@ -650,11 +705,43 @@ export class ProductFormComponent implements OnInit, OnDestroy {
       .searchActivePresentations(query)
       .then((items) => items.map((p) => ({ id: p.id, label: p.name })));
 
-  /** Cuántas presentaciones activas quedan sin usar en el producto (para el aviso de lista vacía). */
+  /**
+   * Catálogo de presentaciones activas resuelto de forma perezosa (spec 105, Decisión D2 de
+   * `research.md`), para los dos cálculos que antes dependían de la precarga completa ya
+   * eliminada (FR-002): `hasFreePresentations` y la preselección de Grande/Mediana/Pequeña de
+   * `toggleHasSizes()`. `null` mientras no se ha pedido todavía o la petición está en curso.
+   */
+  private readonly activePresentationsCatalog = signal<{ id: string; name: string }[] | null>(
+    null,
+  );
+  private activePresentationsRequested = false;
+
+  /**
+   * Cuántas presentaciones activas quedan sin usar en el producto (para el aviso de lista
+   * vacía). Ya no depende de `presentationService.allPresentations()` (precarga eliminada,
+   * FR-002): dispara, de forma perezosa (no en `ngOnInit()`), una única búsqueda puntual vía
+   * `searchActivePresentations('')` -- el mismo endpoint de búsqueda que ya se mantiene
+   * vigente para el selector -- y cachea el resultado mientras el formulario está abierto.
+   * Mientras la petición está en curso devuelve `true` (optimista: evita mostrar "no hay más
+   * presentaciones" sin saberlo con certeza).
+   */
   readonly hasFreePresentations = computed(() => {
+    const catalog = this.activePresentationsCatalog();
+    if (catalog === null) {
+      this.loadActivePresentationsCatalog();
+      return true;
+    }
     const used = new Set(this.draft().variants.map((v) => v.presentationId));
-    return this.presentationService.allPresentations().some((p) => p.active && !used.has(p.id));
+    return catalog.some((p) => !used.has(p.id));
   });
+
+  private loadActivePresentationsCatalog(): void {
+    if (this.activePresentationsRequested) return;
+    this.activePresentationsRequested = true;
+    void this.presentationService.searchActivePresentations('').then((results) => {
+      this.activePresentationsCatalog.set(results);
+    });
+  }
 
   /** Filas de tamaño que aún no eligieron presentación (bloquean el guardado). */
   isPresentationMissing(v: VariantDraft): boolean {
@@ -662,19 +749,30 @@ export class ProductFormComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Asocia la presentación de una fila (spec 084, A-79). La variante no tiene nombre propio:
-   * solo se guarda el id (y el nombre, para pintar la fila sin esperar al catálogo).
+   * Asocia la presentación de una fila (spec 084, A-79) -- solo el id; el nombre llega por
+   * `onPresentationPicked` (spec 105, Decisión D1 de `research.md`), disparado por el mismo
+   * clic de selección, en vez de buscarlo en `presentationService.allPresentations()` (ya
+   * sin datos tras quitar la precarga, FR-002).
    */
   setVariantPresentation(localId: string, presentationId: string | null): void {
-    const chosen = presentationId
-      ? this.presentationService.allPresentations().find((p) => p.id === presentationId)
-      : null;
     this.draft.update((d) => ({
       ...d,
       variants: d.variants.map((v) =>
-        v.localId === localId
-          ? { ...v, presentationId, presentationName: chosen ? chosen.name : '' }
-          : v,
+        v.localId === localId ? { ...v, presentationId, presentationName: '' } : v,
+      ),
+    }));
+  }
+
+  /**
+   * Fija el nombre real de la presentación recién elegida por búsqueda en una fila (spec
+   * 105, Decisión D1): el resultado de búsqueda ya trae el nombre, así que no hace falta
+   * ninguna petición adicional para mostrarlo de inmediato.
+   */
+  onPresentationPicked(localId: string, opt: { id: string; label: string }): void {
+    this.draft.update((d) => ({
+      ...d,
+      variants: d.variants.map((v) =>
+        v.localId === localId ? { ...v, presentationName: opt.label } : v,
       ),
     }));
   }
@@ -825,8 +923,11 @@ export class ProductFormComponent implements OnInit, OnDestroy {
 
     // (b) Dedazo de magnitud: pedir más de lo que hay en la despensa entera.
     if (delTamano > 0) {
+      // Spec 105: `combinedInventoryItems()` (allItems() + resolvedExtraItems(), ya resuelto
+      // reactivamente por el efecto del constructor), no solo `allItems()` -- un insumo fuera
+      // de la primera página de 100 (o, sin precarga, cualquiera) sigue trayendo su stock.
       const stocks = options
-        .map((o) => this.inventoryService.allItems().find((i) => i.id === o.inventory_item_id))
+        .map((o) => this.combinedInventoryItems().find((i) => i.id === o.inventory_item_id))
         .filter((i): i is NonNullable<typeof i> => !!i)
         .map((i) => Number(i.current_stock));
       const mayor = stocks.length ? Math.max(...stocks) : 0;
@@ -922,27 +1023,6 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     return this.optionGroupService.groups().find((g) => g.id === groupId)?.options ?? [];
   }
 
-  /**
-   * Todo `inventory_item_id` referenciado por la receta o por el detalle de consumo de una
-   * opción, en todas las variantes del draft (spec 102, Historia 1). Se usa una sola vez, tras
-   * cargar el draft, para pedirle a `InventoryService.resolveMissingItems()` solo los que
-   * realmente falten.
-   */
-  private referencedInventoryItemIds(d: ProductDraft): string[] {
-    const ids = new Set<string>();
-    for (const v of d.variants) {
-      for (const line of v.recipe) {
-        if (line.inventory_item_id) ids.add(line.inventory_item_id);
-      }
-      for (const g of v.optionGroups) {
-        for (const o of this.groupOptions(g.option_group_id)) {
-          if (o.inventory_item_id) ids.add(o.inventory_item_id);
-        }
-      }
-    }
-    return [...ids];
-  }
-
   /** Igual que `group_discounts` del backend: manda la cantidad del tamaño, y si no
    *  la define, alguna opción activa con insumo propio y cantidad mayor a cero. */
   private groupHasConsumption(g: VariantOptionGroupDraft): boolean {
@@ -969,19 +1049,17 @@ export class ProductFormComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     this.loading.set(true);
-    // Se esperan los datos de referencia ANTES de armar el draft: los `<select>`
-    // con valor preseleccionado (categoría, insumo de receta) necesitan que sus
-    // `<option>` ya existan cuando se aplica `[value]`, o quedan en blanco.
+    // Spec 105 (FR-001/FR-002): ya no se precarga el catálogo completo de categorías,
+    // insumos ni presentaciones -- `app-searchable-select` (spec 102) resuelve sus
+    // opciones de forma reactiva (búsqueda remota al escribir), así que no necesita que
+    // ningún catálogo completo exista de antemano. Unidades y grupos de opciones siguen
+    // precargándose: fuera del alcance de esta corrección (FR-001/FR-002 solo cubren los
+    // tres selectores de categoría, insumos y presentación).
     await Promise.all([
-      this.categoryService.allCategories().length === 0 ? this.categoryService.loadAllCategories() : null,
-      this.inventoryService.allItems().length === 0 ? this.inventoryService.loadAllItems() : null,
       this.unitMeasureService.unitMeasures().length === 0
         ? this.unitMeasureService.loadUnitMeasures()
         : null,
       this.optionGroupService.groups().length === 0 ? this.optionGroupService.loadGroups() : null,
-      this.presentationService.allPresentations().length === 0
-        ? this.presentationService.loadAllPresentations()
-        : null,
     ]);
 
     const id = this.route.snapshot.paramMap.get('id');
@@ -995,11 +1073,10 @@ export class ProductFormComponent implements OnInit, OnDestroy {
       this.draft.set(draft);
       this.productActive.set(draft.active);
       this.activeLocalId.set(draft.variants[0]?.localId ?? '');
-      // Spec 102, Historia 1: resuelve por id cualquier insumo ya referenciado por la receta o
-      // por el detalle de consumo de una opción que haya quedado fuera de `allItems()`. No se
-      // espera (`void`): `inventoryOptions()`/`unitLookup` son reactivos a `resolvedExtraItems()`
-      // y actualizan la plantilla solos cuando la resolución llega, sin bloquear el render inicial.
-      void this.inventoryService.resolveMissingItems(this.referencedInventoryItemIds(draft));
+      // Spec 105 (research.md): el nombre/unidad de cada insumo de receta ya guardado
+      // viaja denormalizado en el propio detalle del producto (`recipeItemLookup()`),
+      // igual que `category_name`/`presentationName` -- ya no hace falta resolverlos por
+      // id contra `GET /inventory/items/{id}` al abrir el formulario.
     } else {
       const d = this.emptyDraft();
       this.draft.set(d);
@@ -1097,10 +1174,16 @@ export class ProductFormComponent implements OnInit, OnDestroy {
         // Los tamaños nuevos heredan también los grupos, no solo los insumos: si no,
         // habría que volver a elegirlos uno por uno en cada tamaño. Se preseleccionan las
         // presentaciones típicas si el catálogo las tiene (antes se sembraban por nombre).
+        // Spec 105: ya no lee `presentationService.allPresentations()` (precarga eliminada,
+        // FR-002) -- usa el mismo catálogo perezoso de `hasFreePresentations` (Decisión D2).
+        // Si la petición todavía está en curso la primera vez que se activa el switch, esta
+        // preselección puede no encontrar nada esa vez (se puede elegir a mano); no bloquea
+        // nada, solo deja de adelantar un valor por defecto.
+        if (this.activePresentationsCatalog() === null) this.loadActivePresentationsCatalog();
         const pick = (...names: string[]) => {
-          const found = this.presentationService
-            .allPresentations()
-            .find((p) => p.active && !taken.has(p.id) && names.includes(p.name.trim().toLowerCase()));
+          const found = (this.activePresentationsCatalog() ?? []).find(
+            (p) => !taken.has(p.id) && names.includes(p.name.trim().toLowerCase()),
+          );
           if (found) taken.add(found.id);
           return found ? { id: found.id, name: found.name } : null;
         };
@@ -1332,8 +1415,21 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     }));
   }
 
+  /**
+   * Abreviatura de la unidad de un insumo: `unitLookup()` (insumos elegidos por búsqueda en
+   * esta sesión) o, si no está ahí, el `unit_measure_id` denormalizado de la propia línea de
+   * receta ya guardada (spec 105, Decisión D1 de `research.md`), resuelto contra las unidades
+   * ya precargadas (`unitMeasureService`, fuera del alcance de esta spec).
+   */
   unitAbbr(itemId: string | null): string {
-    return this.unitLookup().abbrOf(itemId);
+    const abbr = this.unitLookup().abbrOf(itemId);
+    if (abbr || !itemId) return abbr;
+    const unitMeasureId = this.recipeItemLookup().get(itemId)?.unitMeasureId;
+    if (!unitMeasureId) return '';
+    return (
+      this.unitMeasureService.unitMeasures().find((u) => u.id === unitMeasureId)?.abbreviation ??
+      ''
+    );
   }
 
   // --- Sabores a elegir (grupos de la presentación) ---
