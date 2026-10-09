@@ -27,6 +27,12 @@ export interface InventoryItem {
   min_stock: number;
   unit_cost: number;
   active: boolean;
+  /** ISO datetime. */
+  created_at: string;
+  /** ISO datetime; null si nunca se ha editado desde que se creó. */
+  updated_at: string | null;
+  /** Nombre del proveedor preferido activo (spec 106, RN-16); null si no tiene ninguno. */
+  preferred_supplier_name: string | null;
 }
 
 /** Editable fields captured by the item form (create/edit). */

@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { UnitMeasureService } from '../../../core/services/unit-measure.service';
 import { SuppliersService } from '../../suppliers/services/suppliers.service';
 import {
@@ -155,10 +156,13 @@ type ActiveFilter = '' | 'active' | 'inactive';
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Unidad</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Proveedor preferido</th>
                     <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock</th>
                     <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Mínimo</th>
                     <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Costo</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Estado</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Creado</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actualizado</th>
                     <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Acciones</th>
                   </tr>
                 </thead>
@@ -168,6 +172,13 @@ type ActiveFilter = '' | 'active' | 'inactive';
                       <td class="px-4 py-3"><p class="font-medium text-gray-900">{{ i.name }}</p></td>
                       <td class="px-4 py-3 text-gray-600">{{ typeLabel(i.type) }}</td>
                       <td class="px-4 py-3 text-gray-600">{{ unitAbbr(i.unit_measure_id) }}</td>
+                      <td class="px-4 py-3 text-gray-600">
+                        @if (i.preferred_supplier_name) {
+                          {{ i.preferred_supplier_name }}
+                        } @else {
+                          <span class="text-gray-400 italic">Sin proveedor</span>
+                        }
+                      </td>
                       <td class="px-4 py-3 text-right font-semibold" [class]="isLow(i) ? 'text-amber-600' : 'text-gray-900'">
                         {{ i.current_stock | number:'1.0-3' }}
                       </td>
@@ -180,8 +191,14 @@ type ActiveFilter = '' | 'active' | 'inactive';
                           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">OK</span>
                         }
                       </td>
+                      <td class="px-4 py-3 text-gray-500 whitespace-nowrap">{{ i.created_at | tenantDate:'short' }}</td>
+                      <td class="px-4 py-3 text-gray-500 whitespace-nowrap">
+                        {{ i.updated_at ? (i.updated_at | tenantDate:'short') : '—' }}
+                      </td>
                       <td class="px-4 py-3">
                         <div class="flex items-center justify-end gap-1">
+                          <button (click)="openSuppliers(i)" title="Proveedores"
+                            class="px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">Proveedores</button>
                           <button (click)="openAdjust(i)"
                             class="px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors">Ajustar</button>
                           <button (click)="openKardex(i)"
@@ -392,6 +409,7 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   readonly suppliersService = inject(SuppliersService);
   readonly planSummaryService = inject(PlanSummaryService);
   private readonly toast = inject(ToastService);
+  private readonly router = inject(Router);
 
   /** Pestaña "Compras" (spec 033): oculta si el plan no incluye
    * `compras_access`, o si el tenant está vencido — mismo criterio que
@@ -584,6 +602,9 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   openEdit(i: InventoryItem): void {
     this.selectedItem.set(i);
     this.showForm.set(true);
+  }
+  openSuppliers(i: InventoryItem): void {
+    this.router.navigate(['/dashboard/inventario', i.id, 'detalle']);
   }
   openAdjust(i: InventoryItem): void {
     this.selectedItem.set(i);

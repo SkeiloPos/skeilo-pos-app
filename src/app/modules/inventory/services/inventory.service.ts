@@ -31,6 +31,9 @@ interface InventoryItemResponse {
   min_stock: string;
   unit_cost: string;
   active: boolean;
+  created_at: string;
+  updated_at: string | null;
+  preferred_supplier_name: string | null;
 }
 
 /** Raw backend movement (decimals arrive as strings). */
@@ -226,6 +229,15 @@ export class InventoryService {
     if (found.length > 0) {
       this.resolvedExtraItems.update((prev) => [...prev, ...found]);
     }
+  }
+
+  /** Insumo puntual, para el encabezado del detalle (spec 106) -- carga por id al entrar a
+   *  la página, no una precarga de catálogo (memoria de sesión sobre selectores). */
+  async getItem(id: string): Promise<InventoryItem> {
+    const data = await firstValueFrom(
+      this.http.get<InventoryItemResponse>(`${this.baseUrl}/items/${id}`),
+    );
+    return this.toItem(data);
   }
 
   async loadLowStock(): Promise<void> {
@@ -448,6 +460,9 @@ export class InventoryService {
       min_stock: Number(i.min_stock),
       unit_cost: Number(i.unit_cost),
       active: i.active,
+      created_at: i.created_at,
+      updated_at: i.updated_at,
+      preferred_supplier_name: i.preferred_supplier_name,
     };
   }
 

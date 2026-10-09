@@ -3,6 +3,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Observable, firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { ApiErrorBody } from '../../../core/auth/auth.models';
+import { normalizeText } from '../../../shared/normalize-text';
 import {
   Supplier,
   SupplierCreatePayload,
@@ -37,6 +38,27 @@ export class SuppliersService {
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  /** Proveedor puntual, para el encabezado del detalle (spec 106). */
+  async getSupplier(id: string): Promise<Supplier> {
+    return firstValueFrom(this.http.get<Supplier>(`${this.baseUrl}/${id}`));
+  }
+
+  /**
+   * Búsqueda del selector de "vincular proveedor" (spec 106, FR-012): sin precarga de
+   * catálogo completo (memoria de sesión sobre selectores) -- se pide fresco cada vez que
+   * el usuario escribe algo en `app-searchable-select`, nunca en la carga de la página.
+   * Excluye siempre al proveedor de sistema ("Compra ocasional").
+   */
+  async searchLinkable(query: string): Promise<Supplier[]> {
+    const params = new HttpParams().set('exclude_system', 'true');
+    const data = await firstValueFrom(
+      this.http.get<Supplier[]>(this.baseUrl, { params }),
+    );
+    const q = normalizeText(query);
+    if (!q) return data;
+    return data.filter((s) => normalizeText(s.name).includes(q));
   }
 
   async createSupplier(form: SupplierForm): Promise<boolean> {
