@@ -94,6 +94,10 @@ export const ICON_CATALOG: Record<string, string> = {
   point_of_sale: 'point_of_sale',
   tune: 'tune',
 
+  // spec 106: estrella de proveedor preferido (un solo glifo; el estado
+  // "preferido" se distingue por color, no por una segunda ligadura).
+  star: 'star',
+
   // Ícono de reserva para un `name` desconocido (contracts/icon-component-contract.md)
   help_outline: 'help_outline',
 };

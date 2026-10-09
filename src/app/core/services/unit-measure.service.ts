@@ -21,6 +21,12 @@ export class UnitMeasureService {
   readonly isSubmitting = signal(false);
   readonly error = signal<string | null>(null);
 
+  /** Unidad puntual (spec 106): resuelve la abreviatura de un insumo recién elegido en el
+   *  selector de "Insumos que vende" sin depender de una precarga del catálogo completo. */
+  async getUnitMeasure(id: string): Promise<UnitMeasure> {
+    return firstValueFrom(this.http.get<UnitMeasure>(`${this.baseUrl}/${id}`));
+  }
+
   async loadUnitMeasures(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
