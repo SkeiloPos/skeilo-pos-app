@@ -319,6 +319,90 @@ describe('PosTerminalStore — orden "pagada" ya lista sigue visible (gap spec 0
 });
 
 /**
+ * Spec 110: una mesa puede quedar `status === 'ocupada'` (sesión abierta) con
+ * cero pedidos vivos -- p. ej. se rechazó el único pedido manual antes de que
+ * cocina recibiera algo. Antes, `centralState()` solo miraba si había pedidos
+ * vivos y colapsaba este caso a `'mesa-libre'`, lo que ocultaba toda la
+ * columna de detalle (incluido "Liberar Mesa") y dejaba la mesa bloqueada
+ * para siempre desde la interfaz -- bug en producción. Ahora distingue este
+ * caso con el mismo criterio que ya usa `deriveTableStatus` para la insignia
+ * de la grilla (`table.status === 'ocupada'`).
+ */
+describe('PosTerminalStore.centralState — mesa ocupada sin pedido (spec 110)', () => {
+  let store: PosTerminalStore;
+  let tableService: TableService;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    tableService = TestBed.inject(TableService);
+  });
+
+  it('mesa "ocupada" sin ningún pedido vivo NO colapsa a "mesa-libre"', () => {
+    tableService.tables.set([
+      { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'ocupada' },
+    ]);
+    store.orders.set([]);
+    store.selectedTableId.set('t1');
+
+    expect(store.centralState()).toBe('ocupada-sin-pedido');
+  });
+
+  it('mesa "ocupada" con solo un pedido cancelado (sin pedidos vivos) también cae en "ocupada-sin-pedido"', () => {
+    tableService.tables.set([
+      { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'ocupada' },
+    ]);
+    store.orders.set([
+      { ...order('o1', 'cancelada', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+    ]);
+    store.selectedTableId.set('t1');
+
+    expect(store.centralState()).toBe('ocupada-sin-pedido');
+  });
+
+  it('regresión: mesa realmente "libre" (sin sesión) sigue cayendo en "mesa-libre"', () => {
+    tableService.tables.set([
+      { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'libre' },
+    ]);
+    store.orders.set([]);
+    store.selectedTableId.set('t1');
+
+    expect(store.centralState()).toBe('mesa-libre');
+  });
+
+  it('regresión: mesa "ocupada" con un pedido activo sigue en "pedido", no en "ocupada-sin-pedido"', () => {
+    tableService.tables.set([
+      { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'ocupada' },
+    ]);
+    store.orders.set([
+      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+    ]);
+    store.selectedTableId.set('t1');
+
+    expect(store.centralState()).toBe('pedido');
+  });
+
+  it('effectiveCentralView() refleja "ocupada-sin-pedido" igual que centralState() (sin pago QR pendiente de por medio)', () => {
+    tableService.tables.set([
+      { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'ocupada' },
+    ]);
+    store.orders.set([]);
+    store.selectedTableId.set('t1');
+
+    expect(store.effectiveCentralView()).toBe('ocupada-sin-pedido');
+  });
+});
+
+/**
  * Rediseño responsive de la terminal: `tableCounts` alimenta los badges de
  * la franja de filtros (Todas/Libres/Ocupadas/Pendientes) -- reutiliza los
  * mismos predicados que ya aplica `tablesView()` al filtrar, para que el

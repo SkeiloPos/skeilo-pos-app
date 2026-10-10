@@ -23,6 +23,7 @@ import { InventoryService } from '../services/inventory.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
 import { InventoryItemFormComponent } from '../components/inventory-item-form.component';
 import { StockAdjustModalComponent } from '../components/stock-adjust-modal.component';
+import { InventoryImportModalComponent } from '../components/inventory-import-modal.component';
 import { PurchaseFormComponent } from '../components/purchase-form.component';
 import { SearchableSelectComponent } from '../../../shared/searchable-select/searchable-select.component';
 import { PaginationBarComponent } from '../../../shared/pagination/pagination-bar.component';
@@ -43,6 +44,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
     FormsModule,
     InventoryItemFormComponent,
     StockAdjustModalComponent,
+    InventoryImportModalComponent,
     PurchaseFormComponent,
     SearchableSelectComponent,
     PaginationBarComponent,
@@ -142,8 +144,19 @@ type ActiveFilter = '' | 'active' | 'inactive';
                 <app-mi-icon name="download" [size]="16" />
                 Exportar Inventario
               </button>
+              <button type="button" (click)="showImportModal.set(true)"
+                class="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors">
+                <app-mi-icon name="upload" [size]="16" />
+                Importar Excel
+              </button>
             </div>
           </div>
+
+          @if (showImportModal()) {
+            <app-inventory-import-modal
+              (close)="showImportModal.set(false)"
+              (imported)="service.refreshItems()" />
+          }
           @if (service.isLoading()) {
             <div class="flex items-center justify-center py-12"><p class="text-sm text-gray-400">Cargando insumos...</p></div>
           } @else if (service.items().length === 0) {
@@ -153,6 +166,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-gray-100 bg-gray-50">
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Código</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Unidad</th>
@@ -169,6 +183,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
                 <tbody class="divide-y divide-gray-50">
                   @for (i of service.items(); track i.id) {
                     <tr class="hover:bg-gray-50 transition-colors" [class.opacity-50]="!i.active">
+                      <td class="px-4 py-3 text-gray-500 whitespace-nowrap">{{ i.code }}</td>
                       <td class="px-4 py-3"><p class="font-medium text-gray-900">{{ i.name }}</p></td>
                       <td class="px-4 py-3 text-gray-600">{{ typeLabel(i.type) }}</td>
                       <td class="px-4 py-3 text-gray-600">{{ unitAbbr(i.unit_measure_id) }}</td>
@@ -443,6 +458,7 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   readonly showForm = signal(false);
   readonly showAdjust = signal(false);
   readonly showPurchase = signal(false);
+  readonly showImportModal = signal(false);
   readonly selectedItem = signal<InventoryItem | null>(null);
 
   readonly expandedId = signal<string | null>(null);

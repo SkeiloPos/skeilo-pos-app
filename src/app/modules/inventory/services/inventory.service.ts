@@ -9,6 +9,7 @@ import { injectPagedQuery } from '../../../core/query/paged-query';
 import {
   AdjustForm,
   AdjustmentPayload,
+  InventoryImportJob,
   InventoryItem,
   InventoryItemCreatePayload,
   InventoryItemForm,
@@ -24,6 +25,7 @@ import {
 /** Raw backend item (decimals arrive as strings). */
 interface InventoryItemResponse {
   id: string;
+  code: string;
   name: string;
   unit_measure_id: string;
   type: InventoryItem['type'];
@@ -328,9 +330,47 @@ export class InventoryService {
     );
   }
 
-  /** Descarga el respaldo completo del inventario en `.xlsx` (spec 086). */
+  /** Descarga el respaldo completo del inventario en `.xlsx` (spec 086/109: plantilla
+   *  única con código y datos del proveedor preferido). */
   exportItems(): Observable<HttpResponse<Blob>> {
     return this.http.get(`${this.baseUrl}/items/export`, {
+      responseType: 'blob',
+      observe: 'response',
+    });
+  }
+
+  /** Sube un `.xlsx` para importación masiva (spec 109). El backend valida la
+   *  estructura de inmediato (422 si no corresponde a la plantilla, 409 si ya hay
+   *  una importación en curso) y responde 202 con el job recién creado, sin
+   *  esperar a que termine de procesarse. */
+  importItems(file: File): Promise<InventoryImportJob> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return firstValueFrom(
+      this.http.post<InventoryImportJob>(`${this.baseUrl}/items/import`, form)
+    );
+  }
+
+  /** Job de importación más reciente del negocio (en curso o finalizado), o
+   *  `null` si nunca se ha corrido ninguno — lo que sondea el modal de import
+   *  mientras `status === 'procesando'` (reutiliza `startVisibleInterval`). */
+  getCurrentImportJob(): Promise<InventoryImportJob | null> {
+    return firstValueFrom(
+      this.http.get<InventoryImportJob | null>(`${this.baseUrl}/items/import/current`)
+    );
+  }
+
+  /** Un job de importación puntual, por id. */
+  getImportJob(jobId: string): Promise<InventoryImportJob> {
+    return firstValueFrom(
+      this.http.get<InventoryImportJob>(`${this.baseUrl}/items/import/${jobId}`)
+    );
+  }
+
+  /** Descarga el reporte de filas fallidas de un job (`.xlsx`); solo tiene
+   *  sentido cuando `has_errors` es `true`. */
+  downloadImportErrors(jobId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.baseUrl}/items/import/${jobId}/errors`, {
       responseType: 'blob',
       observe: 'response',
     });
@@ -439,6 +479,16 @@ export class InventoryService {
     }
   }
 
+  /** Refresca el listado de insumos y las alertas de bajo stock -- usado tras una
+   *  importación masiva (spec 109), que crea/actualiza insumos por fuera de los
+   *  métodos `submit()` de este servicio. */
+  async refreshItems(): Promise<void> {
+    await Promise.all([
+      this.queryClient.invalidateQueries({ queryKey: ['inventory-items'] }),
+      this.loadLowStock(),
+    ]);
+  }
+
   /**
    * Runs a write request against items, then refreshes the item list. Returns
    * `true` on success so callers can close their modal only when it succeeded.
@@ -464,6 +514,7 @@ export class InventoryService {
   private toItem(i: InventoryItemResponse): InventoryItem {
     return {
       id: i.id,
+      code: i.code,
       name: i.name,
       unit_measure_id: i.unit_measure_id,
       type: i.type,

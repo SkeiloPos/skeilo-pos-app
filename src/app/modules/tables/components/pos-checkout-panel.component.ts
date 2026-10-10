@@ -205,8 +205,20 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               Rechazar pedido
             </button>
           </div>
-        } @else if (store.selectedOrder() || store.pendingOfSelectedTable().length === 0) {
-          <!-- Origen mostrador (o mesa sin pedido todavía): cobro editable (T024). -->
+        } @else if (
+          (store.selectedOrder() || store.pendingOfSelectedTable().length === 0) &&
+          store.centralState() !== 'ocupada-sin-pedido'
+        ) {
+          <!--
+            Origen mostrador (o mesa sin pedido todavía): cobro editable (T024).
+
+            Spec 110: excluida a propósito cuando centralState() es
+            'ocupada-sin-pedido' -- esta mesa ya tiene sesión abierta sin
+            ningún pedido vivo, y "+ Crear pedido nuevo" duplicaría el mismo
+            CTA que ya ofrece la sub-barra para esa mesa (newOrderTableId()
+            sigue apuntándole). La única acción que debe verse en ese caso es
+            "Liberar Mesa" (bloque de abajo).
+          -->
           <div class="flex flex-col h-full">
             <h2 class="text-[15px] font-bold text-[#111827] mb-3">
               {{ store.selectedOrder() ? 'Cobrar pedido' : 'Pedido de mostrador' }}
