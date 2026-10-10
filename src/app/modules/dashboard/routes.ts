@@ -213,6 +213,16 @@ export const dashboardRoutes: Routes = [
         canActivate: [roleGuard([UserRole.ADMIN, UserRole.CASHIER, UserRole.MESERO])],
       },
       {
+        // spec 106: más específica que 'inventario/:id' (que no existe hoy, pero sigue el
+        // mismo criterio de 'products/:id/detalle' -- la ruta de detalle va antes).
+        path: 'inventario/:id/detalle',
+        loadComponent: () =>
+          import('../inventory/pages/inventory-item-detail-page.component').then(
+            (m) => m.InventoryItemDetailPageComponent,
+          ),
+        canActivate: [roleGuard([UserRole.ADMIN]), planModuleGuard('inventario')],
+      },
+      {
         path: 'inventario',
         loadComponent: () =>
           import('../inventory/pages/inventory-page.component').then(
@@ -224,6 +234,15 @@ export const dashboardRoutes: Routes = [
         path: 'insumos',
         redirectTo: 'inventario',
         pathMatch: 'full',
+      },
+      {
+        // spec 106: antes de 'proveedores' por el mismo motivo que arriba.
+        path: 'proveedores/:id/detalle',
+        loadComponent: () =>
+          import('../suppliers/pages/supplier-detail-page.component').then(
+            (m) => m.SupplierDetailPageComponent,
+          ),
+        canActivate: [roleGuard([UserRole.ADMIN])],
       },
       {
         path: 'proveedores',

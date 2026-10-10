@@ -27,6 +27,12 @@ export interface InventoryItem {
   min_stock: number;
   unit_cost: number;
   active: boolean;
+  /** ISO datetime. */
+  created_at: string;
+  /** ISO datetime; null si nunca se ha editado desde que se creó. */
+  updated_at: string | null;
+  /** Nombre del proveedor preferido activo (spec 106, RN-16); null si no tiene ninguno. */
+  preferred_supplier_name: string | null;
 }
 
 /** Editable fields captured by the item form (create/edit). */
@@ -70,6 +76,13 @@ export interface PurchaseItem {
   quantity: number;
   received_quantity: number;
   unit_cost: number;
+  /** spec 107: presente solo si la línea se compró en una presentación guardada. */
+  supplier_item_id: string | null;
+  presentation_quantity: number | null;
+  /** Copia del texto de la presentación en el momento de la compra (snapshot). */
+  presentation_label: string | null;
+  /** Denormalizado por el backend; sirve para mostrar "pendiente en presentaciones" al recibir. */
+  conversion_factor: number | null;
 }
 
 /** A purchase (compra). Mirrors backend `PurchaseResponse`. */
@@ -84,16 +97,21 @@ export interface Purchase {
   items: PurchaseItem[];
 }
 
-/** Recepción de ítems (RF-022): cantidad recibida por línea de compra. */
+/** Recepción de ítems (RF-022): cantidad recibida por línea de compra. spec 107: exactamente
+ *  uno de `quantity` (unidad base) o `presentation_quantity` (si la línea se pactó en una
+ *  presentación), según `PurchaseItem.supplier_item_id`. */
 export interface PurchaseReceivePayload {
-  items: { purchase_item_id: string; quantity: number }[];
+  items: { purchase_item_id: string; quantity?: number; presentation_quantity?: number }[];
 }
 
-/** A single line captured in the purchase form. */
+/** A single line captured in the purchase form. spec 107: si `supplier_item_id` está
+ *  presente, `quantity` es la cantidad de presentaciones y `unit_cost` el costo de una sola
+ *  presentación -- el backend calcula la equivalencia en unidad base. */
 export interface PurchaseLineForm {
   inventory_item_id: string;
   quantity: number;
   unit_cost: number;
+  supplier_item_id?: string | null;
 }
 
 /** Fields captured when registering a purchase. */
@@ -131,11 +149,16 @@ export interface AdjustmentPayload {
   reason?: string | null;
 }
 
-/** A purchase line as sent to the backend (`PurchaseItemIn`). */
+/** A purchase line as sent to the backend (`PurchaseItemIn`). spec 107: exactamente uno de
+ *  los dos modos -- `quantity`/`unit_cost` (unidad base, como siempre) o `supplier_item_id` +
+ *  `presentation_quantity` + `presentation_unit_cost` (presentación guardada). */
 export interface PurchaseItemPayload {
   inventory_item_id: string;
-  quantity: number;
-  unit_cost: number;
+  quantity?: number;
+  unit_cost?: number;
+  supplier_item_id?: string;
+  presentation_quantity?: number;
+  presentation_unit_cost?: number;
 }
 
 /** `POST /inventory/purchases` (`PurchaseCreate`). */

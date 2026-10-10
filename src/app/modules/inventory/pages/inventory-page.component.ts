@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { UnitMeasureService } from '../../../core/services/unit-measure.service';
 import { SuppliersService } from '../../suppliers/services/suppliers.service';
 import {
@@ -155,10 +156,13 @@ type ActiveFilter = '' | 'active' | 'inactive';
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Unidad</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Proveedor preferido</th>
                     <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock</th>
                     <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Mínimo</th>
                     <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Costo</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Estado</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Creado</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actualizado</th>
                     <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Acciones</th>
                   </tr>
                 </thead>
@@ -168,6 +172,13 @@ type ActiveFilter = '' | 'active' | 'inactive';
                       <td class="px-4 py-3"><p class="font-medium text-gray-900">{{ i.name }}</p></td>
                       <td class="px-4 py-3 text-gray-600">{{ typeLabel(i.type) }}</td>
                       <td class="px-4 py-3 text-gray-600">{{ unitAbbr(i.unit_measure_id) }}</td>
+                      <td class="px-4 py-3 text-gray-600">
+                        @if (i.preferred_supplier_name) {
+                          {{ i.preferred_supplier_name }}
+                        } @else {
+                          <span class="text-gray-400 italic">Sin proveedor</span>
+                        }
+                      </td>
                       <td class="px-4 py-3 text-right font-semibold" [class]="isLow(i) ? 'text-amber-600' : 'text-gray-900'">
                         {{ i.current_stock | number:'1.0-3' }}
                       </td>
@@ -180,8 +191,14 @@ type ActiveFilter = '' | 'active' | 'inactive';
                           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">OK</span>
                         }
                       </td>
+                      <td class="px-4 py-3 text-gray-500 whitespace-nowrap">{{ i.created_at | tenantDate:'short' }}</td>
+                      <td class="px-4 py-3 text-gray-500 whitespace-nowrap">
+                        {{ i.updated_at ? (i.updated_at | tenantDate:'short') : '—' }}
+                      </td>
                       <td class="px-4 py-3">
                         <div class="flex items-center justify-end gap-1">
+                          <button (click)="openSuppliers(i)" title="Proveedores"
+                            class="px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">Proveedores</button>
                           <button (click)="openAdjust(i)"
                             class="px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors">Ajustar</button>
                           <button (click)="openKardex(i)"
@@ -253,7 +270,14 @@ type ActiveFilter = '' | 'active' | 'inactive';
                         <tbody class="divide-y divide-gray-100">
                           @for (it of p.items; track it.id) {
                             <tr>
-                              <td class="px-3 py-2 text-gray-700">{{ itemName(it.inventory_item_id) }}</td>
+                              <td class="px-3 py-2 text-gray-700">
+                                {{ itemName(it.inventory_item_id) }}
+                                @if (it.presentation_label) {
+                                  <span class="block text-gray-400">
+                                    {{ it.presentation_quantity | number:'1.0-3' }} {{ it.presentation_label }}
+                                  </span>
+                                }
+                              </td>
                               <td class="px-3 py-2 text-right text-gray-600">{{ it.quantity | number:'1.0-3' }}</td>
                               <td class="px-3 py-2 text-right text-gray-600">{{ it.unit_cost | number:'1.2-2' }}</td>
                               <td class="px-3 py-2 text-right text-gray-700">{{ (it.quantity * it.unit_cost) | number:'1.2-2' }}</td>
@@ -364,9 +388,17 @@ type ActiveFilter = '' | 'active' | 'inactive';
               <div class="flex items-center gap-3">
                 <div class="flex-1">
                   <p class="text-sm font-medium text-gray-800">{{ itemName(row.inventory_item_id) }}</p>
-                  <p class="text-xs text-gray-400">Pendiente: {{ row.pending | number:'1.0-3' }} de {{ row.quantity | number:'1.0-3' }}</p>
+                  <p class="text-xs text-gray-400">
+                    @if (row.presentation_label && row.conversion_factor) {
+                      Pendiente: {{ row.pending / row.conversion_factor | number:'1.0-3' }} de {{ row.quantity / row.conversion_factor | number:'1.0-3' }} {{ row.presentation_label }}
+                    } @else {
+                      Pendiente: {{ row.pending | number:'1.0-3' }} de {{ row.quantity | number:'1.0-3' }}
+                    }
+                  </p>
                 </div>
-                <input type="number" min="0" [max]="row.pending" [(ngModel)]="row.receive"
+                <input type="number" min="0"
+                  [max]="row.presentation_label && row.conversion_factor ? row.pending / row.conversion_factor : row.pending"
+                  [(ngModel)]="row.receive"
                   class="w-28 px-2 py-1.5 border border-gray-200 rounded-lg text-sm" />
               </div>
             }
@@ -392,6 +424,7 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   readonly suppliersService = inject(SuppliersService);
   readonly planSummaryService = inject(PlanSummaryService);
   private readonly toast = inject(ToastService);
+  private readonly router = inject(Router);
 
   /** Pestaña "Compras" (spec 033): oculta si el plan no incluye
    * `compras_access`, o si el tenant está vencido — mismo criterio que
@@ -416,7 +449,10 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
 
   // Recepción de compra (RF-022)
   readonly receivePurchase = signal<Purchase | null>(null);
-  readonly receiveRows = signal<{ purchase_item_id: string; inventory_item_id: string; quantity: number; pending: number; receive: number }[]>([]);
+  readonly receiveRows = signal<{
+    purchase_item_id: string; inventory_item_id: string; quantity: number; pending: number;
+    receive: number; presentation_label: string | null; conversion_factor: number | null;
+  }[]>([]);
 
   readonly movementItemId = signal('');
   readonly movements = signal<InventoryMovement[]>([]);
@@ -547,12 +583,18 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
     this.receiveRows.set(
       p.items.map(it => {
         const pending = it.quantity - it.received_quantity;
+        // spec 107: si la línea se pactó en una presentación, "pendiente" y "a recibir" se
+        // muestran y se capturan en esa presentación, no en unidad base.
+        const factor = it.conversion_factor;
+        const pendingDisplay = factor ? pending / factor : pending;
         return {
           purchase_item_id: it.id,
           inventory_item_id: it.inventory_item_id,
           quantity: it.quantity,
           pending,
-          receive: pending,
+          receive: pendingDisplay,
+          presentation_label: it.presentation_label,
+          conversion_factor: it.conversion_factor,
         };
       }),
     );
@@ -562,7 +604,9 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   async submitReceive(purchaseId: string): Promise<void> {
     const items = this.receiveRows()
       .filter(r => Number(r.receive) > 0)
-      .map(r => ({ purchase_item_id: r.purchase_item_id, quantity: Number(r.receive) }));
+      .map(r => r.presentation_label && r.conversion_factor
+        ? { purchase_item_id: r.purchase_item_id, presentation_quantity: Number(r.receive) }
+        : { purchase_item_id: r.purchase_item_id, quantity: Number(r.receive) });
     if (items.length === 0) {
       this.toast.info('Indica al menos una cantidad a recibir');
       return;
@@ -584,6 +628,9 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   openEdit(i: InventoryItem): void {
     this.selectedItem.set(i);
     this.showForm.set(true);
+  }
+  openSuppliers(i: InventoryItem): void {
+    this.router.navigate(['/dashboard/inventario', i.id, 'detalle']);
   }
   openAdjust(i: InventoryItem): void {
     this.selectedItem.set(i);

@@ -39,7 +39,7 @@ import { CashSessionStore } from '../services/cash-session.store';
           <div class="text-4xl font-extrabold leading-tight mt-1">{{ store.fmt(store.efectivoEsperado()) }}</div>
         </div>
         <div class="text-right text-xs opacity-90 max-w-[280px]">
-          Fondo inicial + ventas en efectivo − cambio entregado + ingresos − egresos − retiros
+          Fondo inicial + ventas en efectivo + ingresos − egresos − retiros
         </div>
       </div>
 

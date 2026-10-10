@@ -31,6 +31,9 @@ interface InventoryItemResponse {
   min_stock: string;
   unit_cost: string;
   active: boolean;
+  created_at: string;
+  updated_at: string | null;
+  preferred_supplier_name: string | null;
 }
 
 /** Raw backend movement (decimals arrive as strings). */
@@ -51,6 +54,10 @@ interface PurchaseItemResponse {
   quantity: string;
   received_quantity: string;
   unit_cost: string;
+  supplier_item_id: string | null;
+  presentation_quantity: string | null;
+  presentation_label: string | null;
+  conversion_factor: string | null;
 }
 
 interface PurchaseResponse {
@@ -228,6 +235,15 @@ export class InventoryService {
     }
   }
 
+  /** Insumo puntual, para el encabezado del detalle (spec 106) -- carga por id al entrar a
+   *  la página, no una precarga de catálogo (memoria de sesión sobre selectores). */
+  async getItem(id: string): Promise<InventoryItem> {
+    const data = await firstValueFrom(
+      this.http.get<InventoryItemResponse>(`${this.baseUrl}/items/${id}`),
+    );
+    return this.toItem(data);
+  }
+
   async loadLowStock(): Promise<void> {
     try {
       const data = await firstValueFrom(
@@ -367,11 +383,18 @@ export class InventoryService {
     const payload: PurchaseCreatePayload = {
       supplier_id: form.supplier_id || null,
       invoice_number: form.invoice_number || null,
-      items: form.items.map(i => ({
-        inventory_item_id: i.inventory_item_id,
-        quantity: i.quantity,
-        unit_cost: i.unit_cost,
-      })),
+      items: form.items.map(i => i.supplier_item_id
+        ? {
+            inventory_item_id: i.inventory_item_id,
+            supplier_item_id: i.supplier_item_id,
+            presentation_quantity: i.quantity,
+            presentation_unit_cost: i.unit_cost,
+          }
+        : {
+            inventory_item_id: i.inventory_item_id,
+            quantity: i.quantity,
+            unit_cost: i.unit_cost,
+          }),
     };
     this.isSubmitting.set(true);
     this.otherError.set(null);
@@ -394,7 +417,7 @@ export class InventoryService {
   /** Recibir (parcial o total) una orden de compra — RF-022. */
   async receivePurchase(
     purchaseId: string,
-    items: { purchase_item_id: string; quantity: number }[],
+    items: { purchase_item_id: string; quantity?: number; presentation_quantity?: number }[],
   ): Promise<boolean> {
     this.isSubmitting.set(true);
     this.otherError.set(null);
@@ -448,6 +471,9 @@ export class InventoryService {
       min_stock: Number(i.min_stock),
       unit_cost: Number(i.unit_cost),
       active: i.active,
+      created_at: i.created_at,
+      updated_at: i.updated_at,
+      preferred_supplier_name: i.preferred_supplier_name,
     };
   }
 
@@ -478,6 +504,10 @@ export class InventoryService {
         quantity: Number(it.quantity),
         received_quantity: Number(it.received_quantity ?? 0),
         unit_cost: Number(it.unit_cost),
+        supplier_item_id: it.supplier_item_id,
+        presentation_quantity: it.presentation_quantity === null ? null : Number(it.presentation_quantity),
+        presentation_label: it.presentation_label,
+        conversion_factor: it.conversion_factor === null ? null : Number(it.conversion_factor),
       })),
     };
   }

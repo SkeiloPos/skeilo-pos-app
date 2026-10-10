@@ -7,6 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { Supplier } from '../interfaces/supplier.interface';
 import { SuppliersService } from '../services/suppliers.service';
 import { SupplierFormComponent } from '../components/supplier-form.component';
@@ -92,6 +93,12 @@ type ActiveFilter = '' | 'active' | 'inactive';
                     </td>
                     <td class="px-4 py-3">
                       <div class="flex items-center justify-end gap-1">
+                        @if (!s.is_system) {
+                          <button (click)="openItems(s)" title="Insumos que vende"
+                            class="px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
+                            Insumos
+                          </button>
+                        }
                         <button (click)="openEdit(s)"
                           class="px-2 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">
                           Editar
@@ -126,6 +133,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
 })
 export class SuppliersPageComponent implements OnInit {
   readonly service = inject(SuppliersService);
+  private readonly router = inject(Router);
 
   readonly searchSignal = signal('');
   readonly activeFilter = signal<ActiveFilter>('');
@@ -160,5 +168,9 @@ export class SuppliersPageComponent implements OnInit {
   openEdit(s: Supplier): void {
     this.selectedSupplier.set(s);
     this.showForm.set(true);
+  }
+
+  openItems(s: Supplier): void {
+    this.router.navigate(['/dashboard/proveedores', s.id, 'detalle']);
   }
 }

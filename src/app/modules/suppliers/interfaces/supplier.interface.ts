@@ -13,6 +13,9 @@ export interface Supplier {
   phone: string | null;
   email: string | null;
   active: boolean;
+  /** Proveedor de sistema ("Compra ocasional", spec 106) -- nunca se vincula a un insumo
+   *  ni es preferido (RN-17); su fila no enlaza a "Insumos que vende" (FR-012). */
+  is_system: boolean;
 }
 
 /** Editable fields captured by the supplier form (create/edit). */

@@ -30,15 +30,16 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           @for (v of ind.ventas; track v.id) {
             <tr><td class="py-2 border-b border-gray-100">Ventas {{ v.name }}</td><td class="py-2 border-b border-gray-100 text-right font-semibold">{{ store.fmt(v.total) }}</td></tr>
           }
-          @if (ind.cambioEntregado > 0) {
-            <tr><td class="py-2 border-b border-gray-100">Cambio entregado</td><td class="py-2 border-b border-gray-100 text-right font-semibold">− {{ store.fmt(ind.cambioEntregado) }}</td></tr>
-          }
           <tr><td class="py-2 border-b border-gray-100">Ingresos</td><td class="py-2 border-b border-gray-100 text-right font-semibold">{{ store.fmt(ind.ingresos) }}</td></tr>
           <tr><td class="py-2 border-b border-gray-100">Egresos</td><td class="py-2 border-b border-gray-100 text-right font-semibold">{{ store.fmt(ind.egresos) }}</td></tr>
           <tr><td class="py-2 border-b border-gray-100">Retiros</td><td class="py-2 border-b border-gray-100 text-right font-semibold">{{ store.fmt(ind.retiros) }}</td></tr>
           <tr><td class="py-2 border-b border-gray-100 font-bold">Efectivo esperado</td><td class="py-2 border-b border-gray-100 text-right font-bold">{{ store.fmt(store.efectivoEsperado()) }}</td></tr>
         </tbody>
       </table>
+      @if (ind.cambioEntregado > 0) {
+        <!-- Dato informativo, no un término de la fórmula de arriba (spec 108) -->
+        <p class="text-sm text-gray-500 mb-4">Cambio entregado (informativo): {{ store.fmt(ind.cambioEntregado) }}</p>
+      }
 
       <!-- Arqueo -->
       <h4 class="text-base font-bold text-gray-900 mb-2">Arqueo de caja</h4>
