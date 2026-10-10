@@ -270,7 +270,14 @@ type ActiveFilter = '' | 'active' | 'inactive';
                         <tbody class="divide-y divide-gray-100">
                           @for (it of p.items; track it.id) {
                             <tr>
-                              <td class="px-3 py-2 text-gray-700">{{ itemName(it.inventory_item_id) }}</td>
+                              <td class="px-3 py-2 text-gray-700">
+                                {{ itemName(it.inventory_item_id) }}
+                                @if (it.presentation_label) {
+                                  <span class="block text-gray-400">
+                                    {{ it.presentation_quantity | number:'1.0-3' }} {{ it.presentation_label }}
+                                  </span>
+                                }
+                              </td>
                               <td class="px-3 py-2 text-right text-gray-600">{{ it.quantity | number:'1.0-3' }}</td>
                               <td class="px-3 py-2 text-right text-gray-600">{{ it.unit_cost | number:'1.2-2' }}</td>
                               <td class="px-3 py-2 text-right text-gray-700">{{ (it.quantity * it.unit_cost) | number:'1.2-2' }}</td>
@@ -381,9 +388,17 @@ type ActiveFilter = '' | 'active' | 'inactive';
               <div class="flex items-center gap-3">
                 <div class="flex-1">
                   <p class="text-sm font-medium text-gray-800">{{ itemName(row.inventory_item_id) }}</p>
-                  <p class="text-xs text-gray-400">Pendiente: {{ row.pending | number:'1.0-3' }} de {{ row.quantity | number:'1.0-3' }}</p>
+                  <p class="text-xs text-gray-400">
+                    @if (row.presentation_label && row.conversion_factor) {
+                      Pendiente: {{ row.pending / row.conversion_factor | number:'1.0-3' }} de {{ row.quantity / row.conversion_factor | number:'1.0-3' }} {{ row.presentation_label }}
+                    } @else {
+                      Pendiente: {{ row.pending | number:'1.0-3' }} de {{ row.quantity | number:'1.0-3' }}
+                    }
+                  </p>
                 </div>
-                <input type="number" min="0" [max]="row.pending" [(ngModel)]="row.receive"
+                <input type="number" min="0"
+                  [max]="row.presentation_label && row.conversion_factor ? row.pending / row.conversion_factor : row.pending"
+                  [(ngModel)]="row.receive"
                   class="w-28 px-2 py-1.5 border border-gray-200 rounded-lg text-sm" />
               </div>
             }
@@ -434,7 +449,10 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
 
   // Recepción de compra (RF-022)
   readonly receivePurchase = signal<Purchase | null>(null);
-  readonly receiveRows = signal<{ purchase_item_id: string; inventory_item_id: string; quantity: number; pending: number; receive: number }[]>([]);
+  readonly receiveRows = signal<{
+    purchase_item_id: string; inventory_item_id: string; quantity: number; pending: number;
+    receive: number; presentation_label: string | null; conversion_factor: number | null;
+  }[]>([]);
 
   readonly movementItemId = signal('');
   readonly movements = signal<InventoryMovement[]>([]);
@@ -565,12 +583,18 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
     this.receiveRows.set(
       p.items.map(it => {
         const pending = it.quantity - it.received_quantity;
+        // spec 107: si la línea se pactó en una presentación, "pendiente" y "a recibir" se
+        // muestran y se capturan en esa presentación, no en unidad base.
+        const factor = it.conversion_factor;
+        const pendingDisplay = factor ? pending / factor : pending;
         return {
           purchase_item_id: it.id,
           inventory_item_id: it.inventory_item_id,
           quantity: it.quantity,
           pending,
-          receive: pending,
+          receive: pendingDisplay,
+          presentation_label: it.presentation_label,
+          conversion_factor: it.conversion_factor,
         };
       }),
     );
@@ -580,7 +604,9 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   async submitReceive(purchaseId: string): Promise<void> {
     const items = this.receiveRows()
       .filter(r => Number(r.receive) > 0)
-      .map(r => ({ purchase_item_id: r.purchase_item_id, quantity: Number(r.receive) }));
+      .map(r => r.presentation_label && r.conversion_factor
+        ? { purchase_item_id: r.purchase_item_id, presentation_quantity: Number(r.receive) }
+        : { purchase_item_id: r.purchase_item_id, quantity: Number(r.receive) });
     if (items.length === 0) {
       this.toast.info('Indica al menos una cantidad a recibir');
       return;

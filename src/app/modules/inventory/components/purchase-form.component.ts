@@ -17,6 +17,8 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
 import { PurchaseForm, PurchaseLineForm } from '../interfaces/inventory.interface';
 import { InventoryService } from '../services/inventory.service';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { SupplierItemsService } from '../../supplier-items/services/supplier-items.service';
+import { SupplierItem } from '../../supplier-items/interfaces/supplier-item.interface';
 
 @Component({
   selector: 'app-purchase-form',
@@ -38,7 +40,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             <!-- Proveedor -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
-              <select [ngModel]="supplierId()" (ngModelChange)="supplierId.set($event)"
+              <select [ngModel]="supplierId()" (ngModelChange)="onSupplierChange($event)"
                 class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 <option value="">Sin proveedor</option>
                 @for (s of suppliersService.suppliers(); track s.id) {
@@ -75,9 +77,25 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
               @for (row of rows(); track $index) {
                 <div class="grid grid-cols-12 gap-2 items-center">
-                  <app-searchable-select class="col-span-5"
-                    [ngModel]="row.inventory_item_id" (ngModelChange)="updateRow($index, 'inventory_item_id', $event)"
-                    [options]="itemOptions()" [search]="searchInventoryItems" placeholder="Buscar insumo…" />
+                  <div class="col-span-5 space-y-1">
+                    <app-searchable-select
+                      [ngModel]="row.inventory_item_id" (ngModelChange)="updateRow($index, 'inventory_item_id', $event)"
+                      [options]="itemOptions()" [search]="searchInventoryItems" placeholder="Buscar insumo…" />
+                    @if (presentationsFor($index).length > 0) {
+                      <select [ngModel]="row.supplier_item_id || ''" (ngModelChange)="onPresentationChange($index, $event)"
+                        class="w-full px-2 py-1 border border-gray-200 rounded-lg text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="">Unidad base ({{ unitAbbrFor(row.inventory_item_id) }})</option>
+                        @for (p of presentationsFor($index); track p.id) {
+                          <option [value]="p.id">{{ p.presentation }}</option>
+                        }
+                      </select>
+                      @if (selectedPresentation($index); as sp) {
+                        <p class="text-xs text-gray-400">
+                          {{ row.quantity || 0 }} {{ sp.presentation }} = {{ (row.quantity || 0) * sp.conversion_factor | number:'1.0-3' }} {{ unitAbbrFor(row.inventory_item_id) }}
+                        </p>
+                      }
+                    }
+                  </div>
                   <input type="number" min="0" step="0.001"
                     class="col-span-2 px-2 py-2 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     [ngModel]="row.quantity" (ngModelChange)="updateRow($index, 'quantity', $event)">
@@ -136,6 +154,7 @@ export class PurchaseFormComponent implements OnInit {
   readonly inventoryService = this.service;
   readonly suppliersService = inject(SuppliersService);
   private readonly unitMeasureService = inject(UnitMeasureService);
+  private readonly supplierItemsService = inject(SupplierItemsService);
 
   /** Abreviatura por id de unidad, igual que `unitAbbr()` en la página de inventario. */
   private readonly unitAbbr = computed(
@@ -172,6 +191,30 @@ export class PurchaseFormComponent implements OnInit {
   readonly asOrder = signal(false);
   readonly rows = signal<PurchaseLineForm[]>([{ inventory_item_id: '', quantity: 1, unit_cost: 0 }]);
 
+  /**
+   * Presentaciones activas del proveedor ya elegido, para el insumo de cada fila (spec 107) --
+   * se resuelven con `SupplierItemsService.listForItem` (ya existe, spec 106) sin ningún
+   * endpoint nuevo (research.md D5): `PurchaseCreate.supplier_id` es uno solo para toda la
+   * compra, así que basta filtrar en el cliente por ese proveedor.
+   */
+  private readonly presentationsByRow = signal<Record<number, SupplierItem[]>>({});
+
+  presentationsFor(index: number): SupplierItem[] {
+    return this.presentationsByRow()[index] ?? [];
+  }
+
+  selectedPresentation(index: number): SupplierItem | null {
+    const row = this.rows()[index];
+    if (!row?.supplier_item_id) return null;
+    return this.presentationsFor(index).find((p) => p.id === row.supplier_item_id) ?? null;
+  }
+
+  unitAbbrFor(itemId: string): string {
+    const item = this.service.allItems().find((i) => i.id === itemId)
+      ?? this.service.resolvedExtraItems().find((i) => i.id === itemId);
+    return item ? (this.unitAbbr().get(item.unit_measure_id) ?? '') : '';
+  }
+
   readonly total = computed(() =>
     this.rows().reduce((sum, r) => sum + Number(r.quantity) * Number(r.unit_cost), 0)
   );
@@ -197,13 +240,43 @@ export class PurchaseFormComponent implements OnInit {
   }
 
   updateRow(index: number, key: keyof PurchaseLineForm, value: unknown): void {
+    const isTextField = key === 'inventory_item_id' || key === 'supplier_item_id';
     this.rows.update(rows =>
       rows.map((r, i) =>
         i === index
-          ? { ...r, [key]: key === 'inventory_item_id' ? String(value) : Number(value) }
+          ? { ...r, [key]: isTextField ? (value ? String(value) : null) : Number(value) }
           : r,
       ),
     );
+    if (key === 'inventory_item_id') {
+      // Insumo nuevo: la presentación elegida antes (si había alguna) ya no aplica.
+      this.rows.update(rows => rows.map((r, i) => (i === index ? { ...r, supplier_item_id: null } : r)));
+      void this.loadPresentationsForRow(index);
+    }
+  }
+
+  onSupplierChange(value: string): void {
+    this.supplierId.set(value);
+    // Cambiar el proveedor de toda la compra invalida las presentaciones ya elegidas por fila.
+    this.rows.update(rows => rows.map((r) => ({ ...r, supplier_item_id: null })));
+    this.presentationsByRow.set({});
+    this.rows().forEach((_, index) => void this.loadPresentationsForRow(index));
+  }
+
+  onPresentationChange(index: number, supplierItemId: string): void {
+    this.updateRow(index, 'supplier_item_id', supplierItemId || null);
+  }
+
+  private async loadPresentationsForRow(index: number): Promise<void> {
+    const row = this.rows()[index];
+    const supplierId = this.supplierId();
+    if (!row?.inventory_item_id || !supplierId) {
+      this.presentationsByRow.update((m) => ({ ...m, [index]: [] }));
+      return;
+    }
+    const all = await this.supplierItemsService.listForItem(row.inventory_item_id, false);
+    const filtered = all.filter((p) => p.supplier_id === supplierId);
+    this.presentationsByRow.update((m) => ({ ...m, [index]: filtered }));
   }
 
   async onSubmit(): Promise<void> {
@@ -219,6 +292,7 @@ export class PurchaseFormComponent implements OnInit {
         inventory_item_id: r.inventory_item_id,
         quantity: Number(r.quantity),
         unit_cost: Number(r.unit_cost),
+        supplier_item_id: r.supplier_item_id ?? null,
       })),
     };
 
