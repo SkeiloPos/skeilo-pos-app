@@ -8,6 +8,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { environment } from '../../../../environments/environment';
 import { PosCheckoutPanelComponent } from './pos-checkout-panel.component';
 import { PosTerminalStore } from '../services/pos-terminal.store';
+import { TableService } from '../services/table.service';
 import { PromotionService } from '../../promotions/services/promotion.service';
 import { CashService } from '../../cash-register/services/cash.service';
 import { PaymentMethodService } from '../../sales/services/payment-method.service';
@@ -610,6 +611,119 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
 });
 
 /**
+ * Spec 110: mesa `status === 'ocupada'` (sesión abierta) sin ningún pedido
+ * vivo -- p. ej. se rechazó el único pedido manual antes de que cocina
+ * recibiera algo. El computed `centralState()` del store ya distingue este
+ * caso de una mesa realmente libre (`pos-terminal.store.spec.ts`); aquí se
+ * prueba que, una vez que la columna de detalle se muestra, este panel
+ * ofrece "Liberar Mesa" como única acción y NO el CTA "+ Crear pedido
+ * nuevo"/"Pedido de mostrador" (que duplicaría el mismo CTA que ya vive en
+ * la sub-barra de la página para esta misma mesa).
+ */
+describe('PosCheckoutPanelComponent — mesa ocupada sin pedido (spec 110)', () => {
+  let fixture: ComponentFixture<PosCheckoutPanelComponent>;
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+
+  function liberarMesaButton(): HTMLButtonElement | undefined {
+    return Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Liberar Mesa'),
+    ) as HTMLButtonElement | undefined;
+  }
+
+  beforeEach(async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [PosCheckoutPanelComponent],
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+
+    fixture = TestBed.createComponent(PosCheckoutPanelComponent);
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+
+    TestBed.inject(CashService).shift.set({
+      id: 'shift-1',
+      cash_register_id: 'r1',
+      user_id: 'u1',
+      opening_amount: '0',
+      opened_at: '2026-08-20T08:00:00',
+      status: 'open',
+    } as CashShift);
+    TestBed.inject(PaymentMethodService).methods.set(methods);
+    TestBed.inject(PaymentMethodService).checkoutOptions.set(checkoutOptions);
+
+    // Mesa ocupada, sin ningún pedido vivo seleccionado -- igual que deja
+    // `release_paid_session`/`compute_bill` en el backend: la sesión existe
+    // y la cuenta se calcula con total 0, sin pedidos. `table.status`
+    // 'ocupada' es lo que hace que centralState() caiga en
+    // 'ocupada-sin-pedido' en vez de 'mesa-libre' (ver pos-terminal.store.ts).
+    TestBed.inject(TableService).tables.set([
+      { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'ocupada' },
+    ]);
+    store.orders.set([]);
+    store.selectedTableId.set('t1');
+    store.sessionBill.set({
+      table_session_id: 'ts1',
+      dining_table_id: 't1',
+      total: '0',
+      order_ids: [],
+      split: [],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  });
+
+  afterEach(() => http.verify());
+
+  it('ofrece "Liberar Mesa"', () => {
+    expect(liberarMesaButton()).toBeDefined();
+  });
+
+  it('NO muestra "Pedido de mostrador" ni "+ Crear pedido nuevo" (ya los ofrece la sub-barra de la página)', () => {
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).not.toContain('Pedido de mostrador');
+    expect(texto).not.toContain('Crear pedido nuevo');
+  });
+
+  it('"Liberar Mesa" pide confirmación y luego la liberación de la sesión de la mesa (mismo endpoint que con pedidos)', async () => {
+    const confirm = TestBed.inject(ConfirmService);
+
+    liberarMesaButton()?.click();
+    fixture.detectChanges();
+    confirm.respond(true);
+    await Promise.resolve();
+
+    // Mismo patrón que el T035 de "pedido ya en cocina" más abajo: se
+    // responde con un 409 para no tener que simular además todas las
+    // peticiones de `reload()` que dispara el camino de éxito -- lo que
+    // importa aquí es que el botón sí exista y pida la liberación de la
+    // sesión correcta, no repetir esa otra cobertura.
+    const req = http.expectOne(`${API}/table-sessions/ts1/release`);
+    req.flush({ detail: { error: 'Quedan ítems sin terminar en cocina' } }, { status: 409, statusText: 'Conflict' });
+    await fixture.whenStable();
+  });
+
+  it('"Liberar Mesa" no libera si se cancela la confirmación', async () => {
+    const confirm = TestBed.inject(ConfirmService);
+
+    liberarMesaButton()?.click();
+    fixture.detectChanges();
+    confirm.respond(false);
+    await Promise.resolve();
+
+    http.expectNone(`${API}/table-sessions/ts1/release`);
+  });
+});
+
+/**
  * Spec 029, hotfix #3: un pedido de mesero que ya se envió a cocina
  * (`status !== 'recibida'`) no se puede cobrar con checkout-and-send — el
  * backend lo rechaza con 409 ("Solo se cobra y envía pedidos en
@@ -705,13 +819,16 @@ describe('PosCheckoutPanelComponent — pedido ya en cocina, cobro por sesión d
     expect(ligaduras).toEqual(expect.arrayContaining(['receipt', 'lock_open']));
   });
 
-  it('T035: "Liberar Mesa" pide la liberación y muestra el motivo del 409 si falla', async () => {
+  it('T035: "Liberar Mesa" pide confirmación y muestra el motivo del 409 si falla', async () => {
+    const confirm = TestBed.inject(ConfirmService);
     const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
       (b as HTMLButtonElement).textContent?.includes('Liberar Mesa'),
     ) as HTMLButtonElement;
     expect(button).toBeDefined();
 
     button.click();
+    confirm.respond(true);
+    await Promise.resolve();
     const req = http.expectOne(`${API}/table-sessions/ts1/release`);
     req.flush({ detail: { error: 'Quedan ítems sin terminar en cocina' } }, { status: 409, statusText: 'Conflict' });
     await fixture.whenStable();

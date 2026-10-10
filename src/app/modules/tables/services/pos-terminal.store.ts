@@ -617,21 +617,33 @@ export class PosTerminalStore {
    * - `'validar-pago'`: hay al menos un pedido QR esperando que el cajero
    *   apruebe/rechace su comprobante o confirme el efectivo. Tiene prioridad
    *   sobre todo lo demás: es lo más urgente en pantalla.
-   * - `'mesa-libre'`: la mesa no tiene ningún pedido vivo — bloque puramente
-   *   informativo (spec 045); crear un pedido nuevo se hace desde el botón
-   *   fijo de "Pedido de mostrador" o F3, que navegan a la vista dedicada
-   *   (`manual-order-page.component.ts`), no desde aquí.
+   * - `'mesa-libre'`: la mesa no tiene ningún pedido vivo NI sesión abierta —
+   *   bloque puramente informativo (spec 045); crear un pedido nuevo se hace
+   *   desde el botón fijo de "Pedido de mostrador" o F3, que navegan a la
+   *   vista dedicada (`manual-order-page.component.ts`), no desde aquí.
+   * - `'ocupada-sin-pedido'` (spec 110): la mesa SÍ tiene una sesión abierta
+   *   (`table.status === 'ocupada'`, mismo criterio que ya usa
+   *   `deriveTableStatus`) pero cero pedidos vivos — p. ej. se rechazó el
+   *   único pedido manual antes de que cocina recibiera algo. Antes esto
+   *   colapsaba a `'mesa-libre'` y ocultaba toda la columna de detalle,
+   *   dejando la mesa sin ninguna forma de liberarse desde la interfaz
+   *   (bug en producción). Ahora sí se distingue de una mesa realmente
+   *   libre, para que el panel de detalle se muestre con "Liberar Mesa"
+   *   como única acción.
    * - `'armando-pedido'` / `'pedido-activo'`: se sigue mostrando el panel de
    *   carrito existente (`app-pos-order-panel`), que ya distingue internamente
    *   entre un draft sin guardar y un pedido persistido.
    */
-  readonly centralState = computed<'validar-pago' | 'mesa-libre' | 'pedido'>(() => {
+  readonly centralState = computed<
+    'validar-pago' | 'mesa-libre' | 'ocupada-sin-pedido' | 'pedido'
+  >(() => {
     if (this.pendingOfSelectedTable().length > 0) return 'validar-pago';
     const tableId = this.selectedTableId();
     if (!tableId) return 'pedido'; // nada seleccionado: pos-order-panel pinta su placeholder
     const hasTableConsumption = this.tableOrders(tableId).length > 0;
     if (!hasTableConsumption && !this.hasDraft()) {
-      return 'mesa-libre';
+      const tableStatus = this.tables().find((t) => t.id === tableId)?.status;
+      return tableStatus === 'ocupada' ? 'ocupada-sin-pedido' : 'mesa-libre';
     }
     return 'pedido';
   });
@@ -663,9 +675,9 @@ export class PosTerminalStore {
    * vez, o `centralState()` sin cambios en cualquier otro caso — mismo tipo
    * de valor que ya consume el `@switch` de la plantilla.
    */
-  readonly effectiveCentralView = computed<'validar-pago' | 'mesa-libre' | 'pedido'>(() =>
-    this.hasPendingAndActiveOrders() ? this.centralPanelTab() : this.centralState(),
-  );
+  readonly effectiveCentralView = computed<
+    'validar-pago' | 'mesa-libre' | 'ocupada-sin-pedido' | 'pedido'
+  >(() => (this.hasPendingAndActiveOrders() ? this.centralPanelTab() : this.centralState()));
 
   readonly selectedTable = computed<Table | null>(
     () => this.tables().find((t) => t.id === this.selectedTableId()) ?? null,
@@ -2414,6 +2426,13 @@ export class PosTerminalStore {
   async releaseTable(): Promise<void> {
     const bill = this.sessionBill();
     if (!bill) return;
+    const ok = await this.confirm.ask({
+      title: 'Liberar mesa',
+      message: '¿Liberar esta mesa? Se cerrará la sesión actual.',
+      confirmText: 'Liberar',
+      tone: 'danger',
+    });
+    if (!ok) return;
     this.submitting.set(true);
     try {
       await this.tableSessions.release(bill.table_session_id);

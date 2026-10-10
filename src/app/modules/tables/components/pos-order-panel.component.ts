@@ -334,10 +334,19 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               </div>
             }
           </div>
-          @if (!readOnly()) {
-            <!-- Fuera del divide-y de la lista (a propósito): con un borde
-                 propio en las 4 caras, si quedara adentro le sumaría el
-                 border-t de divide-y encima, una línea doble justo arriba. -->
+          @if (!readOnly() && store.centralState() !== 'ocupada-sin-pedido') {
+            <!--
+              Fuera del divide-y de la lista (a propósito): con un borde
+              propio en las 4 caras, si quedara adentro le sumaría el
+              border-t de divide-y encima, una línea doble justo arriba.
+
+              Spec 110: oculto cuando centralState() es 'ocupada-sin-pedido'
+              -- esta mesa ya tiene sesión abierta sin ningún pedido vivo, y
+              la única acción que debe verse en el panel de detalle es
+              "Liberar Mesa" (pos-checkout-panel.component.ts); crear un
+              pedido nuevo en esa mesa sigue disponible desde el CTA de la
+              sub-barra ("+ Crear pedido nuevo" / F3), que no se toca.
+            -->
             <div class="px-4 pb-4" [class]="cartIsEmpty() ? '' : 'pt-3'">
               <button
                 (click)="store.openCatalog()"
