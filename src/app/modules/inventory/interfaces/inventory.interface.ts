@@ -19,6 +19,8 @@ export interface LowStockItem {
 /** An inventory item (insumo). Mirrors backend `InventoryItemResponse`. */
 export interface InventoryItem {
   id: string;
+  /** Identificador de negocio para el export/import masivo (spec 109). */
+  code: string;
   name: string;
   unit_measure_id: string;
   type: InventoryItemType;
@@ -166,4 +168,26 @@ export interface PurchaseCreatePayload {
   supplier_id?: string | null;
   invoice_number?: string | null;
   items: PurchaseItemPayload[];
+}
+
+// --- Importación masiva (spec 109) ---
+
+export type InventoryImportJobStatus = 'procesando' | 'finalizado' | 'interrumpido';
+
+/** Resultado de un import en curso o finalizado. Mirrors backend
+ *  `InventoryImportJobResponse` (`GET /items/import/current`, `GET /items/import/{id}`,
+ *  y la respuesta de `POST /items/import`). */
+export interface InventoryImportJob {
+  id: string;
+  status: InventoryImportJobStatus;
+  file_name: string;
+  /** ISO datetime. */
+  started_at: string;
+  /** ISO datetime; null mientras `status === 'procesando'`. */
+  finished_at: string | null;
+  total_rows: number;
+  created_count: number;
+  updated_count: number;
+  failed_count: number;
+  has_errors: boolean;
 }
