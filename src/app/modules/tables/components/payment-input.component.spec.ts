@@ -2,9 +2,13 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PaymentInputComponent } from './payment-input.component';
 import { PaymentMethodCheckoutOption } from '../../sales/interfaces/sales.interface';
 
-/** spec 057: el importe de un cobro no efectivo no se puede editar — el
- *  campo `<app-money-input>` queda `disabled` en cuanto el método elegido no
- *  es efectivo, con `isCash()` (ya existente) como única señal. */
+/**
+ * Spec 112 (RN3, FR-004/FR-010/FR-014): de 1 a 3 líneas de pago. Reemplaza
+ * las aserciones de spec 046/057 que exigían un único método sin importe
+ * editable para lo no efectivo -- ese tope de negocio se retiró (`A-124`,
+ * registro de anomalías); ahora toda línea es editable, y la validación de
+ * "no superar el saldo pendiente" (RN2) se hace vía el mensaje de `issue()`.
+ */
 describe('PaymentInputComponent', () => {
   let fixture: ComponentFixture<PaymentInputComponent>;
   let component: PaymentInputComponent;
@@ -24,51 +28,157 @@ describe('PaymentInputComponent', () => {
     fixture.detectChanges();
   });
 
-  function selectEl(): HTMLSelectElement {
-    return fixture.nativeElement.querySelector('select');
+  function selectEls(): HTMLSelectElement[] {
+    return Array.from(fixture.nativeElement.querySelectorAll('select'));
   }
 
-  function amountEl(): HTMLInputElement {
-    return fixture.nativeElement.querySelector('input[inputmode="decimal"]');
+  function amountEls(): HTMLInputElement[] {
+    return Array.from(fixture.nativeElement.querySelectorAll('input[inputmode="decimal"]'));
   }
 
-  async function chooseMethod(methodId: string): Promise<void> {
-    const select = selectEl();
+  function addLineBtn(): HTMLButtonElement | null {
+    return Array.from<HTMLButtonElement>(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('Agregar otro método'),
+    ) ?? null;
+  }
+
+  function removeLineBtns(): HTMLButtonElement[] {
+    return Array.from<HTMLButtonElement>(fixture.nativeElement.querySelectorAll('button')).filter(
+      (b) => b.textContent?.includes('Eliminar'),
+    );
+  }
+
+  async function chooseMethod(methodId: string, index = 0): Promise<void> {
+    const select = selectEls()[index];
     select.value = methodId;
     select.dispatchEvent(new Event('change'));
     await fixture.whenStable();
     fixture.detectChanges();
   }
 
-  it('con efectivo elegido, el importe sigue editable (no regresión, FR-002)', async () => {
-    await chooseMethod('pm-cash');
+  async function setAmount(value: number, index = 0): Promise<void> {
+    const input = amountEls()[index];
+    input.value = String(value);
+    input.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
 
-    expect(amountEl().disabled).toBe(false);
-    expect(amountEl().value).toBe('12.000');
+  async function clickAddLine(): Promise<void> {
+    addLineBtn()!.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  // ── Un solo método (FR-014: sin pasos adicionales respecto a antes) ──────
+
+  it('parte de una sola línea, sin el botón de eliminar', () => {
+    expect(selectEls().length).toBe(1);
+    expect(removeLineBtns().length).toBe(0);
   });
 
-  it('con un método no efectivo elegido, el importe queda deshabilitado en el total exacto (FR-001)', async () => {
-    await chooseMethod('pm-transfer');
+  it('con efectivo elegido, el importe se precarga con el total y sigue editable', async () => {
+    await chooseMethod('pm-cash');
 
-    expect(amountEl().disabled).toBe(true);
-    expect(amountEl().value).toBe('12.000');
-    expect(component.draft().amount).toBe(12000);
+    expect(amountEls()[0].value).toBe('12.000');
+    expect(component.draft()[0].amount).toBe(12000);
   });
 
-  it('al volver de un método no efectivo a efectivo, el importe vuelve a ser editable (FR-004)', async () => {
+  it('con un método no efectivo elegido, el importe también se precarga con el total (ahora editable, no fijo)', async () => {
     await chooseMethod('pm-transfer');
-    expect(amountEl().disabled).toBe(true);
 
-    await chooseMethod('pm-cash');
-    expect(amountEl().disabled).toBe(false);
+    expect(amountEls()[0].value).toBe('12.000');
+    expect(component.draft()[0].amount).toBe(12000);
   });
 
-  it('al volver de efectivo a un método no efectivo, el importe vuelve a quedar fijo (FR-004)', async () => {
+  it('eligiendo un único método y cobrando el total, no pide ningún paso adicional', async () => {
     await chooseMethod('pm-cash');
-    expect(amountEl().disabled).toBe(false);
+
+    expect(fixture.nativeElement.textContent).not.toContain('Agregar otro método disabled');
+    expect(addLineBtn()).not.toBeNull(); // ofrecido, pero no obligatorio
+    expect(removeLineBtns().length).toBe(0);
+  });
+
+  // ── Pago mixto (RN3/FR-004/FR-010) ────────────────────────────────────────
+
+  it('"Agregar otro método" crea una segunda línea precargada con el saldo pendiente', async () => {
+    await chooseMethod('pm-cash');
+    await setAmount(8000);
+
+    await clickAddLine();
+
+    expect(selectEls().length).toBe(2);
+    expect(amountEls().length).toBe(1); // la 2ª línea aún no tiene método elegido, solo la 1ª muestra importe
+    expect(component.draft()[1].amount).toBe(4000);
+  });
+
+  it('al elegir el método de la segunda línea, no le toca el importe ya precargado', async () => {
+    await chooseMethod('pm-cash');
+    await setAmount(8000);
+    await clickAddLine();
+
+    await chooseMethod('pm-transfer', 1);
+
+    expect(component.draft()[1].amount).toBe(4000);
+  });
+
+  it('bloquea una 4ta línea (tope de 3, RN3)', async () => {
+    await chooseMethod('pm-cash');
+    await clickAddLine();
+    await clickAddLine();
+
+    expect(selectEls().length).toBe(3);
+    expect(addLineBtn()).toBeNull();
+  });
+
+  it('eliminar una línea recalcula el mensaje de saldo pendiente de inmediato (FR-010)', async () => {
+    await chooseMethod('pm-cash');
+    await setAmount(8000);
+    await clickAddLine();
+    await chooseMethod('pm-transfer', 1);
+    await setAmount(4000, 1);
+
+    expect(fixture.nativeElement.textContent).not.toContain('Faltan');
+
+    removeLineBtns()[1].click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(selectEls().length).toBe(1);
+    expect(fixture.nativeElement.textContent).toContain('Faltan');
+    expect(fixture.nativeElement.textContent).toContain('4.000');
+  });
+
+  it('una transferencia que supera el saldo pendiente muestra el error con el nombre del método (RN2)', async () => {
+    await chooseMethod('pm-cash');
+    await setAmount(8000);
+    await clickAddLine();
+    await chooseMethod('pm-transfer', 1);
+
+    await setAmount(9000, 1);
+
+    expect(fixture.nativeElement.textContent).toContain('Nequi');
+    expect(fixture.nativeElement.textContent).toContain('no puede superar el saldo pendiente');
+    expect(fixture.nativeElement.textContent).toContain('4.000');
+  });
+
+  it('muestra el cambio solo en la línea de efectivo cuando se teclea más de lo asignado', async () => {
+    await chooseMethod('pm-transfer');
+    await setAmount(4000);
+    await clickAddLine();
+    await chooseMethod('pm-cash', 1);
+
+    await setAmount(10000, 1);
+
+    expect(fixture.nativeElement.textContent).toContain('Cambio');
+    expect(fixture.nativeElement.textContent).toContain('2.000');
+  });
+
+  it('muestra el campo de referencia opcional solo para métodos no efectivo (RN5)', async () => {
+    await chooseMethod('pm-cash');
+    expect(fixture.nativeElement.querySelector('input[placeholder*="comprobante"]')).toBeNull();
 
     await chooseMethod('pm-transfer');
-    expect(amountEl().disabled).toBe(true);
-    expect(component.draft().amount).toBe(12000);
+    expect(fixture.nativeElement.querySelector('input[placeholder*="comprobante"]')).not.toBeNull();
   });
 });

@@ -183,11 +183,12 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
     expect(textInputs().find((i) => i.placeholder === 'Consumidor Final')!.readOnly).toBe(true);
   });
 
-  it('en efectivo muestra el vuelto calculado antes de cobrar (T026)', async () => {
+  it('en efectivo muestra el cambio calculado antes de cobrar (T026)', async () => {
     await fill(selects()[0], 'pm-cash');
     await fill(numberInputs()[0], '15000');
 
-    expect(fixture.nativeElement.textContent).toContain('Vuelto');
+    // Spec 112: "Cambio", no "Vuelto" -- el texto literal de la Historia 3.
+    expect(fixture.nativeElement.textContent).toContain('Cambio');
     expect(fixture.nativeElement.textContent).toContain('5.000');
   });
 
@@ -199,19 +200,11 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
     expect(fixture.nativeElement.textContent).not.toContain('Pendiente de revisión');
   });
 
-  it('con datáfono/transferencia, el importe queda fijo en el total exacto y no se puede editar (spec 057, FR-001, FR-003)', async () => {
+  it('con datáfono/transferencia, el importe se precarga en el total exacto (spec 112: editable, para permitir un pago mixto)', async () => {
     await fill(selects()[0], 'pm-transfer');
 
-    expect(numberInputs()[0].disabled).toBe(true);
-    expect(numberInputs()[0].value).toBe('10.000');
-  });
-
-  it('al volver de datáfono a efectivo, el importe vuelve a ser editable (spec 057, FR-004, no regresión)', async () => {
-    await fill(selects()[0], 'pm-transfer');
-    expect(numberInputs()[0].disabled).toBe(true);
-
-    await fill(selects()[0], 'pm-cash');
     expect(numberInputs()[0].disabled).toBe(false);
+    expect(numberInputs()[0].value).toBe('10.000');
   });
 
   it('cobra, factura y envía a cocina con "checkout-and-send" (T025, texto de botón "Cobrar" spec 058 FR-004)', async () => {
@@ -455,12 +448,13 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
     expect(cobrarButton().disabled).toBe(false);
   });
 
-  it('FR-005: $10.000 en efectivo sobre un total de $8.000 → vuelto $2.000 (Scenario 3)', async () => {
+  it('FR-005: $10.000 en efectivo sobre un total de $8.000 → cambio $2.000 (Scenario 3)', async () => {
     setPreview('16000.00', '8000.00', '8000.00');
     await fill(selects()[0], 'pm-cash');
     await fill(numberInputs()[0], '10000');
 
-    expect(fixture.nativeElement.textContent).toContain('Vuelto');
+    // Spec 112: "Cambio", no "Vuelto" -- el texto literal de la Historia 3.
+    expect(fixture.nativeElement.textContent).toContain('Cambio');
     expect(fixture.nativeElement.textContent).toContain('2.000');
   });
 
@@ -555,9 +549,8 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
 
     await fill(selects()[0], 'pm-transfer');
 
-    // `payment-input` precarga `this.total` = previewTotal() = 8000, y el campo
-    // queda deshabilitado (no efectivo). Formateado como "8.000".
-    expect(numberInputs()[0].disabled).toBe(true);
+    // `payment-input` precarga `this.total` = previewTotal() = 8000. Formateado
+    // como "8.000". Editable desde spec 112, para permitir pago mixto.
     expect(numberInputs()[0].value).toBe('8.000');
   });
 

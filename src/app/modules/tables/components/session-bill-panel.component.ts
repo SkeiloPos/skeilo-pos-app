@@ -276,15 +276,17 @@ export class SessionBillPanelComponent implements OnChanges {
   }
 
   /**
-   * En efectivo se manda **lo que entregó el cliente**, no el importe justo: el
-   * backend deriva de ahí `paid_amount` y `change_given`, y sin eso el vuelto no
-   * se descuenta del efectivo esperado del turno.
+   * En cada línea de efectivo se manda **lo que entregó el cliente**, no el
+   * importe justo: el backend deriva de ahí `paid_amount`/`change_given`, y
+   * sin eso el vuelto no se descuenta del efectivo esperado del turno.
    *
-   * Spec 046 (FR-005): "Dividir por comensal" se retiró — el cierre siempre
-   * cobra la cuenta completa (`billing_mode: 'unified'`) con un único método.
+   * Spec 046 (FR-005): "Dividir por comensal" se retiró y sigue retirada —
+   * el cierre siempre cobra la cuenta completa (`billing_mode: 'unified'`).
+   * Lo que spec 112 reabre (`A-124`) es combinar métodos de pago dentro de
+   * ese único cobro de la cuenta completa (hasta 3 líneas, RN3).
    */
   private buildPayload(cashShiftId: string): CloseSessionPayload {
-    const payments: PaymentLine[] = paymentLines(this.unifiedPayment());
+    const payments: PaymentLine[] = paymentLines(this.unifiedPayment(), this.methods);
     const nombre = this.customerName.trim();
     return {
       cash_shift_id: cashShiftId,

@@ -573,6 +573,6 @@ export class PosCheckoutPanelComponent {
       this.totalChangeNotice.set({ now: freshTotal, before: beforeTotal });
       return;
     }
-    await this.store.checkoutAndSend(paymentLines(this.paymentDraft()));
+    await this.store.checkoutAndSend(paymentLines(this.paymentDraft(), this.store.paymentMethodsAvailable()));
   }
 }

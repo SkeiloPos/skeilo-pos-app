@@ -3,73 +3,168 @@ import { PaymentLine } from '../interfaces/dining.interface';
 import { formatMoney } from './receipt.util';
 
 /**
- * Cómo paga el cliente un cobro concreto: un único método.
+ * Cómo paga el cliente un cobro concreto: de 1 a 3 líneas de pago (spec 112,
+ * RN3) — reabre lo que spec 046 (FR-006/FR-007) había retirado, ver
+ * `registro-de-anomalias.md` A-124. El backend ya aceptaba N pagos desde
+ * spec 011; esto solo generaliza el borrador del frontend.
  *
- * Es el estado que edita `PaymentInputComponent`; el backend acepta N pagos
- * por venta, pero spec 046 (FR-004/FR-007) retiró la opción de combinar más
- * de un método desde el frontend — cada cobro se hace con un único método,
- * por el total exacto o más.
+ * Un solo número por línea, igual que antes de esta spec: en una línea no
+ * efectivo es el monto asignado (lo que cubre de la cuenta); en una línea en
+ * efectivo es "con cuánto paga" el cliente -- puede ser mayor a lo que esa
+ * línea necesitaba cubrir, y el exceso es el vuelto (RN2). Lo "asignado" de
+ * una línea en efectivo no es el número tecleado sino lo que `assignedOf`
+ * deriva de él -- no hace falta un segundo campo.
  */
-export interface PaymentDraft {
+export interface PaymentLineDraft {
   methodId: string;
   amount: number;
+  reference: string | null;
 }
 
+export type PaymentDraft = PaymentLineDraft[];
+
+export const MAX_PAYMENT_LINES = 3;
+
+export function emptyPaymentLineDraft(amount = 0): PaymentLineDraft {
+  return { methodId: '', amount, reference: null };
+}
+
+/** Borrador inicial: una sola línea vacía -- el caso de un único método
+ * (spec 112, FR-014) sigue partiendo exactamente de aquí, sin pasos nuevos. */
 export function emptyPaymentDraft(): PaymentDraft {
-  return { methodId: '', amount: 0 };
+  return [emptyPaymentLineDraft()];
 }
 
-/** La línea de pago que se manda al backend. */
-export function paymentLines(draft: PaymentDraft): PaymentLine[] {
-  return [{ payment_method_id: draft.methodId, amount: draft.amount }];
+function isCash(methodId: string, methods: PaymentMethodCheckoutOption[]): boolean {
+  return !!methods.find((m) => m.id === methodId)?.is_cash;
 }
 
-/** Lo que entrega el cliente en total. */
-export function paidAmount(draft: PaymentDraft): number {
-  return draft.amount;
-}
-
-/** Suma de lo cobrado por métodos que no son efectivo. */
-export function nonCashAmount(draft: PaymentDraft, methods: PaymentMethodCheckoutOption[]): number {
-  const isCash = (id: string): boolean => !!methods.find((m) => m.id === id)?.is_cash;
-  return draft.methodId && !isCash(draft.methodId) ? draft.amount : 0;
-}
-
-/** Vuelto: lo que sobra del total. Siempre sale del efectivo (ver `paymentIssue`). */
-export function changeDue(draft: PaymentDraft, total: number): number {
-  return Math.max(0, paidAmount(draft) - total);
-}
-
-/** Lo que falta para cubrir la cuenta. */
-export function missingAmount(draft: PaymentDraft, total: number): number {
-  return Math.max(0, total - paidAmount(draft));
+function methodName(methodId: string, methods: PaymentMethodCheckoutOption[]): string {
+  return methods.find((m) => m.id === methodId)?.name ?? 'El método elegido';
 }
 
 /**
- * Motivo por el que este cobro **no** se puede registrar, o `null` si está bien.
+ * Lo que esta línea aporta a la suma exacta de RN1, en el orden en que se
+ * capturaron las líneas (`draft` solo crece por el final, nunca se
+ * reordena): en una línea no efectivo, el monto tecleado tal cual -- sin
+ * límite propio, lo acota `paymentIssue` (RN2). En una línea en efectivo,
+ * el monto tecleado pero sin superar lo que las líneas ANTERIORES (no las
+ * posteriores) ya reclamaron -- el exceso es vuelto (`changeDue`), no una
+ * porción adicional cubierta.
  *
- * La regla del no-efectivo es la que protege el arqueo: `change_given` se calcula
- * como `pagado − total` sin mirar el método, y el arqueo se lo descuenta al
- * efectivo. Un cobro electrónico por encima del total dejaría un faltante
- * fantasma en el cajón.
- *
- * Spec 046 (FR-003/FR-004/FR-007): si el monto no alcanza, este cobro no se
- * puede registrar — no hay ninguna forma de completarlo con un segundo
- * método, el cajero debe rechazar el pedido o esperar el monto exacto.
+ * Mirar solo hacia atrás es intencional, no una limitación: una línea en
+ * efectivo que se escribe o se edita DESPUÉS de fijar otra línea nunca debe
+ * poder invalidar retroactivamente esa línea ya fijada (Historia 3,
+ * "vuelto calculado solo sobre la porción en efectivo" -- subir el monto
+ * recibido en efectivo de $8.000 a $10.000 jamás debe reabrir el error de
+ * una transferencia que ya había sido válida).
+ */
+export function assignedOf(
+  draft: PaymentDraft,
+  index: number,
+  total: number,
+  methods: PaymentMethodCheckoutOption[],
+): number {
+  const line = draft[index];
+  if (!isCash(line.methodId, methods)) return line.amount || 0;
+  let usedBefore = 0;
+  for (let j = 0; j < index; j++) usedBefore += assignedOf(draft, j, total, methods);
+  return Math.min(line.amount || 0, Math.max(0, total - usedBefore));
+}
+
+/** Suma de lo asignado por todas las líneas -- contra lo que RN1 exige que
+ * el total cuadre exacto. */
+export function assignedTotal(
+  draft: PaymentDraft,
+  total: number,
+  methods: PaymentMethodCheckoutOption[],
+): number {
+  return draft.reduce((sum, _line, i) => sum + assignedOf(draft, i, total, methods), 0);
+}
+
+/** Lo que falta para cubrir el total. Dado que toda línea no efectivo que
+ * superaría el saldo pendiente queda rechazada por `paymentIssue` (RN2) y
+ * toda línea en efectivo se capa a sí misma (`assignedOf`), lo asignado
+ * nunca sobra una vez que `paymentIssue` no reporta ningún problema --
+ * `missingAmount` nunca es negativo en ese punto; solo puede quedar en 0 o
+ * positivo ("Faltan $X por asignar"). */
+export function missingAmount(
+  draft: PaymentDraft,
+  total: number,
+  methods: PaymentMethodCheckoutOption[],
+): number {
+  return total - assignedTotal(draft, total, methods);
+}
+
+/** Saldo pendiente contra el que se valida una línea no efectivo (RN2): el
+ * total menos lo que las líneas ANTERIORES ya tienen asignado -- mismo
+ * criterio de `assignedOf`, y el mismo monto con el que se precarga una
+ * línea nueva al pulsar "Agregar otro método" (en ese caso, `index` es la
+ * posición donde la línea nueva va a quedar, al final del borrador actual). */
+export function pendingBalanceExcluding(
+  draft: PaymentDraft,
+  index: number,
+  total: number,
+  methods: PaymentMethodCheckoutOption[],
+): number {
+  let usedBefore = 0;
+  for (let j = 0; j < index; j++) usedBefore += assignedOf(draft, j, total, methods);
+  return total - usedBefore;
+}
+
+/** Vuelto de una línea en efectivo: lo tecleado por encima de lo asignado.
+ * Cero para cualquier línea no efectivo. */
+export function changeDue(
+  draft: PaymentDraft,
+  index: number,
+  total: number,
+  methods: PaymentMethodCheckoutOption[],
+): number {
+  const line = draft[index];
+  if (!isCash(line.methodId, methods)) return 0;
+  return Math.max(0, (line.amount || 0) - assignedOf(draft, index, total, methods));
+}
+
+/** Las líneas de pago que se mandan al backend al pulsar "Cobrar": el monto
+ * tecleado de cada línea tal cual -- en efectivo es lo recibido (con
+ * vuelto incluido, `research.md` D3), en las demás es lo asignado. */
+export function paymentLines(draft: PaymentDraft, _methods: PaymentMethodCheckoutOption[]): PaymentLine[] {
+  return draft
+    .filter((line) => line.methodId)
+    .map((line) => ({
+      payment_method_id: line.methodId,
+      amount: line.amount,
+      ...(line.reference ? { reference: line.reference } : {}),
+    }));
+}
+
+/**
+ * Motivo por el que este cobro **no** se puede registrar, o `null` si está
+ * bien -- primer problema encontrado, en orden de prioridad (data-model.md):
+ * método/importe vacíos → una línea no efectivo supera el saldo que las
+ * líneas anteriores ya reclamaron (RN2) → falta por asignar (RN1).
  */
 export function paymentIssue(
   draft: PaymentDraft,
   total: number,
   methods: PaymentMethodCheckoutOption[],
 ): string | null {
-  if (!draft.methodId) return 'Elige el método de pago.';
-  if (draft.amount <= 0) return 'Escribe el importe del pago.';
-
-  const missing = missingAmount(draft, total);
-  if (missing > 0) return `Faltan ${formatMoney(missing)} para cubrir la cuenta.`;
-
-  if (nonCashAmount(draft, methods) > total) {
-    return 'Los pagos que no son en efectivo no pueden superar la cuenta: el vuelto solo sale del efectivo.';
+  for (const line of draft) {
+    if (!line.methodId) return 'Elige el método de pago.';
+    if (line.amount <= 0) return 'Escribe el importe del pago.';
   }
+
+  for (let i = 0; i < draft.length; i++) {
+    const line = draft[i];
+    if (isCash(line.methodId, methods)) continue;
+    const saldo = pendingBalanceExcluding(draft, i, total, methods);
+    if (line.amount > saldo) {
+      return `${methodName(line.methodId, methods)} no puede superar el saldo pendiente (${formatMoney(Math.max(0, saldo))}).`;
+    }
+  }
+
+  const missing = missingAmount(draft, total, methods);
+  if (missing > 0) return `Faltan ${formatMoney(missing)} por asignar.`;
+
   return null;
 }
