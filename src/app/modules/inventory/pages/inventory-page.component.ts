@@ -166,7 +166,6 @@ type ActiveFilter = '' | 'active' | 'inactive';
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-gray-100 bg-gray-50">
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Código</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Unidad</th>
@@ -183,7 +182,6 @@ type ActiveFilter = '' | 'active' | 'inactive';
                 <tbody class="divide-y divide-gray-50">
                   @for (i of service.items(); track i.id) {
                     <tr class="hover:bg-gray-50 transition-colors" [class.opacity-50]="!i.active">
-                      <td class="px-4 py-3 text-gray-500 whitespace-nowrap">{{ i.code }}</td>
                       <td class="px-4 py-3"><p class="font-medium text-gray-900">{{ i.name }}</p></td>
                       <td class="px-4 py-3 text-gray-600">{{ typeLabel(i.type) }}</td>
                       <td class="px-4 py-3 text-gray-600">{{ unitAbbr(i.unit_measure_id) }}</td>

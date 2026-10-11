@@ -976,8 +976,27 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
     }
 
     const ok = await this.store.createManualOrderFromDraft();
-    if (ok) {
+    if (!ok) return;
+    // spec 111 (FR-001/FR-002, RN1): vuelve a la terminal con el pedido recién creado ya
+    // seleccionado (en vez de la pestaña Mesas por defecto) — `pestana`/`mesa`/`pedido` le dicen a
+    // `TableSessionsComponent` qué mostrar, porque su store no es singleton y por defecto arranca
+    // sin nada seleccionado (ver spec.md, causa raíz).
+    const id = this.store.selectedOrderId();
+    if (!id) {
       await this.router.navigate(['/dashboard/mesas-sesiones']);
+      return;
     }
+    const pestana =
+      this.store.orderTypeTab() === 'domicilios'
+        ? 'domicilios'
+        : this.store.orderTypeTab() === 'para-llevar'
+          ? 'para-llevar'
+          : 'mesas';
+    const queryParams: Record<string, string> = { pestana, pedido: id };
+    if (pestana === 'mesas') {
+      const tableId = this.store.selectedTableId();
+      if (tableId) queryParams['mesa'] = tableId;
+    }
+    await this.router.navigate(['/dashboard/mesas-sesiones'], { queryParams });
   }
 }

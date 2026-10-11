@@ -901,7 +901,10 @@ describe('ManualOrderPageComponent', () => {
     expect(confirmButton.disabled).toBe(true);
   });
 
-  it('"Crear pedido" crea el pedido y navega de vuelta a la Terminal de Mesas', async () => {
+  // spec 111 (FR-001/FR-002, RN1): tras crear el pedido, vuelve a la terminal con ese pedido ya
+  // seleccionado (`pedido`) y la pestaña correcta activa (`pestana`) — ya no a la pestaña Mesas
+  // por defecto sin nada seleccionado.
+  it('"Crear pedido" (Mesa) crea el pedido y vuelve a la terminal con pestana "mesas", la mesa y el pedido seleccionados', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -918,7 +921,10 @@ describe('ManualOrderPageComponent', () => {
     });
     fixture.detectChanges();
 
-    const createSpy = vi.spyOn(store, 'createManualOrderFromDraft').mockResolvedValue(true);
+    const createSpy = vi.spyOn(store, 'createManualOrderFromDraft').mockImplementation(async () => {
+      store.selectedOrderId.set('o-mesa-1');
+      return true;
+    });
     const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     const confirmButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
@@ -928,10 +934,80 @@ describe('ManualOrderPageComponent', () => {
     await Promise.resolve();
 
     expect(createSpy).toHaveBeenCalled();
-    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones']);
+    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones'], {
+      queryParams: { pestana: 'mesas', pedido: 'o-mesa-1', mesa: 't1' },
+    });
   });
 
-  it('si la creación falla, no navega', async () => {
+  it('"Crear pedido" (Para llevar) vuelve a la terminal con pestana "para-llevar" y el pedido seleccionado', async () => {
+    createComponent(null, 'para-llevar');
+    fixture.detectChanges();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Mango Tropical' } as never,
+      variant: { id: 'v1', price: 5000 } as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+    fixture.detectChanges();
+
+    vi.spyOn(store, 'createManualOrderFromDraft').mockImplementation(async () => {
+      store.selectedOrderId.set('o-llevar-1');
+      return true;
+    });
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    const confirmButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Crear pedido'),
+    ) as HTMLButtonElement;
+    confirmButton.click();
+    await Promise.resolve();
+
+    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones'], {
+      queryParams: { pestana: 'para-llevar', pedido: 'o-llevar-1' },
+    });
+  });
+
+  it('"Crear pedido" (Domicilio) vuelve a la terminal con pestana "domicilios" y el pedido seleccionado', async () => {
+    createComponent(null, 'domicilio');
+    fixture.detectChanges();
+    await Promise.resolve();
+    await Promise.resolve();
+    store.customerName.set('Ana Torres');
+    store.deliveryAddress.set('Cra 45 #12-30');
+    store.deliveryFee.set(6000);
+
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Mango Tropical' } as never,
+      variant: { id: 'v1', price: 5000 } as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+    fixture.detectChanges();
+
+    vi.spyOn(store, 'createManualOrderFromDraft').mockImplementation(async () => {
+      store.selectedOrderId.set('o-domicilio-1');
+      return true;
+    });
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    const confirmButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Crear pedido'),
+    ) as HTMLButtonElement;
+    confirmButton.click();
+    await Promise.resolve();
+
+    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones'], {
+      queryParams: { pestana: 'domicilios', pedido: 'o-domicilio-1' },
+    });
+  });
+
+  // spec 111 (FR-003, RN2): si falla, se queda en "Nueva orden" con el carrito intacto.
+  it('si la creación falla, no navega y el carrito queda intacto', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -946,6 +1022,7 @@ describe('ManualOrderPageComponent', () => {
       notes: null,
     });
     fixture.detectChanges();
+    const draftAntes = store.draftLines();
 
     vi.spyOn(store, 'createManualOrderFromDraft').mockResolvedValue(false);
     const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
@@ -957,6 +1034,34 @@ describe('ManualOrderPageComponent', () => {
     await Promise.resolve();
 
     expect(navigateSpy).not.toHaveBeenCalled();
+    expect(store.draftLines()).toBe(draftAntes);
+    expect(store.orderTypeTab()).toBe('mesas');
+  });
+
+  // spec 111 (FR-005, comportamiento preexistente — bloquea una futura regresión silenciosa).
+  it('mientras `submitting()` es verdadero, "Crear pedido" queda deshabilitado y muestra "Guardando…"', async () => {
+    createComponent('t1');
+    tableService.tables.set([table({ id: 't1', number: 3 })]);
+    fixture.detectChanges();
+    await Promise.resolve();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Mango Tropical' } as never,
+      variant: { id: 'v1', price: 5000 } as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+    store.submitting.set(true);
+    fixture.detectChanges();
+
+    const confirmButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Guardando…') ||
+      (b as HTMLButtonElement).textContent?.includes('Crear pedido'),
+    ) as HTMLButtonElement;
+    expect(confirmButton.disabled).toBe(true);
+    expect(confirmButton.textContent).toContain('Guardando…');
   });
 
   it('"← Volver a la Terminal" navega de vuelta sin crear ningún pedido', async () => {

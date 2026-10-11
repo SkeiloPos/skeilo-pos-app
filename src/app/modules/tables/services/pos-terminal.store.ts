@@ -617,21 +617,33 @@ export class PosTerminalStore {
    * - `'validar-pago'`: hay al menos un pedido QR esperando que el cajero
    *   apruebe/rechace su comprobante o confirme el efectivo. Tiene prioridad
    *   sobre todo lo demás: es lo más urgente en pantalla.
-   * - `'mesa-libre'`: la mesa no tiene ningún pedido vivo — bloque puramente
-   *   informativo (spec 045); crear un pedido nuevo se hace desde el botón
-   *   fijo de "Pedido de mostrador" o F3, que navegan a la vista dedicada
-   *   (`manual-order-page.component.ts`), no desde aquí.
+   * - `'mesa-libre'`: la mesa no tiene ningún pedido vivo NI sesión abierta —
+   *   bloque puramente informativo (spec 045); crear un pedido nuevo se hace
+   *   desde el botón fijo de "Pedido de mostrador" o F3, que navegan a la
+   *   vista dedicada (`manual-order-page.component.ts`), no desde aquí.
+   * - `'ocupada-sin-pedido'` (spec 110): la mesa SÍ tiene una sesión abierta
+   *   (`table.status === 'ocupada'`, mismo criterio que ya usa
+   *   `deriveTableStatus`) pero cero pedidos vivos — p. ej. se rechazó el
+   *   único pedido manual antes de que cocina recibiera algo. Antes esto
+   *   colapsaba a `'mesa-libre'` y ocultaba toda la columna de detalle,
+   *   dejando la mesa sin ninguna forma de liberarse desde la interfaz
+   *   (bug en producción). Ahora sí se distingue de una mesa realmente
+   *   libre, para que el panel de detalle se muestre con "Liberar Mesa"
+   *   como única acción.
    * - `'armando-pedido'` / `'pedido-activo'`: se sigue mostrando el panel de
    *   carrito existente (`app-pos-order-panel`), que ya distingue internamente
    *   entre un draft sin guardar y un pedido persistido.
    */
-  readonly centralState = computed<'validar-pago' | 'mesa-libre' | 'pedido'>(() => {
+  readonly centralState = computed<
+    'validar-pago' | 'mesa-libre' | 'ocupada-sin-pedido' | 'pedido'
+  >(() => {
     if (this.pendingOfSelectedTable().length > 0) return 'validar-pago';
     const tableId = this.selectedTableId();
     if (!tableId) return 'pedido'; // nada seleccionado: pos-order-panel pinta su placeholder
     const hasTableConsumption = this.tableOrders(tableId).length > 0;
     if (!hasTableConsumption && !this.hasDraft()) {
-      return 'mesa-libre';
+      const tableStatus = this.tables().find((t) => t.id === tableId)?.status;
+      return tableStatus === 'ocupada' ? 'ocupada-sin-pedido' : 'mesa-libre';
     }
     return 'pedido';
   });
@@ -663,9 +675,9 @@ export class PosTerminalStore {
    * vez, o `centralState()` sin cambios en cualquier otro caso — mismo tipo
    * de valor que ya consume el `@switch` de la plantilla.
    */
-  readonly effectiveCentralView = computed<'validar-pago' | 'mesa-libre' | 'pedido'>(() =>
-    this.hasPendingAndActiveOrders() ? this.centralPanelTab() : this.centralState(),
-  );
+  readonly effectiveCentralView = computed<
+    'validar-pago' | 'mesa-libre' | 'ocupada-sin-pedido' | 'pedido'
+  >(() => (this.hasPendingAndActiveOrders() ? this.centralPanelTab() : this.centralState()));
 
   readonly selectedTable = computed<Table | null>(
     () => this.tables().find((t) => t.id === this.selectedTableId()) ?? null,
@@ -1555,11 +1567,22 @@ export class PosTerminalStore {
    * pedido se manda con `hold_for_payment: true`: no llega a cocina ni toca
    * inventario hasta que se cobre con `checkoutAndSend()`.
    */
+  /**
+   * spec 111 (FR-011, RN4): un solo id por intento de "Crear pedido" — se genera la primera
+   * vez y se reenvía sin cambios si ese mismo intento se reintenta (p. ej. tras un error de
+   * red), para que el backend pueda deduplicar. Se limpia al crear con éxito: el siguiente
+   * intento es, por definición, un pedido distinto.
+   */
+  private pendingCreateRequestId: string | null = null;
+
   async createManualOrderFromDraft(): Promise<boolean> {
     // spec 055: "Para Llevar" no exige mesa (FR-009) — solo "En Mesa" (tab
     // 'mesas') sigue exigiéndola. spec 056: "Domicilio" tampoco exige mesa,
     // pero sí exige cliente/dirección/valor del domicilio (FR-007) — segunda
     // capa de protección, además del botón deshabilitado del componente.
+    // spec 111 (FR-006): guarda defensiva contra una segunda invocación mientras la primera
+    // está en curso — antes solo dependía de que el botón quedara deshabilitado en la interfaz.
+    if (this.submitting()) return false;
     const esParaLlevar = this.orderTypeTab() === 'para-llevar';
     const esDomicilio = this.orderTypeTab() === 'domicilios';
     const tableId = this.selectedTableId();
@@ -1580,6 +1603,7 @@ export class PosTerminalStore {
               notes: l.notes,
             },
       );
+      this.pendingCreateRequestId ??= crypto.randomUUID();
       const order = await this.api.createManualOrder({
         channel: 'POS',
         order_type: esDomicilio ? 'DELIVERY' : esParaLlevar ? 'TAKEAWAY' : 'DINE_IN',
@@ -1590,7 +1614,9 @@ export class PosTerminalStore {
         delivery_fee: esDomicilio ? this.deliveryFee() : null,
         items,
         hold_for_payment: true,
+        client_request_id: this.pendingCreateRequestId,
       });
+      this.pendingCreateRequestId = null;
       this.draftLines.set([]);
       await this.reload();
       this.selectedOrderId.set(order.id);
@@ -1598,7 +1624,8 @@ export class PosTerminalStore {
       this.toast.success('Pedido creado — cóbralo desde el panel de la derecha.');
       return true;
     } catch (err) {
-      this.error.set(this.api.extractError(err, 'No se pudo crear el pedido.'));
+      // spec 111 (FR-004): texto exacto exigido por la spec, no solo "No se pudo crear el pedido."
+      this.error.set(this.api.extractError(err, 'No se pudo crear el pedido. Intenta de nuevo.'));
       this.toast.error(this.error()!);
       return false;
     } finally {
@@ -2414,6 +2441,13 @@ export class PosTerminalStore {
   async releaseTable(): Promise<void> {
     const bill = this.sessionBill();
     if (!bill) return;
+    const ok = await this.confirm.ask({
+      title: 'Liberar mesa',
+      message: '¿Liberar esta mesa? Se cerrará la sesión actual.',
+      confirmText: 'Liberar',
+      tone: 'danger',
+    });
+    if (!ok) return;
     this.submitting.set(true);
     try {
       await this.tableSessions.release(bill.table_session_id);

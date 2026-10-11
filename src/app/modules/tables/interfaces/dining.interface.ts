@@ -75,6 +75,12 @@ export interface OrderCreatePayload {
    * que el cajero está armando no golpea cocina antes de estar pagada.
    */
   hold_for_payment?: boolean;
+  /**
+   * spec 111 (FR-011, RN4): un solo id por intento de "Crear pedido", reenviado sin cambios si
+   * ese mismo intento se reintenta (p. ej. tras un error de red) — el backend lo usa para
+   * devolver el pedido ya creado en vez de duplicarlo.
+   */
+  client_request_id?: string | null;
 }
 
 /** Selected option on an order item (`OrderItemOptionResponse`). */
