@@ -319,6 +319,90 @@ describe('PosTerminalStore — orden "pagada" ya lista sigue visible (gap spec 0
 });
 
 /**
+ * Spec 110: una mesa puede quedar `status === 'ocupada'` (sesión abierta) con
+ * cero pedidos vivos -- p. ej. se rechazó el único pedido manual antes de que
+ * cocina recibiera algo. Antes, `centralState()` solo miraba si había pedidos
+ * vivos y colapsaba este caso a `'mesa-libre'`, lo que ocultaba toda la
+ * columna de detalle (incluido "Liberar Mesa") y dejaba la mesa bloqueada
+ * para siempre desde la interfaz -- bug en producción. Ahora distingue este
+ * caso con el mismo criterio que ya usa `deriveTableStatus` para la insignia
+ * de la grilla (`table.status === 'ocupada'`).
+ */
+describe('PosTerminalStore.centralState — mesa ocupada sin pedido (spec 110)', () => {
+  let store: PosTerminalStore;
+  let tableService: TableService;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    tableService = TestBed.inject(TableService);
+  });
+
+  it('mesa "ocupada" sin ningún pedido vivo NO colapsa a "mesa-libre"', () => {
+    tableService.tables.set([
+      { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'ocupada' },
+    ]);
+    store.orders.set([]);
+    store.selectedTableId.set('t1');
+
+    expect(store.centralState()).toBe('ocupada-sin-pedido');
+  });
+
+  it('mesa "ocupada" con solo un pedido cancelado (sin pedidos vivos) también cae en "ocupada-sin-pedido"', () => {
+    tableService.tables.set([
+      { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'ocupada' },
+    ]);
+    store.orders.set([
+      { ...order('o1', 'cancelada', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+    ]);
+    store.selectedTableId.set('t1');
+
+    expect(store.centralState()).toBe('ocupada-sin-pedido');
+  });
+
+  it('regresión: mesa realmente "libre" (sin sesión) sigue cayendo en "mesa-libre"', () => {
+    tableService.tables.set([
+      { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'libre' },
+    ]);
+    store.orders.set([]);
+    store.selectedTableId.set('t1');
+
+    expect(store.centralState()).toBe('mesa-libre');
+  });
+
+  it('regresión: mesa "ocupada" con un pedido activo sigue en "pedido", no en "ocupada-sin-pedido"', () => {
+    tableService.tables.set([
+      { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'ocupada' },
+    ]);
+    store.orders.set([
+      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+    ]);
+    store.selectedTableId.set('t1');
+
+    expect(store.centralState()).toBe('pedido');
+  });
+
+  it('effectiveCentralView() refleja "ocupada-sin-pedido" igual que centralState() (sin pago QR pendiente de por medio)', () => {
+    tableService.tables.set([
+      { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'ocupada' },
+    ]);
+    store.orders.set([]);
+    store.selectedTableId.set('t1');
+
+    expect(store.effectiveCentralView()).toBe('ocupada-sin-pedido');
+  });
+});
+
+/**
  * Rediseño responsive de la terminal: `tableCounts` alimenta los badges de
  * la franja de filtros (Todas/Libres/Ocupadas/Pendientes) -- reutiliza los
  * mismos predicados que ya aplica `tablesView()` al filtrar, para que el
@@ -1269,6 +1353,75 @@ describe('PosTerminalStore.createManualOrderFromDraft', () => {
     req.flush({ id: 'o1', channel: 'POS', order_type: 'DELIVERY', status: 'recibida', created_at: '2026-08-29' });
 
     expect(await promise).toBe(true);
+  });
+
+  // ── spec 111: redirección al detalle tras crear el pedido ──────────────
+
+  it('tras una creación exitosa, expone el id del pedido creado vía selectedOrderId (FR-001/FR-002)', async () => {
+    store.setOrderTypeTab('para-llevar');
+    const promise = store.createManualOrderFromDraft();
+
+    const req = http.expectOne(`${API}/orders`);
+    req.flush({ id: 'o-nuevo-123', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+
+    expect(await promise).toBe(true);
+    expect(store.selectedOrderId()).toBe('o-nuevo-123');
+  });
+
+  it('tras un error, un reintento reenvía el mismo client_request_id; tras éxito, el siguiente intento usa uno nuevo (FR-011, RN4)', async () => {
+    store.setOrderTypeTab('para-llevar');
+    const primeraPromise = store.createManualOrderFromDraft();
+    const primera = http.expectOne(`${API}/orders`);
+    const idEnviado1 = (primera.request.body as { client_request_id: string }).client_request_id;
+    expect(idEnviado1).toBeTruthy();
+    primera.flush(null, { status: 500, statusText: 'Internal Server Error' });
+    expect(await primeraPromise).toBe(false);
+
+    const segundaPromise = store.createManualOrderFromDraft();
+    const segunda = http.expectOne(`${API}/orders`);
+    expect(segunda.request.body).toEqual(expect.objectContaining({ client_request_id: idEnviado1 }));
+    segunda.flush({ id: 'o1', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+    expect(await segundaPromise).toBe(true);
+
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Mango Tropical' } as never,
+      variant: { id: 'v1', price: 5000 } as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+    const tercera = store.createManualOrderFromDraft();
+    const tercerReq = http.expectOne(`${API}/orders`);
+    const idEnviado3 = (tercerReq.request.body as { client_request_id: string }).client_request_id;
+    expect(idEnviado3).toBeTruthy();
+    expect(idEnviado3).not.toBe(idEnviado1);
+    tercerReq.flush({ id: 'o2', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+    expect(await tercera).toBe(true);
+  });
+
+  it('ante un error HTTP sin detalle utilizable, el mensaje de error es exactamente "No se pudo crear el pedido. Intenta de nuevo." y no se agrega ningún pedido a `orders` (FR-004)', async () => {
+    store.setOrderTypeTab('para-llevar');
+    const ordersAntes = store.orders();
+    const promise = store.createManualOrderFromDraft();
+
+    const req = http.expectOne(`${API}/orders`);
+    req.flush(null, { status: 500, statusText: 'Internal Server Error' });
+
+    expect(await promise).toBe(false);
+    expect(store.error()).toBe('No se pudo crear el pedido. Intenta de nuevo.');
+    expect(store.orders()).toBe(ordersAntes);
+  });
+
+  it('una segunda invocación mientras la primera está en curso no dispara una segunda llamada HTTP (FR-006)', async () => {
+    store.setOrderTypeTab('para-llevar');
+    const primera = store.createManualOrderFromDraft();
+    expect(store.submitting()).toBe(true);
+
+    const segunda = store.createManualOrderFromDraft();
+    expect(await segunda).toBe(false);
+
+    http.expectOne(`${API}/orders`).flush({ id: 'o1', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+    expect(await primera).toBe(true);
   });
 });
 
