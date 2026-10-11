@@ -1354,6 +1354,75 @@ describe('PosTerminalStore.createManualOrderFromDraft', () => {
 
     expect(await promise).toBe(true);
   });
+
+  // ── spec 111: redirección al detalle tras crear el pedido ──────────────
+
+  it('tras una creación exitosa, expone el id del pedido creado vía selectedOrderId (FR-001/FR-002)', async () => {
+    store.setOrderTypeTab('para-llevar');
+    const promise = store.createManualOrderFromDraft();
+
+    const req = http.expectOne(`${API}/orders`);
+    req.flush({ id: 'o-nuevo-123', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+
+    expect(await promise).toBe(true);
+    expect(store.selectedOrderId()).toBe('o-nuevo-123');
+  });
+
+  it('tras un error, un reintento reenvía el mismo client_request_id; tras éxito, el siguiente intento usa uno nuevo (FR-011, RN4)', async () => {
+    store.setOrderTypeTab('para-llevar');
+    const primeraPromise = store.createManualOrderFromDraft();
+    const primera = http.expectOne(`${API}/orders`);
+    const idEnviado1 = (primera.request.body as { client_request_id: string }).client_request_id;
+    expect(idEnviado1).toBeTruthy();
+    primera.flush(null, { status: 500, statusText: 'Internal Server Error' });
+    expect(await primeraPromise).toBe(false);
+
+    const segundaPromise = store.createManualOrderFromDraft();
+    const segunda = http.expectOne(`${API}/orders`);
+    expect(segunda.request.body).toEqual(expect.objectContaining({ client_request_id: idEnviado1 }));
+    segunda.flush({ id: 'o1', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+    expect(await segundaPromise).toBe(true);
+
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Mango Tropical' } as never,
+      variant: { id: 'v1', price: 5000 } as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+    const tercera = store.createManualOrderFromDraft();
+    const tercerReq = http.expectOne(`${API}/orders`);
+    const idEnviado3 = (tercerReq.request.body as { client_request_id: string }).client_request_id;
+    expect(idEnviado3).toBeTruthy();
+    expect(idEnviado3).not.toBe(idEnviado1);
+    tercerReq.flush({ id: 'o2', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+    expect(await tercera).toBe(true);
+  });
+
+  it('ante un error HTTP sin detalle utilizable, el mensaje de error es exactamente "No se pudo crear el pedido. Intenta de nuevo." y no se agrega ningún pedido a `orders` (FR-004)', async () => {
+    store.setOrderTypeTab('para-llevar');
+    const ordersAntes = store.orders();
+    const promise = store.createManualOrderFromDraft();
+
+    const req = http.expectOne(`${API}/orders`);
+    req.flush(null, { status: 500, statusText: 'Internal Server Error' });
+
+    expect(await promise).toBe(false);
+    expect(store.error()).toBe('No se pudo crear el pedido. Intenta de nuevo.');
+    expect(store.orders()).toBe(ordersAntes);
+  });
+
+  it('una segunda invocación mientras la primera está en curso no dispara una segunda llamada HTTP (FR-006)', async () => {
+    store.setOrderTypeTab('para-llevar');
+    const primera = store.createManualOrderFromDraft();
+    expect(store.submitting()).toBe(true);
+
+    const segunda = store.createManualOrderFromDraft();
+    expect(await segunda).toBe(false);
+
+    http.expectOne(`${API}/orders`).flush({ id: 'o1', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+    expect(await primera).toBe(true);
+  });
 });
 
 // ── Editar una línea del carrito ya agregada (rediseño create-order/code.html) ──

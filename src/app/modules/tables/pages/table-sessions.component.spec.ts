@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { Router, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { SwPush } from '@angular/service-worker';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { TableSessionsComponent } from './table-sessions.component';
@@ -814,5 +814,83 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
     store.setOrderTypeTab('para-llevar');
     fixture.detectChanges();
     expect(cta().disabled).toBe(false);
+  });
+});
+
+// spec 111 (FR-001/FR-008): al volver de "Nueva orden" con un pedido recién creado, esta pantalla
+// debe activar la pestaña y seleccionar la mesa/pedido correctos — su store no es singleton y por
+// defecto arranca en "mesas" sin nada seleccionado (causa raíz documentada en spec.md).
+describe('TableSessionsComponent — restaura pestaña/mesa/pedido tras crear un pedido (spec 111)', () => {
+  let fixture: ComponentFixture<TableSessionsComponent>;
+  let store: PosTerminalStore;
+
+  function createComponent(queryParams: Record<string, string>): void {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [TableSessionsComponent],
+      providers: [
+        provideRouter([]),
+        swPushStub,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParamMap: convertToParamMap(queryParams) } },
+        },
+      ],
+    });
+    fixture = TestBed.createComponent(TableSessionsComponent);
+    store = fixture.componentInstance.store;
+    vi.spyOn(store, 'init').mockResolvedValue(undefined);
+  }
+
+  it('con ?pestana=para-llevar&pedido=o1 (sin mesa), activa "para-llevar" y selecciona el pedido vía selectStandaloneOrder', () => {
+    createComponent({ pestana: 'para-llevar', pedido: 'o1' });
+    const spy = vi.spyOn(store, 'selectStandaloneOrder');
+    fixture.detectChanges();
+
+    expect(store.orderTypeTab()).toBe('para-llevar');
+    expect(spy).toHaveBeenCalledWith('o1');
+    expect(store.selectedOrderId()).toBe('o1');
+  });
+
+  it('con ?pestana=domicilios&pedido=o2, activa "domicilios" y selecciona el pedido', () => {
+    createComponent({ pestana: 'domicilios', pedido: 'o2' });
+    fixture.detectChanges();
+
+    expect(store.orderTypeTab()).toBe('domicilios');
+    expect(store.selectedOrderId()).toBe('o2');
+    expect(store.selectedTableId()).toBeNull();
+  });
+
+  it('con ?pestana=mesas&mesa=t1&pedido=o3, activa "mesas", selecciona la mesa y fija el pedido exacto', () => {
+    createComponent({ pestana: 'mesas', mesa: 't1', pedido: 'o3' });
+    const selectTableSpy = vi.spyOn(store, 'selectTable');
+    const selectOrderSpy = vi.spyOn(store, 'selectOrder');
+    fixture.detectChanges();
+
+    expect(store.orderTypeTab()).toBe('mesas');
+    expect(selectTableSpy).toHaveBeenCalledWith('t1');
+    expect(selectOrderSpy).toHaveBeenCalledWith('o3');
+    expect(store.selectedTableId()).toBe('t1');
+    expect(store.selectedOrderId()).toBe('o3');
+  });
+
+  it('sin ningún query param, no selecciona nada y queda en "mesas" (sin regresión)', () => {
+    createComponent({});
+    fixture.detectChanges();
+
+    expect(store.orderTypeTab()).toBe('mesas');
+    expect(store.selectedTableId()).toBeNull();
+    expect(store.selectedOrderId()).toBeNull();
+  });
+
+  it('con un `pestana` inválido, lo ignora y queda en "mesas" (defensivo)', () => {
+    createComponent({ pestana: 'algo-invalido' });
+    fixture.detectChanges();
+
+    expect(store.orderTypeTab()).toBe('mesas');
   });
 });

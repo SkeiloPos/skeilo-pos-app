@@ -1567,11 +1567,22 @@ export class PosTerminalStore {
    * pedido se manda con `hold_for_payment: true`: no llega a cocina ni toca
    * inventario hasta que se cobre con `checkoutAndSend()`.
    */
+  /**
+   * spec 111 (FR-011, RN4): un solo id por intento de "Crear pedido" — se genera la primera
+   * vez y se reenvía sin cambios si ese mismo intento se reintenta (p. ej. tras un error de
+   * red), para que el backend pueda deduplicar. Se limpia al crear con éxito: el siguiente
+   * intento es, por definición, un pedido distinto.
+   */
+  private pendingCreateRequestId: string | null = null;
+
   async createManualOrderFromDraft(): Promise<boolean> {
     // spec 055: "Para Llevar" no exige mesa (FR-009) — solo "En Mesa" (tab
     // 'mesas') sigue exigiéndola. spec 056: "Domicilio" tampoco exige mesa,
     // pero sí exige cliente/dirección/valor del domicilio (FR-007) — segunda
     // capa de protección, además del botón deshabilitado del componente.
+    // spec 111 (FR-006): guarda defensiva contra una segunda invocación mientras la primera
+    // está en curso — antes solo dependía de que el botón quedara deshabilitado en la interfaz.
+    if (this.submitting()) return false;
     const esParaLlevar = this.orderTypeTab() === 'para-llevar';
     const esDomicilio = this.orderTypeTab() === 'domicilios';
     const tableId = this.selectedTableId();
@@ -1592,6 +1603,7 @@ export class PosTerminalStore {
               notes: l.notes,
             },
       );
+      this.pendingCreateRequestId ??= crypto.randomUUID();
       const order = await this.api.createManualOrder({
         channel: 'POS',
         order_type: esDomicilio ? 'DELIVERY' : esParaLlevar ? 'TAKEAWAY' : 'DINE_IN',
@@ -1602,7 +1614,9 @@ export class PosTerminalStore {
         delivery_fee: esDomicilio ? this.deliveryFee() : null,
         items,
         hold_for_payment: true,
+        client_request_id: this.pendingCreateRequestId,
       });
+      this.pendingCreateRequestId = null;
       this.draftLines.set([]);
       await this.reload();
       this.selectedOrderId.set(order.id);
@@ -1610,7 +1624,8 @@ export class PosTerminalStore {
       this.toast.success('Pedido creado — cóbralo desde el panel de la derecha.');
       return true;
     } catch (err) {
-      this.error.set(this.api.extractError(err, 'No se pudo crear el pedido.'));
+      // spec 111 (FR-004): texto exacto exigido por la spec, no solo "No se pudo crear el pedido."
+      this.error.set(this.api.extractError(err, 'No se pudo crear el pedido. Intenta de nuevo.'));
       this.toast.error(this.error()!);
       return false;
     } finally {

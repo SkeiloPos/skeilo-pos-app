@@ -7,7 +7,7 @@ import {
   inject,
   viewChild,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { PosTablesPanelComponent } from '../components/pos-tables-panel.component';
 import { PosOrderPanelComponent } from '../components/pos-order-panel.component';
@@ -343,6 +343,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 export class TableSessionsComponent implements OnInit, OnDestroy {
   readonly store = inject(PosTerminalStore);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly tablesPanel = viewChild(PosTablesPanelComponent);
 
   readonly orderTypeTabs = [
@@ -353,6 +354,23 @@ export class TableSessionsComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     void this.store.init();
+    // spec 111 (FR-001/FR-008): tras crear un pedido desde "Nueva orden", esta misma pantalla
+    // recibe a qué pestaña volver (`pestana`) y qué pedido/mesa quedó recién creado
+    // (`pedido`/`mesa`) — su store no es singleton y arranca sin nada seleccionado, así que sin
+    // esto siempre se quedaría en "Mesas" sin el pedido a la vista (causa raíz en spec.md).
+    const params = this.route.snapshot.queryParamMap;
+    const pestana = params.get('pestana');
+    if (pestana === 'mesas' || pestana === 'para-llevar' || pestana === 'domicilios') {
+      this.store.setOrderTypeTab(pestana);
+    }
+    const mesa = params.get('mesa');
+    const pedido = params.get('pedido');
+    if (mesa) {
+      this.store.selectTable(mesa);
+      if (pedido) this.store.selectOrder(pedido);
+    } else if (pedido) {
+      this.store.selectStandaloneOrder(pedido);
+    }
   }
 
   ngOnDestroy(): void {
