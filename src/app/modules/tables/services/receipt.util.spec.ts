@@ -101,6 +101,20 @@ describe('buildReceiptHtml', () => {
     expect(html).toContain('<span>Ticket</span><span>#BBCCDD</span>');
     expect(html).not.toContain('<span>Factura</span>');
   });
+
+  it('spec 112 (FR-020): un cobro con pago mixto imprime una fila por método', () => {
+    const html = buildReceiptHtml([
+      makeReceipt({
+        payments: [
+          { name: 'Efectivo', amount: 8000 },
+          { name: 'Transferencia', amount: 6000 },
+        ],
+      }),
+    ]);
+
+    expect(html).toContain('<span>Efectivo</span><span>' + formatMoney(8000) + '</span>');
+    expect(html).toContain('<span>Transferencia</span><span>' + formatMoney(6000) + '</span>');
+  });
 });
 
 describe('saleToReceipt', () => {
@@ -154,6 +168,22 @@ describe('saleToReceipt', () => {
     expect(receipt.payments).toEqual([{ name: 'Efectivo', amount: 15000 }]);
     expect(receipt.change).toBe(3000);
     expect(receipt.invoice).toEqual({ prefix: '', number: 7 });
+  });
+
+  it('spec 112: convierte las N líneas de `sale.payments` a N entradas de `receipt.payments`, cada una con su propio nombre y monto', () => {
+    const sale = makeSale({
+      payments: [
+        { id: 'p1', payment_method_id: 'pm1', amount: '8000' },
+        { id: 'p2', payment_method_id: 'pm2', amount: '6000' },
+      ],
+    });
+
+    const receipt = saleToReceipt(sale, ctx);
+
+    expect(receipt.payments).toEqual([
+      { name: 'Efectivo', amount: 8000 },
+      { name: 'Otro', amount: 6000 },
+    ]);
   });
 
   it('lleva al ticket los sabores elegidos, tomándolos del snapshot de la venta', () => {

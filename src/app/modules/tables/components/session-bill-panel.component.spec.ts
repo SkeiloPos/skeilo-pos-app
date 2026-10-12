@@ -311,28 +311,19 @@ describe('SessionBillPanelComponent', () => {
 
     // `app-money-input` agrupa la parte entera con Intl.NumberFormat('es-CO')
     // (money-input.component.ts:119-125) — "12.000", no "12000" (el valor
-    // numérico real, sin formatear, es el que expone `unifiedPayment().amount`).
+    // numérico real, sin formatear, es el que expone `unifiedPayment()[0].assigned`).
     expect(amounts()[0].value).toBe('12.000');
-    expect(panel.unifiedPayment().amount).toBe(12000);
+    expect(panel.unifiedPayment()[0].amount).toBe(12000);
   });
 
-  // ── spec 057: importe fijo para métodos no efectivo ───────────────────────
+  // ── spec 112: importe precargado (editable) para métodos no efectivo ──────
 
-  it('con un método no efectivo, el importe queda deshabilitado en el total exacto y el botón de cobrar se habilita solo (FR-001, SC-002)', async () => {
+  it('con un método no efectivo, el importe se precarga en el total exacto y el botón de cobrar se habilita solo (SC-002)', async () => {
     await chooseMethod('pm2'); // Tarjeta, is_cash: false
 
-    expect(amounts()[0].disabled).toBe(true);
     expect(amounts()[0].value).toBe('12.000');
     expect(panel.ready()).toBe(true);
     expect(chargeButton().disabled).toBe(false);
-  });
-
-  it('al volver de un método no efectivo a efectivo, el importe vuelve a ser editable (FR-004, no regresión)', async () => {
-    await chooseMethod('pm2');
-    expect(amounts()[0].disabled).toBe(true);
-
-    await chooseMethod('pm1'); // Efectivo
-    expect(amounts()[0].disabled).toBe(false);
   });
 
   it('cobra enviando el efectivo recibido, no el total', async () => {
