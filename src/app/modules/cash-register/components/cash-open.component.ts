@@ -81,13 +81,17 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
             <app-money-input
               [ngModel]="store.openingAmount()"
               (ngModelChange)="store.openingAmount.set($event ?? 0)"
+              [invalid]="store.openingAmount() <= 0"
               sizeClass="px-3 py-2 rounded-lg text-sm"
             />
+            @if (store.openingAmount() <= 0) {
+              <p class="text-red-500 text-xs mt-1">El saldo inicial debe ser mayor a cero para abrir la caja</p>
+            }
           </div>
 
           <button
             (click)="store.abrirCaja()"
-            [disabled]="store.isSubmitting() || !store.selectedRegisterId()"
+            [disabled]="store.aperturaDisabled()"
             class="w-full py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-colors"
           >
             {{ store.isSubmitting() ? 'Abriendo…' : 'Abrir caja y comenzar turno' }}
