@@ -19,7 +19,7 @@ import {
   MenuVariantPromotion,
 } from '../../products/interfaces/product.interface';
 import { normalizeText } from '../../../shared/normalize-text';
-import { DiscountInfo, discountInfo, effectivePrice } from '../../promotions/services/promotion-pricing.util';
+import { DiscountInfo, discountInfo, effectivePrice, packagePrice } from '../../promotions/services/promotion-pricing.util';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
 /** Una opción elegida junto con cuántas unidades de ella (spec 065). Siempre
@@ -621,26 +621,13 @@ export class ProductSelectComponent implements OnInit {
     const promo = variant.promotion;
     const quantity = this.quantity();
     const base = promo
-      ? this.packagePrice(variant.price, promo, quantity)
+      ? packagePrice(variant.price, promo, quantity)
       : effectivePrice(variant.price, variant.discounted_price) * quantity;
     const extra = this.selectedOptions().reduce(
       (s, c) => s + c.option.extra_price * c.quantity, 0,
     ) * (this.addonsPerLine ? 1 : quantity);
     return base + extra;
   });
-
-  /** Precio total de `quantity` unidades de una presentación con promoción vigente. */
-  private packagePrice(normalPrice: number, promo: MenuVariantPromotion, quantity: number): number {
-    const fullSets = Math.floor(quantity / promo.min_qty);
-    const remainder = quantity - fullSets * promo.min_qty;
-    // El precio de paquete es el importe exacto de la regla (`value`), no
-    // `min_qty * unit_equivalent`: ese es un redondeo por unidad para
-    // mostrar (research.md D-4/FR-009) y podría no sumar el mismo total.
-    const setsTotal = promo.type === 'package_price'
-      ? fullSets * promo.value
-      : fullSets * promo.min_qty * promo.unit_equivalent;
-    return setsTotal + remainder * normalPrice;
-  }
 
   /**
    * Precio "desde" del encabezado: el más bajo entre las presentaciones
@@ -666,7 +653,7 @@ export class ProductSelectComponent implements OnInit {
    * de `package_price` vs. `percent` (research.md D-4, `packagePrice()` más abajo).
    */
   packageTotal(v: MenuVariant, promo: MenuVariantPromotion): number {
-    return this.packagePrice(v.price, promo, promo.min_qty);
+    return packagePrice(v.price, promo, promo.min_qty);
   }
 
   /**

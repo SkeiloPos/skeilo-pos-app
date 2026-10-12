@@ -276,14 +276,15 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               <!--
                 spec 073, FR-002/FR-004: el importe lo calcula el backend
                 (checkoutPreview()), nunca el navegador. Desglose agregado
-                Subtotal / Descuento / Domicilio / Total, con el mismo formato
-                que la cuenta de mesa; Descuento y Domicilio solo si son > 0.
+                Subtotal / Domicilio / Total, con el mismo formato que la
+                cuenta de mesa; Domicilio solo si es > 0.
+                spec 115 (A-131): sin la fila "Descuento" -- "Subtotal" ya se
+                muestra neto (sin el descuento), igual que A-125/A-127.
               -->
               @if (displayedPreview(); as p) {
                 <div class="rounded-[6px] border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2 my-3 space-y-1">
                   <app-bill-summary
-                    [subtotal]="+p.subtotal"
-                    [discount]="+p.discount"
+                    [subtotal]="+p.subtotal - +p.discount"
                     [deliveryFee]="+p.delivery_fee"
                     [total]="+p.total"
                     size="sm"

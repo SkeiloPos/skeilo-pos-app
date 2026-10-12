@@ -1,4 +1,4 @@
-import { MenuCategory } from '../../products/interfaces/product.interface';
+import { MenuCategory, MenuVariantPromotion } from '../../products/interfaces/product.interface';
 
 /**
  * Resolves order-item ids to human labels and prices. Comanda items only carry
@@ -31,6 +31,14 @@ export interface MenuLookup {
   productId(variantId: string): string | undefined;
   /** Categoría del producto dueño de la variante — ídem. */
   categoryId(variantId: string): string | undefined;
+  /**
+   * spec 115 (hallazgo adicional): la promoción vigente del catálogo para
+   * esta variante, o `null`. Permite estimar la insignia/tachado de un ítem
+   * ya persistido pero aún no cobrado (`discounted_unit_price` todavía sin
+   * congelar) con el mismo criterio que ya usa `hasPromotion`/`cardPromotionText`
+   * en el catálogo — una estimación, nunca el importe autoritativo del cobro.
+   */
+  variantPromotion(variantId: string): MenuVariantPromotion | null;
 }
 
 interface MenuLookupMaps {
@@ -41,6 +49,7 @@ interface MenuLookupMaps {
   optPrices: Map<string, number>;
   productIds: Map<string, string>;
   categoryIds: Map<string, string>;
+  variantPromotions: Map<string, MenuVariantPromotion | null>;
 }
 
 function indexVariants(category: MenuCategory, product: MenuCategory['products'][number], maps: MenuLookupMaps): void {
@@ -53,6 +62,7 @@ function indexVariants(category: MenuCategory, product: MenuCategory['products']
     maps.prices.set(variant.id, variant.price);
     maps.productIds.set(variant.id, product.id);
     maps.categoryIds.set(variant.id, category.id);
+    maps.variantPromotions.set(variant.id, variant.promotion ?? null);
   }
 }
 
@@ -101,6 +111,7 @@ export function buildMenuLookup(categories: MenuCategory[]): MenuLookup {
     optPrices: new Map(),
     productIds: new Map(),
     categoryIds: new Map(),
+    variantPromotions: new Map(),
   };
 
   for (const category of categories) {
@@ -121,5 +132,6 @@ export function buildMenuLookup(categories: MenuCategory[]): MenuLookup {
     optionPrice: (id) => maps.optPrices.get(id) ?? 0,
     productId: (id) => maps.productIds.get(id),
     categoryId: (id) => maps.categoryIds.get(id),
+    variantPromotion: (id) => maps.variantPromotions.get(id) ?? null,
   };
 }

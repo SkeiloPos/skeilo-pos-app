@@ -1,5 +1,42 @@
 import { Promotion } from '../interfaces/promotion.interface';
-import { MenuVariant } from '../../products/interfaces/product.interface';
+import { MenuProduct, MenuVariant, MenuVariantPromotion } from '../../products/interfaces/product.interface';
+
+/**
+ * spec 115: extraído de `public-menu.component.ts` (pestaña "Promociones" del
+ * menú QR, spec 081) para que el catálogo de la orden manual use exactamente
+ * el mismo criterio, sin mantener dos copias que puedan divergir. La vigencia
+ * ya la resolvió el backend al poblar `promotion` -- leerla no es evaluarla.
+ */
+export function hasPromotion(product: MenuProduct): boolean {
+  return product.variants.some((v) => v.promotion != null);
+}
+
+/**
+ * spec 115 (hallazgo del dueño del producto, A-125): extraído de
+ * `product-select.component.ts` (spec 081) para que `PosTerminalStore` pueda
+ * calcular el mismo importe con descuento para la insignia por línea del
+ * carrito (`cartLinePromo()`) sin duplicar esta regla. Único cálculo que
+ * sirve tanto para `min_qty == 1` como para `min_qty > 1`: agrupa `quantity`
+ * en bloques completos de `promo.min_qty` (`evaluate_variant_sets`/
+ * `_greedy_units` en el backend hace lo mismo) y cobra el remanente que no
+ * completa otro bloque a precio normal -- "2 x $7.000" con cantidad 3 cobra
+ * un paquete (2 u.) más 1 u. a precio normal, no 3 u. al precio de paquete.
+ */
+export function packagePrice(
+  normalPrice: number,
+  promo: MenuVariantPromotion,
+  quantity: number,
+): number {
+  const fullSets = Math.floor(quantity / promo.min_qty);
+  const remainder = quantity - fullSets * promo.min_qty;
+  // El precio de paquete es el importe exacto de la regla (`value`), no
+  // `min_qty * unit_equivalent`: ese es un redondeo por unidad para mostrar
+  // y podría no sumar el mismo total.
+  const setsTotal = promo.type === 'package_price'
+    ? fullSets * promo.value
+    : fullSets * promo.min_qty * promo.unit_equivalent;
+  return setsTotal + remainder * normalPrice;
+}
 
 /**
  * spec 063 — modelo por conjunto explícito de variantes, partición
