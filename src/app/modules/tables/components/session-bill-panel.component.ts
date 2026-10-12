@@ -61,9 +61,10 @@ import { ToastService } from '../../../shared/feedback/toast.service';
              pendiente que desglosar). -->
         <div class="mb-3 pb-3 space-y-1">
           <p class="text-[11px] font-semibold text-[#6b7280] uppercase tracking-wide">Ya pagado</p>
+          <!-- spec 115 (A-132): sin la fila "Descuento" -- "Subtotal" ya se muestra neto, igual
+               que A-125/A-127/A-131. -->
           <app-bill-summary
-            [subtotal]="pagado.subtotal"
-            [discount]="pagado.discount"
+            [subtotal]="pagado.subtotal - pagado.discount"
             [total]="pagado.total"
             totalLabel="Total pagado"
             size="sm"
@@ -94,10 +95,11 @@ import { ToastService } from '../../../shared/feedback/toast.service';
         @if (+bill.total > 0) {
           <div class="mb-4">
             @let summary = billSummary();
+            <!-- spec 115 (A-132): sin la fila "Descuento" -- "Subtotal mesa" ya se muestra neto,
+                 igual que A-125/A-127/A-131. -->
             <app-bill-summary
-              [subtotal]="summary ? summary.subtotal : undefined"
+              [subtotal]="summary ? summary.subtotal - summary.discount : undefined"
               subtotalLabel="Subtotal mesa"
-              [discount]="summary ? summary.discount : 0"
               [total]="+bill.total"
               totalLabel="Total a cobrar"
               size="md"

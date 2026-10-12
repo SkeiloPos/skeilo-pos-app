@@ -430,12 +430,12 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
       (b) => (b as HTMLButtonElement).textContent?.trim() === 'Cobrar',
     ) as HTMLButtonElement;
 
-  it('FR-004: muestra el desglose Subtotal $16.000 / Descuento −$8.000 / Total $8.000 (Scenario 1)', () => {
+  it('FR-004 (spec 115, A-131): muestra Subtotal y Total ambos en $8.000 (ya neto), sin fila "Descuento" ni el bruto 16.000', () => {
     setPreview('16000.00', '8000.00', '8000.00');
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Subtotal');
-    expect(text).toContain('16.000');
-    expect(text).toContain('Descuento');
+    expect(text).not.toContain('16.000');
+    expect(text).not.toContain('Descuento');
     expect(text).toContain('8.000');
     expect(text).toContain('Total');
   });
@@ -591,12 +591,12 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
     expect(text).not.toContain('Descuento'); // sin promoción, sin fila
   });
 
-  it('US3 Scenario 3: domicilio + promoción → Subtotal 16.000 / Descuento −8.000 / Domicilio 5.000 / Total 13.000', () => {
+  it('US3 Scenario 3 (spec 115, A-131): domicilio + promoción → Subtotal ya neto 8.000 / Domicilio 5.000 / Total 13.000, sin fila Descuento ni el bruto 16.000', () => {
     setPreview('16000.00', '8000.00', '13000.00', '5000.00');
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Descuento');
+    expect(text).not.toContain('Descuento');
+    expect(text).not.toContain('16.000');
     expect(text).toContain('Domicilio');
-    expect(text).toContain('16.000');
     expect(text).toContain('8.000');
     expect(text).toContain('5.000');
     expect(text).toContain('13.000');

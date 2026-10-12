@@ -20,7 +20,7 @@ import { ToastService } from '../../../shared/feedback/toast.service';
 import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { Sale } from '../../sales/interfaces/sales.interface';
 import { MenuService } from '../../../core/services/menu.service';
-import { MenuProduct } from '../../products/interfaces/product.interface';
+import { MenuProduct, MenuVariantPromotion } from '../../products/interfaces/product.interface';
 import { PaymentMethodService } from '../../sales/services/payment-method.service';
 import { CashService } from '../../cash-register/services/cash.service';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
@@ -1525,6 +1525,154 @@ describe('PosTerminalStore — openConfigForEdit / editingSelection / addDraftFr
   });
 });
 
+describe('PosTerminalStore.createManualOrderFromDraft — carrito mixto, agnóstico al tipo de pedido (spec 115, hallazgo C7 de /speckit-analyze)', () => {
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+    vi.spyOn(store, 'reload').mockResolvedValue(undefined);
+    // Línea en promoción (agregada desde "Promociones", cantidad ya múltiplo de min_qty=2)
+    // + línea de un producto normal, sin promoción — el mismo pedido.
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Malteada Promo' } as never,
+      variant: { id: 'v1', price: 17000, option_groups: [] } as never,
+      options: [], quantity: 2, notes: null, stepQuantity: 2,
+    });
+    store.addDraftFromSelection({
+      product: { id: 'p2', name: 'Jugo Normal' } as never,
+      variant: { id: 'v2', price: 5000, option_groups: [] } as never,
+      options: [], quantity: 1, notes: null,
+    });
+  });
+
+  afterEach(() => http.verify());
+
+  it.each([
+    ['mesas' as const, 'DINE_IN'],
+    ['para-llevar' as const, 'TAKEAWAY'],
+    ['domicilios' as const, 'DELIVERY'],
+  ])('%s: envía ambas líneas (promoción cantidad 2 + normal cantidad 1) al backend, que es quien resuelve el total con descuento', async (tab, orderType) => {
+    if (tab === 'mesas') store.selectedTableId.set('t1');
+    if (tab === 'domicilios') {
+      store.customerName.set('Ana Torres');
+      store.deliveryAddress.set('Cra 45 #12-30');
+      store.deliveryFee.set(6000);
+    }
+    store.setOrderTypeTab(tab);
+
+    const promise = store.createManualOrderFromDraft();
+    const req = http.expectOne(`${API}/orders`);
+    expect(req.request.body.order_type).toBe(orderType);
+    expect(req.request.body.items).toEqual([
+      expect.objectContaining({ product_variant_id: 'v1', quantity: 2 }),
+      expect.objectContaining({ product_variant_id: 'v2', quantity: 1 }),
+    ]);
+    req.flush({ id: 'o1', channel: 'POS', order_type: orderType, status: 'abierta', created_at: '2026-10-12' });
+
+    expect(await promise).toBe(true);
+  });
+});
+
+describe('PosTerminalStore — openConfig(fromPromotions) (spec 115); incDraft/decDraft siempre de 1 en 1 (A-126)', () => {
+  let store: PosTerminalStore;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+  });
+
+  const producto = { id: 'p1', name: 'Malteada Promo' } as never;
+
+  it('T021: openConfig(product, true) deja configuringProductFromPromotions en true; sin segundo argumento, en false', () => {
+    store.openConfig(producto);
+    expect(store.configuringProductFromPromotions()).toBe(false);
+
+    store.openConfig(producto, true);
+    expect(store.configuringProductFromPromotions()).toBe(true);
+  });
+
+  it('T021: closeConfig() resetea configuringProductFromPromotions a false', () => {
+    store.openConfig(producto, true);
+    store.closeConfig();
+    expect(store.configuringProductFromPromotions()).toBe(false);
+  });
+
+  it('T021: addDraftFromSelection() resetea configuringProductFromPromotions a false', () => {
+    store.openConfig(producto, true);
+    store.addDraftFromSelection({
+      product: producto, variant: { id: 'v1', price: 17000, option_groups: [] } as never,
+      options: [], quantity: 2, notes: null, stepQuantity: 2,
+    });
+    expect(store.configuringProductFromPromotions()).toBe(false);
+  });
+
+  it('A-126: addDraftFromSelection con stepQuantity NO queda guardado en la línea — ya no existe ningún campo "step"', () => {
+    store.addDraftFromSelection({
+      product: producto, variant: { id: 'v1', price: 17000, option_groups: [] } as never,
+      options: [], quantity: 2, notes: null, stepQuantity: 2,
+    });
+
+    const linea = store.draftLines()[0];
+    expect(linea.quantity).toBe(2);
+    expect('step' in linea).toBe(false);
+  });
+
+  it('A-126: incDraft/decDraft SIEMPRE avanzan de 1 en 1, incluso en una línea agregada desde "Promociones" con cantidad mínima > 1', () => {
+    store.addDraftFromSelection({
+      product: producto, variant: { id: 'v1', price: 17000, option_groups: [] } as never,
+      options: [], quantity: 2, notes: null, stepQuantity: 2,
+    });
+    const key = store.draftLines()[0].key;
+
+    store.incDraft(key);
+    expect(store.draftLines()[0].quantity).toBe(3);
+
+    store.decDraft(key);
+    store.decDraft(key);
+    expect(store.draftLines()[0].quantity).toBe(1);
+
+    store.decDraft(key);
+    expect(store.draftLines().length).toBe(0);
+  });
+
+  it('A-126: incDraft/decDraft sin promoción avanzan de 1 en 1 (comportamiento actual sin cambio)', () => {
+    store.addDraftFromSelection({
+      product: { id: 'p2', name: 'Jugo' } as never,
+      variant: { id: 'v2', price: 5000, option_groups: [] } as never,
+      options: [], quantity: 1, notes: null,
+    });
+    const key = store.draftLines()[0].key;
+
+    store.incDraft(key);
+    expect(store.draftLines()[0].quantity).toBe(2);
+
+    store.decDraft(key);
+    store.decDraft(key);
+    expect(store.draftLines().length).toBe(0);
+  });
+});
+
 // ── Descuento por línea del carrito -- cartView().promo (rediseño create-order/code.html) ──
 describe('PosTerminalStore.cartView — promo por línea', () => {
   let store: PosTerminalStore;
@@ -1543,14 +1691,14 @@ describe('PosTerminalStore.cartView — promo por línea', () => {
     store = TestBed.inject(PosTerminalStore);
   });
 
-  it('con cantidad >= min_qty, la línea trae promo con el tachado/descuento/ahorro correctos', () => {
+  it('con min_qty=1 (discounted_price poblado), la línea trae promo con el tachado/descuento/ahorro correctos', () => {
     store.addDraftFromSelection({
       product: { id: 'p1', name: 'Paleta Frutos Rojos' } as never,
       variant: {
         id: 'v1',
         price: 7000,
         discounted_price: 5500,
-        promotion: { min_qty: 2, short_condition: '2x1 Promo' },
+        promotion: { min_qty: 1, short_condition: '-21%' },
       } as never,
       options: [],
       quantity: 2,
@@ -1559,7 +1707,7 @@ describe('PosTerminalStore.cartView — promo por línea', () => {
 
     const row = store.cartView()[0];
     expect(row.promo).toEqual({
-      badge: '2x1 Promo',
+      badge: '-21%',
       originalAmount: 14000,
       discountedAmount: 11000,
       savings: 3000,
@@ -1596,6 +1744,205 @@ describe('PosTerminalStore.cartView — promo por línea', () => {
     });
 
     expect(store.cartView()[0].promo).toBeNull();
+  });
+
+  // ── spec 115 (hallazgo del dueño del producto): package_price con min_qty > 1 ──
+  // `discounted_price` NUNCA llega poblado para este caso (el backend no puede
+  // prometer un precio por unidad que depende de una cantidad aún no elegida,
+  // ver product-select.component.ts) -- la insignia debe salir de
+  // `promo.type`/`value`/`unit_equivalent`, no de `discounted_price`.
+
+  it('con min_qty > 1 (package_price, SIN discounted_price), la línea igual trae promo — mismo cálculo que el modal ("2 x $15.000")', () => {
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo' } as never,
+      variant: {
+        id: 'v1',
+        price: 8000,
+        promotion: {
+          min_qty: 2, short_condition: '2 x $15.000', type: 'package_price', value: 15000, unit_equivalent: 7500,
+        },
+      } as never,
+      options: [],
+      quantity: 2,
+      notes: null,
+    });
+
+    expect(store.cartView()[0].promo).toEqual({
+      badge: '2 x $15.000',
+      originalAmount: 16000,
+      discountedAmount: 15000,
+      savings: 1000,
+    });
+  });
+
+  it('con min_qty > 1 (percent, SIN discounted_price) y cantidad que no completa un paquete entero, cobra el remanente a precio normal', () => {
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo' } as never,
+      variant: {
+        id: 'v1',
+        price: 8000,
+        promotion: {
+          min_qty: 2, short_condition: '2 x -10%', type: 'percent', value: 10, unit_equivalent: 7200,
+        },
+      } as never,
+      options: [],
+      quantity: 3,
+      notes: null,
+    });
+
+    // 1 paquete completo (2 u. a 7.200 c/u = 14.400) + 1 unidad remanente a precio normal (8.000).
+    expect(store.cartView()[0].promo).toEqual({
+      badge: '2 x -10%',
+      originalAmount: 24000,
+      discountedAmount: 22400,
+      savings: 1600,
+    });
+  });
+});
+
+// ── spec 115 (A-134): no mezclar paquete con suelto en la misma línea ──
+describe('PosTerminalStore — no mezclar paquete con suelto en la misma línea (A-134)', () => {
+  let store: PosTerminalStore;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+  });
+
+  const producto = { id: 'p1', name: 'Ojo de Diablo' } as never;
+  const variantePromo = {
+    id: 'v1', price: 8000, option_groups: [],
+    promotion: { min_qty: 2, short_condition: '2 x $15.000', type: 'package_price', value: 15000, unit_equivalent: 7500 },
+  } as never;
+
+  it('incDraft sobre una línea YA completa (qty 2) crea una línea hermana nueva (qty 1), sin tocar la original', () => {
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 2, notes: null });
+    const key = store.draftLines()[0].key;
+
+    store.incDraft(key);
+
+    const lines = store.draftLines();
+    expect(lines.length).toBe(2);
+    expect(lines[0].key).toBe(key);
+    expect(lines[0].quantity).toBe(2);
+    expect(lines[1].key).not.toBe(key);
+    expect(lines[1].quantity).toBe(1);
+  });
+
+  it('incDraft sobre una línea incompleta (qty 1) sigue siendo una sola línea (pasa a qty 2, ahora completa)', () => {
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 1, notes: null });
+    const key = store.draftLines()[0].key;
+
+    store.incDraft(key);
+
+    expect(store.draftLines().length).toBe(1);
+    expect(store.draftLines()[0].quantity).toBe(2);
+  });
+
+  it('addDraftFromSelection dos veces sobre una línea ya completa crea una línea hermana, no fusiona', () => {
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 2, notes: null });
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 1, notes: null });
+
+    const lines = store.draftLines();
+    expect(lines.length).toBe(2);
+    expect(lines[0].quantity).toBe(2);
+    expect(lines[1].quantity).toBe(1);
+    expect(lines[0].key).not.toBe(lines[1].key);
+  });
+
+  it('addDraftFromSelection dos veces sobre una línea incompleta sigue fusionando en una sola línea (caso límite aceptado)', () => {
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 1, notes: null });
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 1, notes: null });
+
+    const lines = store.draftLines();
+    expect(lines.length).toBe(1);
+    expect(lines[0].quantity).toBe(2);
+  });
+
+  it('sin promoción (o min_qty<=1), addDraftFromSelection/incDraft siguen fusionando como siempre (no regresión)', () => {
+    const sinPromo = { id: 'v2', price: 5000, option_groups: [] } as never;
+    store.addDraftFromSelection({ product: { id: 'p2', name: 'Jugo' } as never, variant: sinPromo, options: [], quantity: 1, notes: null });
+    store.addDraftFromSelection({ product: { id: 'p2', name: 'Jugo' } as never, variant: sinPromo, options: [], quantity: 1, notes: null });
+    const key = store.draftLines()[0].key;
+    store.incDraft(key);
+
+    expect(store.draftLines().length).toBe(1);
+    expect(store.draftLines()[0].quantity).toBe(3);
+  });
+
+  it('la línea hermana se inserta inmediatamente después de su línea original, no al final del carrito', () => {
+    store.addDraftFromSelection({ product: { id: 'pA', name: 'Producto A' } as never, variant: { id: 'vA', price: 1000, option_groups: [] } as never, options: [], quantity: 1, notes: null });
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 2, notes: null });
+    store.addDraftFromSelection({ product: { id: 'pB', name: 'Producto B' } as never, variant: { id: 'vB', price: 1000, option_groups: [] } as never, options: [], quantity: 1, notes: null });
+    const keyMalteada = store.draftLines().find((l) => l.product.name === 'Ojo de Diablo')!.key;
+
+    store.incDraft(keyMalteada);
+
+    expect(store.draftLines().map((l) => l.product.name)).toEqual([
+      'Producto A', 'Ojo de Diablo', 'Ojo de Diablo', 'Producto B',
+    ]);
+  });
+
+  it('tres adiciones completas seguidas generan key, key#2, key#3 sin colisionar', () => {
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 2, notes: null });
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 2, notes: null });
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 2, notes: null });
+
+    const keys = store.draftLines().map((l) => l.key);
+    expect(new Set(keys).size).toBe(3);
+    expect(keys[1]).toBe(`${keys[0]}#2`);
+    expect(keys[2]).toBe(`${keys[0]}#3`);
+  });
+
+  it('decDraft sobre una línea hermana específica resta 1 de ESA línea sin tocar la otra (A-126, sin cambio)', () => {
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 2, notes: null });
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 1, notes: null });
+    const [primera, segunda] = store.draftLines();
+
+    store.decDraft(primera.key);
+
+    const lines = store.draftLines();
+    expect(lines.find((l) => l.key === primera.key)?.quantity).toBe(1);
+    expect(lines.find((l) => l.key === segunda.key)?.quantity).toBe(1);
+  });
+
+  it('saveOrder() con dos líneas hermanas hace dos llamadas a addOrderItems, una por línea', async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    const http = TestBed.inject(HttpTestingController);
+    store.selectedOrderId.set('o1');
+    vi.spyOn(store, 'reload').mockResolvedValue(undefined);
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 2, notes: null });
+    store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 1, notes: null });
+
+    const promise = store.saveOrder();
+    const req1 = http.expectOne(`${API}/orders/o1/items`);
+    expect(req1.request.body).toEqual(expect.objectContaining({ product_variant_id: 'v1', quantity: 2 }));
+    req1.flush({ id: 'o1', channel: 'POS', order_type: 'DINE_IN', status: 'abierta', created_at: '2026-10-12' });
+    const req2 = http.expectOne(`${API}/orders/o1/items`);
+    expect(req2.request.body).toEqual(expect.objectContaining({ product_variant_id: 'v1', quantity: 1 }));
+    req2.flush({ id: 'o1', channel: 'POS', order_type: 'DINE_IN', status: 'abierta', created_at: '2026-10-12' });
+
+    expect(await promise).toBe(true);
+    http.verify();
   });
 });
 
@@ -1818,6 +2165,83 @@ describe('PosTerminalStore.catalogSearchText / setCatalogSearchText / catalogPro
 
     store.setCatalogSearchText('xyz-no-existe');
     expect(store.catalogProductsFiltered()).toEqual([]);
+  });
+});
+
+describe('PosTerminalStore.catalogProductsPromotionsFiltered (spec 115, FR-002)', () => {
+  let store: PosTerminalStore;
+  let menuService: MenuService;
+
+  function product(id: string, name: string, promoted = false): MenuProduct {
+    return {
+      id,
+      name,
+      description: null,
+      image_url: null,
+      option_groups: [],
+      available: true,
+      variants: [
+        {
+          id: `${id}-v1`,
+          name: 'Única',
+          price: 1000,
+          option_groups: [],
+          available: true,
+          promotion: promoted ? ({ min_qty: 2 } as MenuVariantPromotion) : null,
+        },
+      ],
+    };
+  }
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    menuService = TestBed.inject(MenuService);
+  });
+
+  it('solo incluye productos con al menos una variante en promoción, sin importar su categoría', () => {
+    menuService.categories.set([
+      { id: 'c1', name: 'Bebidas', products: [product('p1', 'Malteada', true), product('p2', 'Jugo')] },
+      { id: 'c2', name: 'Postres', products: [product('p3', 'Torta', true)] },
+    ]);
+
+    expect(store.catalogProductsPromotionsFiltered().map((p) => p.id)).toEqual(['p1', 'p3']);
+  });
+
+  it('lista vacía cuando ningún producto tiene promoción vigente', () => {
+    menuService.categories.set([
+      { id: 'c1', name: 'Bebidas', products: [product('p1', 'Malteada'), product('p2', 'Jugo')] },
+    ]);
+
+    expect(store.catalogProductsPromotionsFiltered()).toEqual([]);
+  });
+
+  it('respeta el filtro de catalogSearchText igual que catalogProductsAllFiltered', () => {
+    menuService.categories.set([
+      { id: 'c1', name: 'Bebidas', products: [product('p1', 'Malteada de fresa', true), product('p2', 'Jugo de fresa', true)] },
+    ]);
+
+    store.setCatalogSearchText('malteada');
+    expect(store.catalogProductsPromotionsFiltered().map((p) => p.id)).toEqual(['p1']);
+  });
+
+  it('ignora la categoría activa (catalogCategoryId) — es una vista agregada, igual que "Todos"', () => {
+    menuService.categories.set([
+      { id: 'c1', name: 'Bebidas', products: [product('p1', 'Malteada', true)] },
+      { id: 'c2', name: 'Postres', products: [product('p3', 'Torta', true)] },
+    ]);
+    store.catalogCategoryId.set('c1');
+
+    expect(store.catalogProductsPromotionsFiltered().map((p) => p.id)).toEqual(['p1', 'p3']);
   });
 });
 

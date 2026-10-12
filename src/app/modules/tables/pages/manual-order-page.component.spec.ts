@@ -655,7 +655,11 @@ describe('ManualOrderPageComponent', () => {
         id: 'v1',
         price: 7000,
         discounted_price: 5500,
-        promotion: { min_qty: 2, short_condition: '2x1 Promo' },
+        // spec 115 (A-125): `discounted_price` solo llega poblado cuando
+        // `min_qty == 1` -- con `min_qty > 1` el backend nunca lo puebla
+        // (ver `cartLinePromo()`), así que este fixture usa `min_qty: 1`
+        // para seguir probando ese camino sin describir un dato imposible.
+        promotion: { min_qty: 1, short_condition: '-21%' },
       } as never,
       options: [],
       quantity: 2,
@@ -664,7 +668,7 @@ describe('ManualOrderPageComponent', () => {
     fixture.detectChanges();
 
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(texto).toContain('2x1 Promo');
+    expect(texto).toContain('-21%');
     expect(texto).toContain('Ahorras');
     // $ 14.000 tachado (2 x $7.000 sin descuento) y $ 11.000 con descuento (2 x $5.500).
     expect(texto).toContain('14.000');
@@ -695,6 +699,36 @@ describe('ManualOrderPageComponent', () => {
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(texto).not.toContain('2x1 Promo');
     expect(texto).not.toContain('Ahorras');
+  });
+
+  it('spec 115 (A-125): una línea con promoción de precio de paquete (min_qty > 1, sin discounted_price) también muestra insignia, tachado y "Ahorras $X"', async () => {
+    createComponent('t1');
+    tableService.tables.set([table({ id: 't1', number: 3 })]);
+    fixture.detectChanges();
+    await Promise.resolve();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo' } as never,
+      variant: {
+        id: 'v1',
+        price: 8000,
+        promotion: {
+          min_qty: 2, short_condition: '2 x $15.000', type: 'package_price', value: 15000, unit_equivalent: 7500,
+        },
+      } as never,
+      options: [],
+      quantity: 2,
+      notes: null,
+    });
+    fixture.detectChanges();
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain('2 x $15.000');
+    expect(texto).toContain('Ahorras');
+    // $ 16.000 tachado (2 x $8.000 sin descuento) y $ 15.000 con descuento de paquete.
+    expect(texto).toContain('16.000');
+    expect(texto).toContain('15.000');
   });
 
   it('el selector de mesas permite buscar y cambiar a otra mesa libre, pero no a una ocupada (spec 053, US1, FR-002/FR-005)', async () => {
@@ -1665,6 +1699,12 @@ describe('ManualOrderPageComponent — desglose del borrador (spec 073, US5)', (
   }
 
   const summaryText = (): string => fixture.nativeElement.textContent as string;
+  /** A-127: texto del único `<app-bill-summary>` (Subtotal/Descuento/Total), sin el resto de la
+   *  página — el costo de cada línea del carrito también pinta cifras en pesos y puede coincidir
+   *  por casualidad con las del resumen, así que las aserciones sobre qué NO debe verse en el
+   *  resumen deben acotarse a este elemento, no a toda la página. */
+  const billSummaryText = (): string =>
+    (fixture.nativeElement.querySelector('app-bill-summary') as HTMLElement).textContent as string;
 
   it('Scenario 1: 1 cono → Total $8.000 sin fila de descuento', async () => {
     setup();
@@ -1679,7 +1719,7 @@ describe('ManualOrderPageComponent — desglose del borrador (spec 073, US5)', (
     expect(summaryText()).not.toContain('Descuento');
   });
 
-  it('Scenario 2: 2 conos → Subtotal 16.000 / Descuento −8.000 / Total 8.000', async () => {
+  it('Scenario 2 (spec 115, A-125/A-127): 2 conos → Subtotal y Total ambos 8.000 (ya neto), SIN fila "Descuento" ni el bruto 16.000', async () => {
     setup();
     vi.spyOn(api, 'draftPreview').mockResolvedValue(preview('16000', '8000', '8000'));
     fixture.detectChanges();
@@ -1688,10 +1728,33 @@ describe('ManualOrderPageComponent — desglose del borrador (spec 073, US5)', (
     await new Promise((r) => setTimeout(r));
     fixture.detectChanges();
 
-    const t = summaryText();
-    expect(t).toContain('Descuento');
-    expect(t).toContain('16.000');
-    expect(t).toContain('8.000');
+    // A-127: "Subtotal" se muestra ya neto (16.000 - 8.000 = 8.000), igual que "Total" —
+    // consistente con lo que cada línea en promoción ya muestra (A-125). El bruto (16.000) no
+    // debe aparecer en el resumen (sí puede seguir apareciendo en el costo de otra línea sin
+    // promoción, que no es lo que se está probando aquí).
+    const resumen = billSummaryText();
+    expect(resumen).not.toContain('Descuento');
+    expect(resumen).not.toContain('16.000');
+    expect(resumen).toContain('8.000');
+  });
+
+  it('A-127: reporte exacto del dueño del producto — "ojo de diablo" (2 x $15.000, subtotal 16.000, descuento 1.000) → Subtotal y TOTAL ORDEN ambos 15.000', async () => {
+    setup();
+    vi.spyOn(api, 'draftPreview').mockResolvedValue(preview('16000', '1000', '15000'));
+    fixture.detectChanges();
+
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo' } as never,
+      variant: { id: 'v1', price: 8000 } as never,
+      options: [], quantity: 2, notes: null, stepQuantity: 2,
+    });
+    await new Promise((r) => setTimeout(r));
+    fixture.detectChanges();
+
+    const resumen = billSummaryText();
+    expect(resumen).not.toContain('Descuento');
+    expect(resumen).not.toContain('16.000');
+    expect(resumen).toContain('15.000');
   });
 
   it('Scenario 4 (FR-015): si el draft-preview falla, muestra el subtotal sin descuento + aviso y NO deshabilita "Crear pedido"', async () => {
@@ -1753,6 +1816,205 @@ describe('ManualOrderPageComponent — desglose del borrador (spec 073, US5)', (
     await new Promise((r) => setTimeout(r));
     expect(createSpy).toHaveBeenCalledTimes(1);
     expect(confirmSvc.state()).toBeNull();
+  });
+});
+
+/**
+ * spec 115: pestaña "Promociones" en el catálogo de "Crear pedido manual" —
+ * filtra por `hasPromotion`, no se autoselecciona, y el paso de cantidad
+ * forzado (`fromPromotions`) solo se activa al agregar desde esa pestaña.
+ */
+describe('ManualOrderPageComponent — pestaña "Promociones" (spec 115)', () => {
+  let fixture: ComponentFixture<ManualOrderPageComponent>;
+  let store: PosTerminalStore;
+  let menuService: MenuService;
+
+  function promoVariant(partial: Partial<MenuProduct['variants'][number]> = {}) {
+    return {
+      id: 'v1', name: 'Única', price: 17000, option_groups: [], available: true,
+      promotion: {
+        condition_text: '2 x $17.000', short_condition: '2 x $17.000',
+        unit_equivalent: 8500, unit_equivalent_approx: false, unit_equivalent_text: '$8.500 c/u',
+        display_text: '2 x $17.000', type: 'package_price', min_qty: 2, value: 17000,
+      },
+      ...partial,
+    } as MenuProduct['variants'][number];
+  }
+
+  function setup(): void {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ManualOrderPageComponent],
+      providers: [
+        provideRouter([]),
+        swPushStub,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({}), queryParamMap: convertToParamMap({}) } },
+        },
+      ],
+    });
+    fixture = TestBed.createComponent(ManualOrderPageComponent);
+    store = fixture.componentInstance.store;
+    menuService = TestBed.inject(MenuService);
+    TestBed.inject(HttpTestingController);
+    vi.spyOn(store, 'init').mockResolvedValue(undefined);
+    vi.spyOn(TestBed.inject(DiningSessionService), 'draftPreview').mockRejectedValue(
+      new Error('draft-preview no mockeado en este test'),
+    );
+    store.customerName.set('Ana Torres');
+  }
+
+  function navButtons(): HTMLButtonElement[] {
+    return Array.from(fixture.nativeElement.querySelectorAll('nav button'));
+  }
+
+  function clickCardByName(name: string): void {
+    const card = Array.from(fixture.nativeElement.querySelectorAll('[data-testid="catalogo-column"] button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.includes(name),
+    ) as HTMLButtonElement;
+    card.click();
+    fixture.detectChanges();
+  }
+
+  it('T006: la navegación del catálogo incluye el botón "Promociones" junto a "Todos" y las categorías', () => {
+    setup();
+    menuService.categories.set([menuCategory([menuProduct({ id: 'p1', name: 'Fresa' })], { id: 'c1', name: 'Bebidas' })]);
+    fixture.detectChanges();
+
+    const textos = navButtons().map((b) => b.textContent?.trim());
+    expect(textos.some((t) => t?.includes('Promociones'))).toBe(true);
+  });
+
+  it('T007: al seleccionar "Promociones" la grilla muestra solo productos en promoción, con su condición visible', () => {
+    setup();
+    menuService.categories.set([
+      menuCategory(
+        [
+          menuProduct({ id: 'p1', name: 'Malteada Promo', variants: [promoVariant()] }),
+          menuProduct({ id: 'p2', name: 'Jugo Normal' }),
+        ],
+        { id: 'c1', name: 'Bebidas' },
+      ),
+    ]);
+    fixture.detectChanges();
+
+    const promoBtn = navButtons().find((b) => b.textContent?.includes('Promociones'))!;
+    promoBtn.click();
+    fixture.detectChanges();
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain('Malteada Promo');
+    expect(texto).not.toContain('Jugo Normal');
+    expect(texto).toContain('2 x $17.000');
+  });
+
+  it('T008: sin promociones vigentes, "Promociones" muestra un mensaje explícito en vez de una grilla vacía', () => {
+    setup();
+    menuService.categories.set([menuCategory([menuProduct({ id: 'p1', name: 'Jugo Normal' })], { id: 'c1', name: 'Bebidas' })]);
+    fixture.detectChanges();
+
+    navButtons().find((b) => b.textContent?.includes('Promociones'))!.click();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('No hay promociones activas en este momento');
+  });
+
+  it('T009: al cargar la página, "Todos" sigue seleccionado por defecto — "Promociones" no se autoselecciona (FR-013)', () => {
+    setup();
+    menuService.categories.set([
+      menuCategory([menuProduct({ id: 'p1', name: 'Malteada Promo', variants: [promoVariant()] })], { id: 'c1', name: 'Bebidas' }),
+    ]);
+    fixture.detectChanges();
+
+    const todosBtn = navButtons().find((b) => b.textContent?.includes('Todos'))!;
+    const promoBtn = navButtons().find((b) => b.textContent?.includes('Promociones'))!;
+    expect(todosBtn.className).toContain('font-semibold');
+    expect(promoBtn.className).not.toContain('font-semibold');
+  });
+
+  it('T024: al agregar desde "Promociones", store.openConfig recibe fromPromotions=true; desde "Todos", false', () => {
+    setup();
+    menuService.categories.set([
+      menuCategory([menuProduct({ id: 'p1', name: 'Malteada Promo', variants: [promoVariant()] })], { id: 'c1', name: 'Bebidas' }),
+    ]);
+    fixture.detectChanges();
+    const openSpy = vi.spyOn(store, 'openConfig');
+
+    clickCardByName('Malteada Promo'); // desde "Todos"
+    expect(openSpy).toHaveBeenLastCalledWith(expect.anything(), false);
+    store.closeConfig();
+    fixture.detectChanges();
+
+    navButtons().find((b) => b.textContent?.includes('Promociones'))!.click();
+    fixture.detectChanges();
+    clickCardByName('Malteada Promo'); // desde "Promociones"
+    expect(openSpy).toHaveBeenLastCalledWith(expect.anything(), true);
+  });
+
+  it('T028: reabrir desde "Promociones" un producto con cantidad existente no múltiplo ajusta hacia arriba (FR-010)', () => {
+    setup();
+    menuService.categories.set([
+      menuCategory([menuProduct({ id: 'p1', name: 'Malteada Promo', variants: [promoVariant()] })], { id: 'c1', name: 'Bebidas' }),
+    ]);
+    fixture.detectChanges();
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Malteada Promo', variants: [promoVariant()] } as never,
+      variant: promoVariant() as never,
+      options: [], quantity: 1, notes: null,
+    });
+    fixture.detectChanges();
+
+    navButtons().find((b) => b.textContent?.includes('Promociones'))!.click();
+    fixture.detectChanges();
+    clickCardByName('Malteada Promo');
+    fixture.detectChanges();
+
+    const masBtn = fixture.nativeElement.querySelector('app-product-select [aria-label="Añadir uno"]') as HTMLElement;
+    const modalQty = masBtn.previousElementSibling as HTMLElement;
+    expect(modalQty.textContent?.trim()).toBe('2');
+  });
+
+  it('T038: agregar desde la categoría original (no "Promociones") deja la línea en cantidad 1', () => {
+    setup();
+    menuService.categories.set([
+      menuCategory([menuProduct({ id: 'p1', name: 'Malteada Promo', variants: [promoVariant()] })], { id: 'c1', name: 'Bebidas' }),
+    ]);
+    fixture.detectChanges();
+
+    clickCardByName('Malteada Promo');
+    fixture.detectChanges();
+    const addBtn = Array.from(fixture.nativeElement.querySelectorAll('app-product-select button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Agregar'),
+    ) as HTMLButtonElement;
+    addBtn.click();
+    fixture.detectChanges();
+
+    expect(store.draftLines()[0].quantity).toBe(1);
+  });
+
+  it('T039: encontrar el producto con el buscador (sin pasar por "Promociones") deja la línea en cantidad 1', () => {
+    setup();
+    menuService.categories.set([
+      menuCategory([menuProduct({ id: 'p1', name: 'Malteada Promo', variants: [promoVariant()] })], { id: 'c1', name: 'Bebidas' }),
+    ]);
+    fixture.detectChanges();
+
+    store.setCatalogSearchText('Malteada');
+    fixture.detectChanges();
+    clickCardByName('Malteada Promo');
+    fixture.detectChanges();
+    const addBtn = Array.from(fixture.nativeElement.querySelectorAll('app-product-select button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Agregar'),
+    ) as HTMLButtonElement;
+    addBtn.click();
+    fixture.detectChanges();
+
+    expect(store.draftLines()[0].quantity).toBe(1);
   });
 });
 
@@ -1825,8 +2087,9 @@ describe('ManualOrderPageComponent — TOTAL ORDEN con ítems guardados (spec 08
       { product_variant_id: 'v1', quantity: 2, options: [] },
     ]);
     // 12.000 viene del backend (con promoción); el subtotal local sería 16.000 sin descuento.
+    // spec 115, A-125: la fila "Descuento" se ocultó, pero el TOTAL ORDEN sigue con el valor correcto.
     expect(texto()).toContain('12.000');
-    expect(texto()).toContain('Descuento');
+    expect(texto()).not.toContain('Descuento');
   });
 
   it('al anular un ítem guardado, el total desciende sin recargar', async () => {

@@ -188,13 +188,25 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               <span class="text-[11px] text-[#6b7280] font-mono">[F1]</span>
               <span>Todos</span>
             </button>
+            <button
+              type="button"
+              (click)="selectPromotions()"
+              class="h-full px-3.5 text-[13px] whitespace-nowrap rounded-[6px] flex items-center transition-colors"
+              [class]="
+                showingPromotions()
+                  ? 'bg-[#f3f4f6] border border-[#e5e7eb] text-[#111827] font-semibold'
+                  : 'bg-white hover:bg-[#f9fafb] border border-transparent hover:border-[#e5e7eb] text-[#4b5563] hover:text-[#111827] font-medium'
+              "
+            >
+              Promociones
+            </button>
             @for (c of store.categories(); track c.id) {
               <button
                 type="button"
                 (click)="selectCategory(c.id)"
                 class="h-full px-3.5 text-[13px] whitespace-nowrap rounded-[6px] flex items-center transition-colors"
                 [class]="
-                  !showingAllCategories() && store.catalogCategoryId() === c.id
+                  !showingAllCategories() && !showingPromotions() && store.catalogCategoryId() === c.id
                     ? 'bg-[#f3f4f6] border border-[#e5e7eb] text-[#111827] font-semibold'
                     : 'bg-white hover:bg-[#f9fafb] border border-transparent hover:border-[#e5e7eb] text-[#4b5563] hover:text-[#111827] font-medium'
                 "
@@ -209,7 +221,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               @for (p of catalogProducts(); track p.id) {
                 <button
                   type="button"
-                  (click)="store.openConfig(p)"
+                  (click)="store.openConfig(p, showingPromotions())"
                   class="relative p-2.5 bg-white border border-[#e5e7eb] hover:bg-[#f9fafb] active:bg-[#f3f4f6] rounded-[6px] flex flex-col gap-2 text-left transition-colors"
                 >
                   <div class="relative w-full h-28 overflow-hidden bg-[#f3f4f6] rounded-[6px]">
@@ -255,7 +267,11 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               }
               @if (catalogProducts().length === 0) {
                 <p class="col-span-full text-center text-[13px] text-[#9ca3af] py-10">
-                  Sin productos que coincidan.
+                  @if (showingPromotions()) {
+                    No hay promociones activas en este momento.
+                  } @else {
+                    Sin productos que coincidan.
+                  }
                 </p>
               }
             </div>
@@ -734,9 +750,13 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                      promoción) lo calcula el backend sobre el borrador. -->
                 <!-- spec 087, FR-016: los combos no pasan por el endpoint; se
                      suman a su precio de combo, sin descuento adicional. -->
+                <!-- spec 115, A-127: "Subtotal" se muestra ya neto (sin el
+                     descuento), para que coincida con el precio que cada línea
+                     en promoción ya muestra tachado/con descuento (A-125) —
+                     sin la fila "Descuento" (A-125), un Subtotal bruto se veía
+                     inconsistente con las líneas y con el Total. -->
                 <app-bill-summary
-                  [subtotal]="+p.subtotal + store.combosSubtotal()"
-                  [discount]="+p.discount"
+                  [subtotal]="+p.subtotal - +p.discount + store.combosSubtotal()"
                   [deliveryFee]="+p.delivery_fee"
                   deliveryFeeLabel="Costo de domicilio"
                   [showDeliveryIcon]="true"
@@ -811,6 +831,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
       <app-product-select
         [product]="product"
         [initialSelection]="store.editingSelection()"
+        [fromPromotions]="store.configuringProductFromPromotions()"
         (added)="store.addDraftFromSelection($event)"
         (cancelled)="store.closeConfig()"
       />
@@ -843,11 +864,19 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
    *  `store.catalogProductsAllFiltered()` en su lugar. */
   readonly showingAllCategories = signal(true);
 
+  /** spec 115 (FR-001/FR-013): pestaña "Promociones" — tercer modo de
+   *  navegación, igual de agregado que "Todos" pero filtrado por
+   *  `hasPromotion`. No se autoselecciona al cargar (FR-013): por defecto
+   *  queda en `false`, sin ningún `effect()` que la active. */
+  readonly showingPromotions = signal(false);
+
   /** Fuente de datos del grid según la pestaña activa. */
   readonly catalogProducts = computed(() =>
-    this.showingAllCategories()
-      ? this.store.catalogProductsAllFiltered()
-      : this.store.catalogProductsFiltered(),
+    this.showingPromotions()
+      ? this.store.catalogProductsPromotionsFiltered()
+      : this.showingAllCategories()
+        ? this.store.catalogProductsAllFiltered()
+        : this.store.catalogProductsFiltered(),
   );
 
   /**
@@ -920,12 +949,20 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
   }
 
   selectAllCategories(): void {
+    this.showingPromotions.set(false);
     this.showingAllCategories.set(true);
   }
 
   selectCategory(id: string): void {
+    this.showingPromotions.set(false);
     this.showingAllCategories.set(false);
     this.store.setCatalogCategory(id);
+  }
+
+  /** spec 115 (FR-001). */
+  selectPromotions(): void {
+    this.showingAllCategories.set(false);
+    this.showingPromotions.set(true);
   }
 
   selectTable(id: string): void {

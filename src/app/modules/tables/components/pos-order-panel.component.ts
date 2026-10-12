@@ -214,41 +214,43 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                             >{{ parts.variant }}</span
                           >
                         }
-                        @if (it.promo; as promo) {
-                          <span
-                            class="bg-[#fee2e2] text-[#dc2626] text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap"
-                            >{{ promo.badge }} Promoción</span
-                          >
-                        }
                       </div>
                       <div class="text-[11px] text-[#9ca3af]">{{ store.fmt(it.unitPrice) }} c/u</div>
+                      @if (it.promo; as promo) {
+                        <!-- spec 115 (A-129): mismo formato de condición que ya usa
+                             product-select.component.ts (data-testid="variant-promo"), en vez
+                             del esquema rojo/"Ahorras" anterior -- consistencia con el modal. -->
+                        <span
+                          class="inline-block bg-[#e0e7ff] text-[#4338ca] text-[10px] font-semibold px-1.5 py-0.5 rounded mt-0.5 whitespace-nowrap"
+                          >{{ promo.badge }}</span
+                        >
+                      }
                     </div>
                     <div class="text-right shrink-0">
                       @if (it.promo; as promo) {
-                        <div class="font-bold text-[#dc2626] text-[14px]">{{
-                          store.fmt(promo.discountedAmount)
-                        }}</div>
+                        <div class="flex items-center justify-end gap-1.5">
+                          <span class="line-through text-[11px] text-[#9ca3af] font-mono">{{
+                            store.fmt(promo.originalAmount)
+                          }}</span>
+                          <span class="font-bold text-[#4f46e5] text-[14px]">{{
+                            store.fmt(promo.discountedAmount)
+                          }}</span>
+                        </div>
                       } @else {
                         <div class="font-bold text-[#111827] text-[14px]">{{ store.fmt(it.subtotal) }}</div>
                       }
-                      <div class="text-[11px] text-[#9ca3af]">{{ it.qty }} × {{ store.fmt(it.unitPrice) }}</div>
+                      @if (!it.promo) {
+                        <!-- spec 115 (A-133): se quita con promoción -- con cantidades que no
+                             completan un paquete exacto, el precio promedio por unidad no
+                             representa ningún precio real cobrado, solo confunde. -->
+                        <div class="text-[11px] text-[#9ca3af]">{{ it.qty }} × {{ store.fmt(it.unitPrice) }}</div>
+                      }
                       @if (it.addonsTotal > 0) {
                         <!-- spec 089 (A-94): adicionales del Menú QR, cobrados una vez por línea. -->
                         <div class="text-[11px] text-[#9ca3af]">+ {{ store.fmt(it.addonsTotal) }} adicionales</div>
                       }
                     </div>
                   </div>
-                  @if (it.promo; as promo) {
-                    <div class="flex items-center gap-1.5 flex-wrap">
-                      <span class="line-through text-[11px] text-[#9ca3af] font-mono">{{
-                        store.fmt(promo.originalAmount)
-                      }}</span>
-                      <span
-                        class="inline-flex items-center gap-1 bg-[#ecfdf5] text-[#15803d] border border-[#bbf7d0] text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                        ><app-mi-icon name="check" [size]="12" /> Ahorras {{ store.fmt(promo.savings) }}</span
-                      >
-                    </div>
-                  }
                   <!-- Opciones elegidas (agrupadas por el nombre de su grupo,
                        p. ej. "Toppings", "Sabores") + nota de texto libre --
                        reutilizado tal cual en manual-order-page.component.ts. -->
