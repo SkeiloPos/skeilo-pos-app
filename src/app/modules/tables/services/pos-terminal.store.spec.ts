@@ -1599,6 +1599,98 @@ describe('PosTerminalStore.cartView — promo por línea', () => {
   });
 });
 
+// ── spec 113: cartView().name muestra la presentación elegida en líneas de borrador ──
+describe('PosTerminalStore.cartView — nombre con presentación de líneas de borrador (spec 113)', () => {
+  let store: PosTerminalStore;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+  });
+
+  const ojoDeDiabloVariants = [
+    { id: 'v-8oz', name: '8 oz', price: 8000 },
+    { id: 'v-12oz', name: '12 oz', price: 11000 },
+    { id: 'v-16oz', name: '16 oz', price: 15000 },
+  ];
+
+  it('con más de una presentación configurada, el nombre combina producto y presentación elegida', () => {
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo', variants: ojoDeDiabloVariants } as never,
+      variant: ojoDeDiabloVariants[1] as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+
+    expect(store.cartView()[0].name).toBe('Ojo de Diablo · 12 oz');
+  });
+
+  it('con una sola presentación configurada, el nombre NO antepone ningún texto de presentación (FR-003)', () => {
+    store.addDraftFromSelection({
+      product: { id: 'p2', name: 'Cono Sencillo', variants: [{ id: 'v-unica', name: 'Único', price: 3000 }] } as never,
+      variant: { id: 'v-unica', name: 'Único', price: 3000 } as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+
+    expect(store.cartView()[0].name).toBe('Cono Sencillo');
+  });
+
+  it('al editar una línea y cambiar su presentación, el nombre combinado refleja la nueva elección (FR-004)', () => {
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo', variants: ojoDeDiabloVariants } as never,
+      variant: ojoDeDiabloVariants[1] as never, // "12 oz"
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+    const key = store.draftLines()[0].key;
+    store.openConfigForEdit(key);
+
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo', variants: ojoDeDiabloVariants } as never,
+      variant: ojoDeDiabloVariants[2] as never, // "16 oz"
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+
+    expect(store.draftLines().length).toBe(1);
+    expect(store.cartView()[0].name).toBe('Ojo de Diablo · 16 oz');
+  });
+
+  it('el mismo producto agregado con presentaciones distintas genera líneas independientes, cada una con su propio nombre (FR-005)', () => {
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo', variants: ojoDeDiabloVariants } as never,
+      variant: ojoDeDiabloVariants[0] as never, // "8 oz"
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo', variants: ojoDeDiabloVariants } as never,
+      variant: ojoDeDiabloVariants[1] as never, // "12 oz"
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+
+    const names = store.cartView().map((r) => r.name);
+    expect(names).toEqual(['Ojo de Diablo · 8 oz', 'Ojo de Diablo · 12 oz']);
+  });
+});
+
 // ── spec 056: totals() suma deliveryFee solo con "domicilios" ──────────────
 describe('PosTerminalStore.totals — deliveryFee (spec 056, FR-009/FR-012)', () => {
   let store: PosTerminalStore;

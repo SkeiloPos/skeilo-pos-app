@@ -1120,7 +1120,16 @@ export class PosTerminalStore {
         key: l.key,
         comboId: undefined as string | undefined,
         qty: l.quantity,
-        name: l.product.name,
+        // Mismo formato y mismo umbral que `menu-lookup.ts::indexVariants()`
+        // ("Producto · Variante" solo si el producto tiene más de una
+        // presentación), pero resuelto desde el propio draft en vez de `lk`:
+        // `lk` depende de que `menuService.categories()` ya tenga este
+        // producto indexado, y un borrador recién agregado no debe mostrar el
+        // fallback genérico `'Producto'` de `variantLabel()` si ese índice
+        // aún no está listo -- el draft ya trae `product`/`variant` completos.
+        name: (l.product.variants?.length ?? 0) > 1
+          ? `${l.product.name} · ${l.variant.name}`
+          : l.product.name,
         options: l.options.map(
           (c): CartOptionLine => ({
             groupLabel: c.groupName,
