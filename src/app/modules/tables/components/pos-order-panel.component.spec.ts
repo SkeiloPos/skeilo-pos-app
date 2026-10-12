@@ -12,6 +12,7 @@ import { PromotionService } from '../../promotions/services/promotion.service';
 import { DiningOrder, DiningOrderItem } from '../interfaces/dining.interface';
 import { TableService } from '../services/table.service';
 import { Table } from '../interfaces/table.interface';
+import { MenuService } from '../../../core/services/menu.service';
 
 const API = environment.apiBaseUrl;
 
@@ -249,6 +250,89 @@ describe('PosOrderPanelComponent — adicionales por línea (spec 089)', () => {
     expect(row.promo?.discountedAmount).toBe(27000); // 12.000 × 2 + 3.000
     expect(row.promo?.originalAmount).toBe(33000); // 15.000 × 2 + 3.000
     expect(row.promo?.savings).toBe(6000); // el adicional no se descuenta
+  });
+
+  it('A-129: la insignia de promoción usa el mismo formato del modal (condición sola, sin "Promoción" ni "Ahorras")', () => {
+    conItem({
+      addons_total: '3000', line_total: '33000',
+      discounted_unit_price: '12000.00', discounted_line_total: '27000.00',
+    });
+    // `promo.badge` sale de `discountInfo()` como "-N%" para este camino (sin catalogPromo) --
+    // se verifica el texto exacto que arma el store, no uno inventado en el test.
+    const badge = store.cartView()[0].promo?.badge as string;
+    expect(badge).toBeTruthy();
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain(badge);
+    expect(texto).not.toContain('Promoción');
+    expect(texto).not.toContain('Ahorras');
+  });
+
+  it('A-133 (revierte A-130): con promoción, "{{ qty }} × ..." ya no se muestra en absoluto — con cantidades que no completan un paquete exacto, un promedio por unidad no representa ningún precio real', () => {
+    conItem({ unit_price: '8000', discounted_unit_price: '7500.00', discounted_line_total: '15000.00' });
+
+    const row = store.cartView()[0];
+    expect(row.promo).toEqual({ badge: '-6%', originalAmount: 16000, discountedAmount: 15000, savings: 1000 });
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    // "$ 7.500 c/u" (itemUnitPrice, ya descontado) sigue mostrándose -- lo único que se quita es
+    // la fila "{{ qty }} × ...", que aquí habría sido un promedio ("2 × $ 7.500") sin relación
+    // con ningún precio real cobrado.
+    expect(texto).not.toContain('2 × $');
+  });
+
+  it('A-133: sin promoción, "{{ qty }} × ..." se sigue mostrando con el precio de lista (sin cambio)', () => {
+    conItem({ unit_price: '8000' });
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain('2 × $ 8.000');
+  });
+
+  // ─── spec 115 (hallazgo adicional): ítem "Pendiente" sin discounted_unit_price todavía ───
+
+  it('A-128: un ítem "Pendiente" (sin discounted_unit_price, antes de cobrar) con promoción de paquete vigente en el catálogo muestra la insignia/tachado estimados', () => {
+    const menuService = TestBed.inject(MenuService);
+    menuService.categories.set([
+      {
+        id: 'c1', name: 'Helados', products: [{
+          id: 'p1', name: 'Ojo de Diablo', description: null, image_url: null, available: true,
+          option_groups: [],
+          variants: [{
+            id: 'v1', name: '8 onz', price: 8000, option_groups: [], available: true,
+            promotion: {
+              min_qty: 2, short_condition: '2 x $15.000', type: 'package_price', value: 15000, unit_equivalent: 7500,
+            } as never,
+          }],
+        }],
+      },
+    ]);
+
+    conItem({ unit_price: '8000', quantity: 2 });
+
+    const row = store.cartView()[0];
+    expect(row.promo).toEqual({
+      badge: '2 x $15.000',
+      originalAmount: 16000,
+      discountedAmount: 15000,
+      savings: 1000,
+    });
+    // `subtotal`/`unitPrice` de la línea NO cambian -- `discounted_unit_price` sigue sin
+    // congelar; el backend resuelve el importe real al cobrar (FR-023, sin cambio).
+    expect(row.subtotal).toBe(16000);
+  });
+
+  it('A-128: un ítem "Pendiente" sin promoción vigente en el catálogo no muestra ninguna insignia', () => {
+    const menuService = TestBed.inject(MenuService);
+    menuService.categories.set([
+      { id: 'c1', name: 'Helados', products: [{
+        id: 'p1', name: 'Ojo de Diablo', description: null, image_url: null, available: true,
+        option_groups: [], variants: [{ id: 'v1', name: '8 onz', price: 8000, option_groups: [], available: true }],
+      }] },
+    ]);
+
+    conItem({ unit_price: '8000', quantity: 2 });
+
+    expect(store.cartView()[0].promo).toBeNull();
   });
 });
 

@@ -279,4 +279,83 @@ describe('PosCatalogDrawerComponent', () => {
     ) as HTMLButtonElement;
     expect(productButton.disabled).toBe(false);
   });
+
+  // ─── spec 115: pestaña "Promociones" (FR-014 — mismo tratamiento que manual-order-page) ───
+
+  function productoConPromo(id: string, name: string, minQty = 2): MenuProduct {
+    return {
+      id, name, description: null, image_url: null, option_groups: [], available: true,
+      variants: [{
+        id: `${id}-v1`, name: 'Única', price: 17000, option_groups: [], available: true,
+        promotion: {
+          condition_text: '2 x $17.000', short_condition: '2 x $17.000', unit_equivalent: 8500,
+          unit_equivalent_approx: false, unit_equivalent_text: '$8.500 c/u',
+          display_text: '2 x $17.000', type: 'package_price', min_qty: minQty, value: 17000,
+        },
+      }],
+    } as unknown as MenuProduct;
+  }
+
+  it('T011: la fila de categorías incluye el botón "Promociones"', () => {
+    fixture.detectChanges();
+
+    const textos = Array.from(fixture.nativeElement.querySelectorAll('button')).map(
+      (b) => (b as HTMLButtonElement).textContent?.trim(),
+    );
+    expect(textos.some((t) => t?.includes('Promociones'))).toBe(true);
+  });
+
+  it('T012: al seleccionar "Promociones" la grilla muestra solo productos en promoción, con su condición visible', () => {
+    menuService.categories.set([
+      { id: 'c1', name: 'Bebidas', products: [productoConPromo('p1', 'Malteada Promo'), product('p2', 'Jugo Normal')] },
+    ]);
+    fixture.detectChanges();
+
+    const promoBtn = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Promociones'),
+    ) as HTMLButtonElement;
+    promoBtn.click();
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Malteada Promo');
+    expect(text).not.toContain('Jugo Normal');
+    expect(text).toContain('2 x $17.000');
+  });
+
+  it('T013: sin promociones vigentes, "Promociones" muestra el mismo mensaje explícito que manual-order-page', () => {
+    menuService.categories.set([{ id: 'c1', name: 'Bebidas', products: [product('p1', 'Jugo Normal')] }]);
+    fixture.detectChanges();
+
+    const promoBtn = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Promociones'),
+    ) as HTMLButtonElement;
+    promoBtn.click();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('No hay promociones activas en este momento');
+  });
+
+  it('T026/T040: openConfig recibe fromPromotions=true desde "Promociones", false desde una categoría (FR-014)', () => {
+    menuService.categories.set([
+      { id: 'c1', name: 'Bebidas', products: [productoConPromo('p1', 'Malteada Promo')] },
+    ]);
+    fixture.detectChanges();
+    const openSpy = vi.spyOn(store, 'openConfig');
+
+    const card = () => Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Malteada Promo'),
+    ) as HTMLButtonElement;
+
+    card().click(); // desde la categoría "Bebidas" (no "Promociones")
+    expect(openSpy).toHaveBeenLastCalledWith(expect.anything(), false);
+
+    const promoBtn = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Promociones'),
+    ) as HTMLButtonElement;
+    promoBtn.click();
+    fixture.detectChanges();
+    card().click(); // desde "Promociones"
+    expect(openSpy).toHaveBeenLastCalledWith(expect.anything(), true);
+  });
 });

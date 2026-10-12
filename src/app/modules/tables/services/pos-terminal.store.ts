@@ -3,12 +3,13 @@ import {
   MenuCategory,
   MenuProduct,
   MenuVariant,
+  MenuVariantPromotion,
 } from '../../products/interfaces/product.interface';
 import { PaymentMethod, Sale } from '../../sales/interfaces/sales.interface';
 import { MenuService } from '../../../core/services/menu.service';
 import { Promotion } from '../../promotions/interfaces/promotion.interface';
 import { PromotionService } from '../../promotions/services/promotion.service';
-import { discountInfo, effectivePrice } from '../../promotions/services/promotion-pricing.util';
+import { discountInfo, effectivePrice, hasPromotion, packagePrice } from '../../promotions/services/promotion-pricing.util';
 import { PaymentMethodService } from '../../sales/services/payment-method.service';
 import { CashService } from '../../cash-register/services/cash.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
@@ -395,6 +396,10 @@ export class PosTerminalStore {
   readonly catalogOpen = signal(false);
   readonly catalogCategoryId = signal<string | null>(null);
   readonly configuringProduct = signal<MenuProduct | null>(null);
+  /** spec 115 (FR-004): `true` cuando `configuringProduct` se abrió desde la
+   *  pestaña "Promociones" — gobierna el `[fromPromotions]` de
+   *  `<app-product-select>`, que a su vez decide el paso de cantidad forzado. */
+  readonly configuringProductFromPromotions = signal(false);
   /** `key` de la línea de `draftLines` que se está editando (rediseño de
    *  `create-order/code.html`) -- `null` cuando `configuringProduct` abre el
    *  modal para AGREGAR un producto nuevo en vez de editar uno ya en el
@@ -488,14 +493,27 @@ export class PosTerminalStore {
     return variants.find((v) => v.promotion != null)?.promotion?.short_condition ?? null;
   }
 
-  /** Ver `CartLinePromo`. */
+  /**
+   * Ver `CartLinePromo`.
+   *
+   * spec 115 (A-125): `effectivePrice(variant.price, variant.discounted_price)`
+   * solo sirve cuando `min_qty == 1` -- el backend puebla `discounted_price`
+   * directamente ahí (`menu_unit_discount`), pero lo deja en `null` cuando
+   * `min_qty > 1` (p. ej. "2 x $15.000"), porque no puede prometer un precio
+   * por unidad que depende de una cantidad que el cajero todavía no eligió
+   * (mismo motivo documentado en `product-select.component.ts`). Para ese
+   * caso se usa `packagePrice()` -- el mismo cálculo por bloques de
+   * `min_qty` que ya usa el modal de selección, importado del util
+   * compartido en vez de reimplementarlo aquí.
+   */
   private cartLinePromo(variant: MenuVariant, quantity: number): CartLinePromo | null {
     const promo = variant.promotion;
     if (!promo || quantity < promo.min_qty) return null;
-    const discountedUnit = effectivePrice(variant.price, variant.discounted_price);
-    if (discountedUnit >= variant.price) return null;
     const originalAmount = variant.price * quantity;
-    const discountedAmount = discountedUnit * quantity;
+    const discountedAmount = promo.min_qty === 1
+      ? effectivePrice(variant.price, variant.discounted_price) * quantity
+      : packagePrice(variant.price, promo, quantity);
+    if (discountedAmount >= originalAmount) return null;
     return {
       badge: promo.short_condition,
       originalAmount,
@@ -505,17 +523,37 @@ export class PosTerminalStore {
   }
 
   /**
-   * Igual que `cartLinePromo()` pero para un ítem ya persistido: el backend ya
-   * resolvió y guardó `discounted_unit_price` al confirmar el pedido (spec 063
-   * FR-023), así que la insignia sale de ese número en vez de `variant.promotion`
-   * (que describe la promo vigente *ahora*, no la que aplicó al cobrar).
+   * Igual que `cartLinePromo()` pero para un ítem ya persistido. Un pedido
+   * manual nace `hold_for_payment` ("recibida"/"Pendiente") SIN descuento
+   * congelado: `OrderItem` solo guarda `unit_price` al crearse — el backend
+   * resuelve y congela `discounted_unit_price` recién en `checkout_and_send`
+   * (spec 063 FR-023, `pos-backend/app/api/v1/orders/service.py`), el mismo
+   * punto único de descuento del flujo QR. Mientras tanto (`discounted_unit_price`
+   * aún `null`), este método usa `catalogPromo` (la promoción vigente de esta
+   * variante en el catálogo, vía `lk.variantPromotion()`) para ESTIMAR la
+   * insignia/tachado con el mismo cálculo por bloques de `cartLinePromo()`
+   * (`packagePrice()`) — una estimación visible para el personal antes de
+   * cobrar, nunca el importe autoritativo (spec 115, hallazgo adicional).
    */
   private persistedLinePromo(
     unitPrice: number,
     discountedUnitPrice: number | null | undefined,
     quantity: number,
     addonsTotal = 0,
+    catalogPromo: MenuVariantPromotion | null = null,
   ): CartLinePromo | null {
+    if (discountedUnitPrice == null) {
+      if (!catalogPromo || quantity < catalogPromo.min_qty) return null;
+      const originalAmount = unitPrice * quantity + addonsTotal;
+      const discountedAmount = packagePrice(unitPrice, catalogPromo, quantity) + addonsTotal;
+      if (discountedAmount >= originalAmount) return null;
+      return {
+        badge: catalogPromo.short_condition,
+        originalAmount,
+        discountedAmount,
+        savings: originalAmount - discountedAmount,
+      };
+    }
     const info = discountInfo(unitPrice, discountedUnitPrice);
     if (!info) return null;
     // spec 089: una promoción nunca descuenta los adicionales; van enteros en ambos importes.
@@ -1023,6 +1061,7 @@ export class PosTerminalStore {
         pendingItemIds: KITCHEN_NOT_READY.includes(i.estado_cocina) ? [i.id] : [],
         promo: this.persistedLinePromo(
           Number(i.unit_price), discountedUnit, i.quantity, Number(i.addons_total ?? 0),
+          lk.variantPromotion(i.product_variant_id),
         ),
       };
     });
@@ -1226,6 +1265,22 @@ export class PosTerminalStore {
   readonly catalogProductsAllFiltered = computed<MenuProduct[]>(() => {
     const term = normalizeSearchTerm(this.catalogSearchText());
     const products = this.categories().flatMap((c) => c.products);
+    if (!term) return products;
+    return products.filter((p) => normalizeSearchTerm(p.name).includes(term));
+  });
+
+  /**
+   * spec 115 (FR-002): pestaña "Promociones" del catálogo de la orden manual —
+   * misma forma que `catalogProductsAllFiltered` (vista agregada de todas las
+   * categorías + buscador), pero filtrando por `hasPromotion(p)` en vez de
+   * mostrar el catálogo completo. Usado tanto por `manual-order-page.component.ts`
+   * (crear pedido nuevo) como por `pos-catalog-drawer.component.ts` (agregar
+   * productos a un pedido ya existente, FR-014) — ambos consumen este mismo
+   * computed, así que el criterio nunca puede divergir entre esas dos pantallas.
+   */
+  readonly catalogProductsPromotionsFiltered = computed<MenuProduct[]>(() => {
+    const term = normalizeSearchTerm(this.catalogSearchText());
+    const products = this.categories().flatMap((c) => c.products).filter((p) => hasPromotion(p));
     if (!term) return products;
     return products.filter((p) => normalizeSearchTerm(p.name).includes(term));
   });
@@ -1686,12 +1741,20 @@ export class PosTerminalStore {
   setCatalogSearchText(text: string): void {
     this.catalogSearchText.set(text);
   }
-  openConfig(product: MenuProduct): void {
+  /**
+   * spec 115 (FR-001/FR-004, Decisión 4): `fromPromotions` se congela al
+   * momento de abrir, con el valor de la pestaña activa en ese instante — no
+   * se deriva reactivamente, para no alterar la promoción que ya se está
+   * configurando si el cajero cambia de pestaña con el modal abierto.
+   */
+  openConfig(product: MenuProduct, fromPromotions = false): void {
     this.configuringProduct.set(product);
+    this.configuringProductFromPromotions.set(fromPromotions);
   }
   closeConfig(): void {
     this.configuringProduct.set(null);
     this.editingDraftKey.set(null);
+    this.configuringProductFromPromotions.set(false);
   }
 
   /** Reabre el modal de configuración para EDITAR una línea de `draftLines`
@@ -1728,18 +1791,39 @@ export class PosTerminalStore {
     };
   });
 
+  /** Identidad de una línea de producto (variante+opciones+notas) -- la misma fórmula que
+   *  construye `key`, extraída para poder usarla como predicado sobre los campos de cualquier
+   *  línea (incluida una ya sufijada "#N" por `nextAvailableDraftKey`), no solo como
+   *  comparación exacta de `key` (spec 115, A-134). */
+  private productIdentityKey(
+    variantId: string,
+    options: ChosenMenuOption[],
+    notes: string | null,
+  ): string {
+    return (
+      variantId +
+      '|' +
+      options.map((c) => `${c.option.id}:${c.quantity}`).sort().join(',') +
+      '|' +
+      (notes ?? '')
+    );
+  }
+
+  /** Primer `#N` libre para `baseKey` que no colisione con ningún `key` ya en uso en `lines` --
+   *  la primera línea de una identidad conserva `baseKey` sin sufijo (compatibilidad); una línea
+   *  hermana (misma identidad, no fusionable por no mezclar paquete con suelto, A-134) recibe el
+   *  primer sufijo libre. */
+  private nextAvailableDraftKey(baseKey: string, lines: DraftLine[]): string {
+    const used = new Set(lines.map((l) => l.key));
+    let n = 2;
+    while (used.has(`${baseKey}#${n}`)) n++;
+    return `${baseKey}#${n}`;
+  }
+
   addDraftFromSelection(sel: ProductSelection): void {
     const unitPrice =
       sel.variant.price + sel.options.reduce((s, c) => s + c.option.extra_price * c.quantity, 0);
-    const key =
-      sel.variant.id +
-      '|' +
-      sel.options
-        .map((c) => `${c.option.id}:${c.quantity}`)
-        .sort()
-        .join(',') +
-      '|' +
-      (sel.notes ?? '');
+    const key = this.productIdentityKey(sel.variant.id, sel.options, sel.notes);
     const line: ProductDraftLine = {
       kind: 'product',
       key,
@@ -1762,17 +1846,39 @@ export class PosTerminalStore {
       this.draftLines.update((lines) => lines.map((l) => (l.key === editKey ? line : l)));
     } else {
       this.draftLines.update((lines) => {
-        const existing = lines.find((l) => l.key === key);
-        if (existing) {
-          return lines.map((l) =>
-            l.key === key ? { ...l, quantity: l.quantity + sel.quantity } : l,
-          );
+        // spec 115 (A-134): no mezclar paquete con suelto en la misma línea -- se busca la
+        // ÚLTIMA línea de la MISMA identidad (puede no ser la única si ya hay una hermana por
+        // una promoción de paquete).
+        let lastIdx = -1;
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const l = lines[i];
+          if (l.kind === 'product' && this.productIdentityKey(l.variant.id, l.options, l.notes) === key) {
+            lastIdx = i;
+            break;
+          }
         }
-        return [...lines, line];
+        if (lastIdx === -1) return [...lines, line];
+
+        const existing = lines[lastIdx] as ProductDraftLine;
+        const minQty = sel.variant.promotion?.min_qty ?? 0;
+        const existingIsCompletePackage = minQty > 1 && existing.quantity % minQty === 0;
+        if (existingIsCompletePackage) {
+          // La línea encontrada ya es un paquete completo: sumarle rompería el paquete -- la
+          // cantidad nueva nace como línea hermana, junto a ella (no al final del carrito).
+          const sibling: ProductDraftLine = { ...line, key: this.nextAvailableDraftKey(key, lines) };
+          const next = [...lines];
+          next.splice(lastIdx + 1, 0, sibling);
+          return next;
+        }
+        // Sin promoción min_qty>1, o paquete incompleto: fusiona como siempre.
+        const next = [...lines];
+        next[lastIdx] = { ...existing, quantity: existing.quantity + sel.quantity };
+        return next;
       });
     }
     this.configuringProduct.set(null);
     this.editingDraftKey.set(null);
+    this.configuringProductFromPromotions.set(false);
     this.catalogOpen.set(false);
     this.catalogSearchText.set('');
   }
@@ -1813,10 +1919,39 @@ export class PosTerminalStore {
     return its.reduce((s, it) => s + lineTotalGross(it), 0);
   }
 
+  /** spec 115 (A-126): el control +/- de una línea ya agregada avanza de a una
+   *  unidad, sin importar si tiene una promoción vigente -- a diferencia del
+   *  menú QR (`DiningCartService.stepFor`), el personal necesita control
+   *  manual total sobre la cantidad ya agregada al pedido. Solo el primer
+   *  agregado desde "Promociones" (el modal, `fromPromotions`) entra
+   *  directamente con la cantidad mínima de la regla; eso no cambia.
+   *
+   *  spec 115 (A-134): EXCEPCIÓN -- si la línea ya es un paquete completo
+   *  (cantidad múltiplo exacto de `min_qty`), el "+" no la rompe sumándole 1:
+   *  esa unidad nace en una línea hermana nueva, junto a esta, para no volver
+   *  a mezclar paquete con suelto en la misma línea (el problema que A-130/
+   *  A-133 tuvieron que parchar en la presentación en vez de resolver acá). */
   incDraft(key: string): void {
-    this.draftLines.update((l) =>
-      l.map((x) => (x.key === key ? { ...x, quantity: x.quantity + 1 } : x)),
-    );
+    this.draftLines.update((lines) => {
+      const idx = lines.findIndex((x) => x.key === key);
+      const target = idx === -1 ? undefined : lines[idx];
+      if (!target || target.kind !== 'product') {
+        return lines.map((x) => (x.key === key ? { ...x, quantity: x.quantity + 1 } : x));
+      }
+      const minQty = target.variant.promotion?.min_qty ?? 0;
+      if (!(minQty > 1 && target.quantity % minQty === 0)) {
+        return lines.map((x) => (x.key === key ? { ...x, quantity: x.quantity + 1 } : x));
+      }
+      const baseKey = this.productIdentityKey(target.variant.id, target.options, target.notes);
+      const sibling: ProductDraftLine = {
+        ...target,
+        quantity: 1,
+        key: this.nextAvailableDraftKey(baseKey, lines),
+      };
+      const next = [...lines];
+      next.splice(idx + 1, 0, sibling);
+      return next;
+    });
   }
   decDraft(key: string): void {
     this.draftLines.update((l) =>
