@@ -1,4 +1,10 @@
-import { mapVentasPorMetodo } from './cash-session.store';
+import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
+import { CashSessionStore, mapVentasPorMetodo } from './cash-session.store';
+import { CashService } from './cash.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { Reconciliation, SalesByMethod } from '../interfaces/cash.interface';
 
 function recon(sales: SalesByMethod[]): Reconciliation {
@@ -65,5 +71,57 @@ describe('mapVentasPorMetodo', () => {
 
   it('devuelve una lista vacía sin arqueo cargado', () => {
     expect(mapVentasPorMetodo(null)).toEqual([]);
+  });
+});
+
+describe('CashSessionStore — aperturaDisabled (spec 113, contracts/cash-open-form.md)', () => {
+  function crearStore(): CashSessionStore {
+    TestBed.configureTestingModule({
+      providers: [
+        CashSessionStore,
+        { provide: CashService, useValue: { registers: signal([]), shift: signal(null) } },
+        { provide: AuthService, useValue: { currentUser: () => null } },
+        { provide: TenantDatePipe, useValue: { transform: () => '' } },
+        { provide: TenantInfoService, useValue: { businessName: () => '' } },
+      ],
+    });
+    return TestBed.inject(CashSessionStore);
+  }
+
+  it('caso 1: openingAmount en 0 (valor inicial, sin interacción) -> aperturaDisabled es true', () => {
+    const store = crearStore();
+    store.selectedRegisterId.set('reg-1');
+
+    expect(store.openingAmount()).toBe(0);
+    expect(store.aperturaDisabled()).toBe(true);
+  });
+
+  it('caso 2: borrar el campo tras haber tenido otro valor -> aperturaDisabled sigue true', () => {
+    const store = crearStore();
+    store.selectedRegisterId.set('reg-1');
+    store.openingAmount.set(50000);
+    expect(store.aperturaDisabled()).toBe(false);
+
+    store.openingAmount.set(0); // simula borrar el campo (ngModelChange normaliza null a 0)
+
+    expect(store.aperturaDisabled()).toBe(true);
+  });
+
+  it('caso 3: openingAmount válido con caja seleccionada -> aperturaDisabled es false', () => {
+    const store = crearStore();
+    store.selectedRegisterId.set('reg-1');
+
+    store.openingAmount.set(50000);
+
+    expect(store.aperturaDisabled()).toBe(false);
+  });
+
+  it('caso 5: openingAmount válido sin caja seleccionada -> aperturaDisabled sigue true', () => {
+    const store = crearStore();
+
+    store.openingAmount.set(50000);
+
+    expect(store.selectedRegisterId()).toBe('');
+    expect(store.aperturaDisabled()).toBe(true);
   });
 });

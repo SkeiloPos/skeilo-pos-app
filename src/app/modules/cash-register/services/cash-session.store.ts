@@ -231,6 +231,10 @@ export class CashSessionStore {
       (this.diferenciaLive() !== 0 && !this.arqueoObservacion().trim()),
   );
 
+  readonly aperturaDisabled = computed(
+    () => this.isSubmitting() || !this.selectedRegisterId() || this.openingAmount() <= 0,
+  );
+
   readonly turnoDuracion = computed(() => {
     this.nowTick();
     return this.fmtDuration(this.shift()?.opened_at ?? null);
