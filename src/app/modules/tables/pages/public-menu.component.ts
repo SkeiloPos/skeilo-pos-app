@@ -21,6 +21,7 @@ import {
   DiscountInfo,
   discountInfo,
   effectivePrice,
+  hasPromotion,
   MinPromoPrice,
   minPromoPriceForProduct,
 } from '../../promotions/services/promotion-pricing.util';
@@ -1103,10 +1104,14 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
    *
    * `productDiscount` se conserva y sigue gobernando el **tachado** (FR-015); lo
    * que pierde es el gobierno de la insignia.
+   *
+   * spec 115: extraído a `promotion-pricing.util.ts` para que el catálogo de la
+   * orden manual use el mismo criterio sin duplicarlo; se reexpone como
+   * propiedad de instancia (en vez de una llamada libre) porque la plantilla ya
+   * lo invoca como `hasPromotion(product)` sin `this.` (mismo patrón que
+   * `splitVariantLabel` en otros componentes de este módulo).
    */
-  hasPromotion(product: MenuProduct): boolean {
-    return product.variants.some((v) => v.promotion != null);
-  }
+  readonly hasPromotion = hasPromotion;
 
   async confirmName(): Promise<void> {
     const name = this.nameInput().trim();

@@ -37,6 +37,22 @@ function makeCategories(): MenuCategory[] {
   ];
 }
 
+describe('buildMenuLookup — variantPromotion (spec 115)', () => {
+  it('devuelve la promoción vigente de la variante, o null si no tiene', () => {
+    const cats = makeCategories();
+    cats[0].products[0].variants[0].promotion = { min_qty: 2, short_condition: '2 x $15.000' } as never;
+    const lk = buildMenuLookup(cats);
+
+    expect(lk.variantPromotion('v1')).toEqual({ min_qty: 2, short_condition: '2 x $15.000' });
+    expect(lk.variantPromotion('no-existe')).toBeNull();
+  });
+
+  it('devuelve null cuando la variante existe pero no tiene promoción', () => {
+    const lk = buildMenuLookup(makeCategories());
+    expect(lk.variantPromotion('v1')).toBeNull();
+  });
+});
+
 describe('buildMenuLookup — optionLabelWithQuantity', () => {
   // spec 087 (FR-012): reemplaza el formato "Nx Nombre" que se omitía en
   // x1 (research.md Decisión 9) -- el multiplicador "Nombre xN" ahora

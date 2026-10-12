@@ -2,12 +2,18 @@ import {
   discountInfo,
   effectivePrice,
   getPromoDisplay,
+  hasPromotion,
   inTimeWindow,
   isPromoActiveNow,
   minPromoPriceForProduct,
+  packagePrice,
 } from './promotion-pricing.util';
 import { Promotion } from '../interfaces/promotion.interface';
-import { MenuVariant, MenuVariantPromotion } from '../../products/interfaces/product.interface';
+import {
+  MenuProduct,
+  MenuVariant,
+  MenuVariantPromotion,
+} from '../../products/interfaces/product.interface';
 
 /**
  * spec 063 — el util se redujo a vigencia local + insignia + elección de precio.
@@ -91,6 +97,68 @@ describe('effectivePrice / discountInfo', () => {
     expect(discountInfo(10000, 9000)?.percent).toBe(10);
     expect(discountInfo(10000, null)).toBeNull();
     expect(discountInfo(10000, 10000)).toBeNull();
+  });
+});
+
+describe('hasPromotion (spec 115: extraído de public-menu.component.ts, sin cambio de criterio)', () => {
+  function product(variants: Partial<MenuVariant>[]): MenuProduct {
+    return {
+      id: 'p1',
+      name: 'Producto',
+      description: null,
+      image_url: null,
+      option_groups: [],
+      available: true,
+      variants: variants.map((v, i) => ({
+        id: `v${i}`, name: `Variante ${i}`, price: 1000, option_groups: [], available: true,
+        ...v,
+      })),
+    };
+  }
+
+  it('true si al menos una variante tiene promotion poblado', () => {
+    expect(hasPromotion(product([{ promotion: null }, { promotion: {} as MenuVariantPromotion }]))).toBe(true);
+  });
+
+  it('false si ninguna variante tiene promotion', () => {
+    expect(hasPromotion(product([{ promotion: null }, {}]))).toBe(false);
+  });
+
+  it('false para un producto sin variantes', () => {
+    expect(hasPromotion(product([]))).toBe(false);
+  });
+});
+
+describe('packagePrice (spec 081/115: cálculo por bloques de min_qty, compartido entre el modal y el carrito)', () => {
+  function promoInfo(overrides: Partial<MenuVariantPromotion> = {}): MenuVariantPromotion {
+    return {
+      condition_text: '2 x $15.000', short_condition: '2 x $15.000', unit_equivalent: 7500,
+      unit_equivalent_approx: false, unit_equivalent_text: '$7.500 c/u',
+      display_text: '2 x $15.000', type: 'package_price', min_qty: 2, value: 15000,
+      ...overrides,
+    };
+  }
+
+  it('cantidad exacta de un paquete: cobra el value exacto de la regla', () => {
+    expect(packagePrice(8000, promoInfo(), 2)).toBe(15000);
+  });
+
+  it('dos paquetes completos: multiplica el value por la cantidad de bloques', () => {
+    expect(packagePrice(8000, promoInfo(), 4)).toBe(30000);
+  });
+
+  it('remanente que no completa un paquete: lo cobra a precio normal', () => {
+    // 1 paquete (15.000) + 1 unidad normal (8.000)
+    expect(packagePrice(8000, promoInfo(), 3)).toBe(23000);
+  });
+
+  it('type "percent": usa min_qty * unit_equivalent en vez de value', () => {
+    const promo = promoInfo({ type: 'percent', value: 10, unit_equivalent: 7200 });
+    expect(packagePrice(8000, promo, 2)).toBe(14400);
+  });
+
+  it('cantidad menor al mínimo: todo a precio normal (0 bloques completos)', () => {
+    expect(packagePrice(8000, promoInfo(), 1)).toBe(8000);
   });
 });
 

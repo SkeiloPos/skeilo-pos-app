@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { ProductSelectComponent } from './product-select.component';
@@ -38,11 +38,21 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
         />
         <div class="flex gap-2 flex-wrap">
+          <!-- spec 115 (FR-001/FR-014): sin equivalente a "Todos" -- la
+               alternativa a "Promociones" aquí es simplemente tener una
+               categoría seleccionada. -->
+          <button
+            (click)="selectPromotions()"
+            class="px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors"
+            [class]="showingPromotions() ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-gray-200 text-gray-600 hover:bg-gray-50'"
+          >
+            Promociones
+          </button>
           @for (c of store.categories(); track c.id) {
             <button
-              (click)="store.setCatalogCategory(c.id)"
+              (click)="selectCategory(c.id)"
               class="px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors"
-              [class]="store.catalogCategoryId() === c.id ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-gray-200 text-gray-600 hover:bg-gray-50'"
+              [class]="!showingPromotions() && store.catalogCategoryId() === c.id ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-gray-200 text-gray-600 hover:bg-gray-50'"
             >
               {{ c.name }}
             </button>
@@ -51,11 +61,14 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
       </div>
 
       <div class="flex-1 overflow-y-auto p-4">
-        @if (store.catalogProductsFiltered().length === 0) {
-          <!-- FR-007, edge case: estado vacío claro, tanto por búsqueda como
-               por categoría sin coincidencias. -->
+        @if (catalogProducts().length === 0) {
+          <!-- FR-007/FR-012, edge case: estado vacío claro, tanto por
+               búsqueda como por categoría sin coincidencias o sin
+               promociones vigentes. -->
           <p class="text-center text-sm text-gray-400 py-10">
-            @if (store.catalogSearchText()) {
+            @if (showingPromotions()) {
+              No hay promociones activas en este momento.
+            } @else if (store.catalogSearchText()) {
               Sin productos que coincidan con "{{ store.catalogSearchText() }}".
             } @else {
               Sin productos en esta categoría.
@@ -63,9 +76,9 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           </p>
         } @else {
           <div class="grid grid-cols-2 gap-3">
-            @for (p of store.catalogProductsFiltered(); track p.id) {
+            @for (p of catalogProducts(); track p.id) {
               <button
-                (click)="store.openConfig(p)"
+                (click)="store.openConfig(p, showingPromotions())"
                 [disabled]="p.sold_out"
                 class="relative text-left bg-white rounded-xl border border-gray-200 p-4 hover:border-indigo-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-200"
               >
@@ -95,6 +108,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
     @if (store.configuringProduct(); as product) {
       <app-product-select
         [product]="product"
+        [fromPromotions]="store.configuringProductFromPromotions()"
         (added)="store.addDraftFromSelection($event)"
         (cancelled)="store.closeConfig()"
       />
@@ -103,6 +117,24 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 })
 export class PosCatalogDrawerComponent {
   readonly store = inject(PosTerminalStore);
+
+  /** spec 115 (FR-001/FR-014): mismo tratamiento que
+   *  `ManualOrderPageComponent.showingPromotions`, aplicado a este segundo
+   *  catálogo (agregar productos a un pedido ya existente). */
+  readonly showingPromotions = signal(false);
+
+  readonly catalogProducts = computed(() =>
+    this.showingPromotions() ? this.store.catalogProductsPromotionsFiltered() : this.store.catalogProductsFiltered(),
+  );
+
+  selectPromotions(): void {
+    this.showingPromotions.set(true);
+  }
+
+  selectCategory(id: string): void {
+    this.showingPromotions.set(false);
+    this.store.setCatalogCategory(id);
+  }
 
   minPrice(p: { variants: { price: number; discounted_price?: number | null }[] }): number {
     return p.variants.length

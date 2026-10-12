@@ -235,13 +235,15 @@ describe('SessionBillPanelComponent', () => {
       expect(texto).not.toContain('Descuento');
     });
 
-    it('muestra "Descuento" con la suma de descuento de todas las líneas cuando al menos una lo tiene', () => {
+    it('spec 115 (A-132): con descuento, "Subtotal mesa" se muestra ya neto, sin fila "Descuento"', () => {
       setBill(billWithDiscount);
 
       const texto = fixture.nativeElement.textContent as string;
       expect(panel.billSummary()).toEqual({ subtotal: 20000, discount: 2000 });
       expect(texto).toContain('Subtotal');
-      expect(texto).toContain('Descuento');
+      expect(texto).not.toContain('Descuento');
+      expect(texto).not.toContain('20.000'); // el bruto no debe aparecer
+      expect(texto).toContain('18.000'); // 20.000 - 2.000, ya neto
     });
 
     it('billSummary() es null sin ninguna cuenta cargada', () => {
@@ -259,14 +261,15 @@ describe('SessionBillPanelComponent', () => {
       expect(fixture.nativeElement.textContent).not.toContain('Ya pagado');
     });
 
-    it('con paidSummary muestra su Subtotal/Descuento/Total, aparte del total pendiente', () => {
+    it('spec 115 (A-132): con paidSummary muestra Subtotal y Total ambos ya netos (7.000), sin fila "Descuento" ni el bruto 8.000', () => {
       fixture.componentRef.setInput('paidSummary', { subtotal: 8000, discount: 1000, total: 7000 });
       fixture.detectChanges();
 
       const texto = fixture.nativeElement.textContent as string;
       expect(texto).toContain('Ya pagado');
+      expect(texto).not.toContain('Descuento');
+      expect(texto).not.toContain('8.000');
       expect(texto).toContain('7.000');
-      expect(texto).toContain('1.000');
     });
 
     it('se muestra incluso sin ninguna cuenta pendiente (bill=null, mesa ya toda pagada)', () => {
