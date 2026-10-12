@@ -16,6 +16,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { PosTerminalHeaderComponent } from '../components/pos-terminal-header.component';
 import { BillSummaryComponent } from '../components/bill-summary.component';
 import { CartItemOptionsComponent } from '../components/cart-item-options.component';
+import { splitVariantLabel } from '../services/menu-lookup';
 import {
   SearchableSelectComponent,
   SearchableSelectOption,
@@ -510,6 +511,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                      su selector mira el atributo HTML hidden, no la clase). -->
                 <div>
                   <!-- Tabla (desde sm/tablet+): pixel-igual al mockup. -->
+                  @let partsDesktop = splitVariantLabel(it.name);
                   <div
                     class="hidden sm:grid grid-cols-12 items-center py-3 gap-1"
                     [class]="
@@ -517,11 +519,17 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     "
                   >
                     <div class="col-span-5 flex flex-col min-w-0 pr-1">
-                      <div class="flex items-center gap-1.5 min-w-0">
+                      <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
                         <span
                           class="text-[13px] font-semibold text-[#111827] truncate leading-tight"
-                          >{{ it.name }}</span
+                          >{{ partsDesktop.product }}</span
                         >
+                        @if (partsDesktop.variant) {
+                          <span
+                            class="bg-[#f3f4f6] text-[#4b5563] text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                            >{{ partsDesktop.variant }}</span
+                          >
+                        }
                         @if (it.promo; as promo) {
                           <span
                             class="bg-[#fffbeb] text-[#b45309] border border-[#fef3c7] text-[10px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
@@ -612,12 +620,19 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                       it.promo ? 'bg-[#fffbeb]/40 -mx-2 px-2 border-l-2 border-[#f59e0b]' : ''
                     "
                   >
+                    @let partsMobile = splitVariantLabel(it.name);
                     <div class="flex items-start justify-between gap-2">
                       <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-1.5 flex-wrap">
                           <span class="text-[13px] font-semibold text-[#111827] leading-tight">{{
-                            it.name
+                            partsMobile.product
                           }}</span>
+                          @if (partsMobile.variant) {
+                            <span
+                              class="bg-[#f3f4f6] text-[#4b5563] text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                              >{{ partsMobile.variant }}</span
+                            >
+                          }
                           @if (it.promo; as promo) {
                             <span
                               class="bg-[#fffbeb] text-[#b45309] border border-[#fef3c7] text-[10px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
@@ -806,6 +821,11 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
   readonly store = inject(PosTerminalStore);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+
+  /** Separa el nombre del producto de su variante -- ver `splitVariantLabel()`
+   *  en `menu-lookup.ts` (spec 113: mismo patrón de pill ya usado en
+   *  `pos-order-panel.component.ts`). */
+  splitVariantLabel = splitVariantLabel;
 
   /** Por debajo de `lg`, cuál de las dos tarjetas (catálogo/ticket) se
    *  muestra -- mismo patrón que `store.hasActiveSelection()` en
