@@ -1389,6 +1389,89 @@ describe('ManualOrderPageComponent', () => {
     expect(removeSpy).toHaveBeenCalledWith(draftKey);
   });
 
+  // ── spec 113: la presentación elegida se muestra en la línea del ítem ────
+  it('[T008] spec 113: la fila de escritorio muestra un pill con la presentación elegida cuando el producto tiene más de una', async () => {
+    createComponent('t1');
+    tableService.tables.set([table({ id: 't1', number: 3 })]);
+    fixture.detectChanges();
+    await Promise.resolve();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+
+    const ojoDeDiabloVariants = [
+      { id: 'v-8oz', name: '8 oz', price: 8000 },
+      { id: 'v-12oz', name: '12 oz', price: 11000 },
+      { id: 'v-16oz', name: '16 oz', price: 15000 },
+    ];
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo', variants: ojoDeDiabloVariants } as never,
+      variant: ojoDeDiabloVariants[1] as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+    fixture.detectChanges();
+
+    const tabla = fixture.nativeElement.querySelector(
+      '.hidden.sm\\:grid.grid-cols-12.items-center',
+    ) as HTMLElement;
+    expect(tabla.textContent).toContain('Ojo de Diablo');
+    const pill = Array.from(tabla.querySelectorAll('span')).find(
+      (el) => el.className.includes('rounded-full') && el.textContent?.trim() === '12 oz',
+    );
+    expect(pill).toBeTruthy();
+  });
+
+  it('[T009] spec 113: la tarjeta apilada (mobile) muestra el mismo pill de presentación que la fila de escritorio', async () => {
+    createComponent('t1');
+    tableService.tables.set([table({ id: 't1', number: 3 })]);
+    fixture.detectChanges();
+    await Promise.resolve();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+
+    const ojoDeDiabloVariants = [
+      { id: 'v-8oz', name: '8 oz', price: 8000 },
+      { id: 'v-12oz', name: '12 oz', price: 11000 },
+      { id: 'v-16oz', name: '16 oz', price: 15000 },
+    ];
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo', variants: ojoDeDiabloVariants } as never,
+      variant: ojoDeDiabloVariants[1] as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+    fixture.detectChanges();
+
+    const tarjeta = fixture.nativeElement.querySelector('.flex.sm\\:hidden.flex-col') as HTMLElement;
+    expect(tarjeta.textContent).toContain('Ojo de Diablo');
+    const pill = Array.from(tarjeta.querySelectorAll('span')).find(
+      (el) => el.className.includes('rounded-full') && el.textContent?.trim() === '12 oz',
+    );
+    expect(pill).toBeTruthy();
+  });
+
+  it('spec 113 (FR-003): un producto con una sola presentación configurada no muestra ningún pill de presentación', async () => {
+    createComponent('t1');
+    tableService.tables.set([table({ id: 't1', number: 3 })]);
+    fixture.detectChanges();
+    await Promise.resolve();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Cono Sencillo', variants: [{ id: 'v-unica', name: 'Único', price: 3000 }] } as never,
+      variant: { id: 'v-unica', name: 'Único', price: 3000 } as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+    fixture.detectChanges();
+
+    const pills = Array.from(fixture.nativeElement.querySelectorAll('span')).filter(
+      (el) => (el as HTMLElement).className.includes('rounded-full') && (el as HTMLElement).textContent?.trim() === 'Único',
+    );
+    expect(pills.length).toBe(0);
+  });
+
   it('el botón "Limpiar todo" ya no existe en el detalle del pedido', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
