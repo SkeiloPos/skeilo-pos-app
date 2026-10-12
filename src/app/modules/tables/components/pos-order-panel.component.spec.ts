@@ -494,6 +494,34 @@ describe('PosOrderPanelComponent — catálogo embebido (spec 036, Historia 2)',
     expect(text).not.toContain('Catálogo de productos');
   });
 
+  it('[T010] spec 113 (FR-007): agregar un producto con presentación a una orden ya creada muestra el pill de presentación de inmediato, sin esperar a guardar', () => {
+    findButton('＋ Agregar producto')!.click();
+    fixture.detectChanges();
+
+    store.addDraftFromSelection({
+      product: {
+        id: 'p1',
+        name: 'Ojo de Diablo',
+        variants: [
+          { id: 'v-8oz', name: '8 oz', price: 8000 },
+          { id: 'v-12oz', name: '12 oz', price: 11000 },
+        ],
+      } as never,
+      variant: { id: 'v-12oz', name: '12 oz', price: 11000 } as never,
+      options: [],
+      quantity: 1,
+      notes: null,
+    });
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Ojo de Diablo');
+    const pill = Array.from(fixture.nativeElement.querySelectorAll('span')).find(
+      (el) => (el as HTMLElement).className.includes('rounded-full') && (el as HTMLElement).textContent?.trim() === '12 oz',
+    );
+    expect(pill).toBeTruthy();
+  });
+
   it('decidir no agregar nada y volver conserva los ítems ya agregados', () => {
     store.addDraftFromSelection({
       product: { id: 'p1', name: 'Ya agregado' } as never,
