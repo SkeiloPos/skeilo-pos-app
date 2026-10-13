@@ -83,7 +83,9 @@ describe('ProductSelectComponent', () => {
     component.added.subscribe((sel) => (emitted = sel));
     component.confirm();
 
-    expect(emitted?.options).toEqual([{ option: bobombun, quantity: 1, groupName: group.name }]);
+    expect(emitted?.options).toEqual([
+      { option: bobombun, quantity: 1, groupName: group.name, selectionMode: 'conteo' },
+    ]);
   });
 
   // ── Grupo "cantidad" (spec 065, US2) ────────────────────────────────────────
@@ -284,6 +286,73 @@ describe('ProductSelectComponent', () => {
 
     expect(component.optionQuantity(group.id, bobombun.id)).toBe(10);
     expect(component.canIncrement(group, bobombun)).toBe(true);
+  });
+
+  // ── spec 117 (A-126, D2/D4): topes escalados por la cantidad de producto ───
+
+  it('canIncrement() escala max_quantity_per_option por la cantidad de producto de la línea', () => {
+    const bobombun = makeOption({ id: 'b1', name: 'Bobombún' });
+    const group = makeGroup({ selection_mode: 'cantidad', max_quantity_per_option: 2, options: [bobombun] });
+    create(makeProduct({ variants: [makeVariant({ option_groups: [group] })] }));
+
+    component.incrementOption(group, bobombun);
+    component.incrementOption(group, bobombun);
+    expect(component.canIncrement(group, bobombun)).toBe(false); // tope 2×1=2
+
+    component.inc(); // cantidad de producto = 2 → tope escalado 2×2=4
+    fixture.detectChanges();
+
+    expect(component.canIncrement(group, bobombun)).toBe(true);
+  });
+
+  it('al reducir la cantidad de producto, una adición "cantidad" que excede su nuevo tope se reduce automáticamente (D4)', () => {
+    const bobombun = makeOption({ id: 'b1', name: 'Bobombún' });
+    const group = makeGroup({ selection_mode: 'cantidad', max_quantity_per_option: 1, options: [bobombun] });
+    create(makeProduct({ variants: [makeVariant({ option_groups: [group] })] }));
+
+    component.inc(); // cantidad de producto = 2 → tope escalado 1×2=2
+    component.incrementOption(group, bobombun);
+    component.incrementOption(group, bobombun);
+    expect(component.optionQuantity(group.id, bobombun.id)).toBe(2);
+
+    component.dec(); // cantidad de producto = 1 → nuevo tope 1×1=1
+    fixture.detectChanges();
+
+    expect(component.optionQuantity(group.id, bobombun.id)).toBe(1);
+  });
+
+  it('D4, tope total: reduce en orden alfabético descendente (Gomitas antes que Chocolate)', () => {
+    const gomitas = makeOption({ id: 'gom', name: 'Gomitas' });
+    const chocolate = makeOption({ id: 'cho', name: 'Chocolate' });
+    const group = makeGroup({
+      selection_mode: 'cantidad', max_total_quantity: 2, options: [gomitas, chocolate],
+    });
+    create(makeProduct({ variants: [makeVariant({ option_groups: [group] })] }));
+
+    component.inc(); // cantidad de producto = 2 → tope escalado 2×2=4
+    component.incrementOption(group, gomitas);
+    component.incrementOption(group, gomitas);
+    component.incrementOption(group, chocolate);
+
+    component.dec(); // cantidad de producto = 1 → nuevo tope 2×1=2
+    fixture.detectChanges();
+
+    expect(component.optionQuantity(group.id, gomitas.id)).toBe(1);
+    expect(component.optionQuantity(group.id, chocolate.id)).toBe(1);
+  });
+
+  it('el cajero sube de nuevo la cantidad y la adición reducida NO revive sola (edge case de la spec)', () => {
+    const bobombun = makeOption({ id: 'b1', name: 'Bobombún' });
+    const group = makeGroup({ selection_mode: 'cantidad', max_quantity_per_option: 1, options: [bobombun] });
+    create(makeProduct({ variants: [makeVariant({ option_groups: [group] })] }));
+
+    component.inc(); // cantidad de producto = 2
+    component.incrementOption(group, bobombun);
+    component.incrementOption(group, bobombun);
+    component.dec(); // reduce bobombun a 1 (tope 1×1=1)
+    component.inc(); // sube de nuevo a cantidad de producto 2
+
+    expect(component.optionQuantity(group.id, bobombun.id)).toBe(1); // no revive sola
   });
 });
 
@@ -517,7 +586,7 @@ describe('ProductSelectComponent — [initialSelection] (edición de una línea 
     create(product, {
       product,
       variant,
-      options: [{ option: topping, quantity: 1, groupName: group.name }],
+      options: [{ option: topping, quantity: 1, groupName: group.name, selectionMode: 'conteo' }],
       quantity: 1,
       notes: null,
     });
@@ -753,6 +822,44 @@ describe('ProductSelectComponent — [fromPromotions]/[existingQtyFor] (spec 081
     });
   });
 
+  // ── spec 117 (A-126): un grupo "cantidad" nunca se multiplica por la línea ──
+
+  describe('selectionMode "cantidad" nunca se multiplica, sin importar addonsPerLine (spec 117)', () => {
+    function withGomitas(addonsPerLine: boolean) {
+      const gomitas = makeOption({ id: 'gom', name: 'Gomitas', extra_price: 1000 });
+      const group = makeGroup({
+        id: 'ad', name: 'Adicionales', selection_mode: 'cantidad', max_select: 3, options: [gomitas],
+      });
+      create(makeProduct({ variants: [makeVariant({ price: 18000, option_groups: [group] })] }));
+      component.addonsPerLine = addonsPerLine;
+      component.toggleOption(group, gomitas);
+      component.inc(); // cantidad de producto = 2
+      return { gomitas, group };
+    }
+
+    it('fuera del Menú QR (addonsPerLine=false): 2 × $18.000 + 1 × $1.000 = $37.000, no $38.000', () => {
+      withGomitas(false);
+      expect(component.lineTotal()).toBe(37000);
+    });
+
+    it('dentro del Menú QR (addonsPerLine=true): mismo resultado, $37.000', () => {
+      withGomitas(true);
+      expect(component.lineTotal()).toBe(37000);
+    });
+
+    it('un grupo "conteo" con recargo sigue multiplicándose igual que hoy (FR-013, sin cambio)', () => {
+      const tocino = makeOption({ id: 'toc', name: 'Tocino', extra_price: 3000 });
+      const group = makeGroup({
+        id: 'ad', name: 'Adicionales', selection_mode: 'conteo', max_select: 3, options: [tocino],
+      });
+      create(makeProduct({ variants: [makeVariant({ price: 15000, option_groups: [group] })] }));
+      component.addonsPerLine = false;
+      component.toggleOption(group, tocino);
+      component.inc(); // cantidad de producto = 2
+      expect(component.lineTotal()).toBe(36000); // (15000 + 3000) × 2, sin cambio
+    });
+  });
+
   // ── spec 089 (Historia 3): modo edición de una línea del carrito ────────────
 
   describe('editar adicionales de una línea (spec 089, Historia 3)', () => {
@@ -773,7 +880,7 @@ describe('ProductSelectComponent — [fromPromotions]/[existingQtyFor] (spec 081
       component.quantityLocked = true;
       component.initialSelection = {
         product, variant, quantity: 2, notes: 'sin cebolla',
-        options: [{ option: tocino, quantity: 1, groupName: 'Adicionales' }],
+        options: [{ option: tocino, quantity: 1, groupName: 'Adicionales', selectionMode: 'cantidad' }],
       };
       fixture.detectChanges();
       return { tocino, queso, group };

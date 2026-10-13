@@ -1883,11 +1883,11 @@ describe('PosTerminalStore — no mezclar paquete con suelto en la misma línea 
     store.addDraftFromSelection({ product: { id: 'pA', name: 'Producto A' } as never, variant: { id: 'vA', price: 1000, option_groups: [] } as never, options: [], quantity: 1, notes: null });
     store.addDraftFromSelection({ product: producto, variant: variantePromo, options: [], quantity: 2, notes: null });
     store.addDraftFromSelection({ product: { id: 'pB', name: 'Producto B' } as never, variant: { id: 'vB', price: 1000, option_groups: [] } as never, options: [], quantity: 1, notes: null });
-    const keyMalteada = store.draftLines().find((l) => l.product.name === 'Ojo de Diablo')!.key;
+    const keyMalteada = store.draftLines().find((l) => l.kind === 'product' && l.product.name === 'Ojo de Diablo')!.key;
 
     store.incDraft(keyMalteada);
 
-    expect(store.draftLines().map((l) => l.product.name)).toEqual([
+    expect(store.draftLines().map((l) => (l.kind === 'product' ? l.product.name : ''))).toEqual([
       'Producto A', 'Ojo de Diablo', 'Ojo de Diablo', 'Producto B',
     ]);
   });
@@ -2035,6 +2035,219 @@ describe('PosTerminalStore.cartView — nombre con presentación de líneas de b
 
     const names = store.cartView().map((r) => r.name);
     expect(names).toEqual(['Ojo de Diablo · 8 oz', 'Ojo de Diablo · 12 oz']);
+  });
+});
+
+describe('PosTerminalStore — addonsTotal de un grupo "cantidad" nunca se multiplica por la línea (spec 117, A-126)', () => {
+  let store: PosTerminalStore;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+  });
+
+  const gomitas = { id: 'gom', name: 'Gomitas', extra_price: 1000, available: true };
+
+  it('2 unidades de producto + 1 "gomitas" (cantidad): subtotal no multiplica la adición', () => {
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo' } as never,
+      variant: { id: 'v1', price: 18000 } as never,
+      options: [{ option: gomitas, quantity: 1, groupName: 'Adicionales', selectionMode: 'cantidad' }],
+      quantity: 2,
+      notes: null,
+    });
+
+    const [line] = store.cartView();
+    expect(line.unitPrice).toBe(18000);
+    expect(line.addonsTotal).toBe(1000);
+    expect(line.subtotal).toBe(37000); // 2 × 18.000 + 1.000, no 38.000
+  });
+
+  it('una línea con solo opciones "conteo" no cambia (addonsTotal sigue en 0, folded en unitPrice)', () => {
+    const tocino = { id: 'toc', name: 'Tocino', extra_price: 3000, available: true };
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Hamburguesa' } as never,
+      variant: { id: 'v1', price: 15000 } as never,
+      options: [{ option: tocino, quantity: 1, groupName: 'Adicionales', selectionMode: 'conteo' }],
+      quantity: 2,
+      notes: null,
+    });
+
+    const [line] = store.cartView();
+    expect(line.unitPrice).toBe(18000); // 15000 + 3000, por unidad (sin cambio)
+    expect(line.addonsTotal).toBe(0);
+    expect(line.subtotal).toBe(36000); // (15000 + 3000) × 2
+  });
+});
+
+describe('PosTerminalStore — FR-014: fusionar una línea con adición "cantidad" exige confirmación (spec 117, A-126)', () => {
+  let store: PosTerminalStore;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+  });
+
+  const gomitas = { id: 'gom', name: 'Gomitas', extra_price: 1000, available: true };
+  const selection = {
+    product: { id: 'p1', name: 'Ojo de Diablo' } as never,
+    variant: { id: 'v1', price: 18000 } as never,
+    options: [{ option: gomitas, quantity: 1, groupName: 'Adicionales', selectionMode: 'cantidad' as const }],
+    quantity: 1,
+    notes: null,
+  };
+
+  it('dos llamadas con la misma identidad fusionan la cantidad de producto pero reabren el modal en modo edición, en vez de aplicar la fusión en silencio', () => {
+    store.addDraftFromSelection(selection);
+    const key = store.draftLines()[0].key;
+    // La primera llamada cierra el modal normalmente (no hay fusión todavía).
+    expect(store.configuringProduct()).toBeNull();
+
+    store.addDraftFromSelection(selection);
+
+    expect(store.draftLines().length).toBe(1);
+    expect(store.draftLines()[0].quantity).toBe(2); // cantidad de producto ya combinada
+    // Nunca queda la línea con la cantidad de adición de la primera acción (x1) aplicada
+    // tácitamente a la cantidad de producto combinada (x2) sin que el cajero la confirme:
+    // el modal se reabre en modo edición sobre la misma línea.
+    expect(store.editingDraftKey()).toBe(key);
+    expect(store.configuringProduct()).not.toBeNull();
+    expect(store.editingSelection()?.quantity).toBe(2);
+  });
+
+  it('una línea sin ninguna adición "cantidad" sigue fusionando como siempre, sin reabrir el modal', () => {
+    const sinCantidad = {
+      product: { id: 'p2', name: 'Jugo' } as never,
+      variant: { id: 'v2', price: 5000 } as never,
+      options: [] as never,
+      quantity: 1,
+      notes: null,
+    };
+    store.addDraftFromSelection(sinCantidad);
+    store.addDraftFromSelection(sinCantidad);
+
+    expect(store.draftLines().length).toBe(1);
+    expect(store.draftLines()[0].quantity).toBe(2);
+    expect(store.editingDraftKey()).toBeNull();
+    expect(store.configuringProduct()).toBeNull();
+  });
+});
+
+describe('PosTerminalStore.decDraft — ajuste automático D4 de adiciones "cantidad" (spec 117, A-126)', () => {
+  let store: PosTerminalStore;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+  });
+
+  it('al reducir la cantidad de producto, una adición que excede su nuevo tope individual se reduce automáticamente', () => {
+    const gomitas = { id: 'gom', name: 'Gomitas', extra_price: 1000, available: true };
+    const group = {
+      id: 'ad', name: 'Adicionales', min_select: 0, max_select: 1, consume: false,
+      selection_mode: 'cantidad' as const, max_quantity_per_option: 1, max_total_quantity: null,
+      options: [gomitas],
+    };
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo' } as never,
+      variant: { id: 'v1', price: 18000, option_groups: [group] } as never,
+      options: [{ option: gomitas, quantity: 2, groupName: 'Adicionales', selectionMode: 'cantidad' }],
+      quantity: 2, // tope vigente al crear: 1×2=2
+      notes: null,
+    });
+    const key = store.draftLines()[0].key;
+
+    store.decDraft(key); // cantidad de producto = 1 → nuevo tope 1×1=1
+
+    const [line] = store.draftLines();
+    expect(line.quantity).toBe(1);
+    expect(line.kind).toBe('product');
+    if (line.kind === 'product') {
+      expect(line.options[0].quantity).toBe(1);
+      expect(line.addonsTotal).toBe(1000);
+    }
+  });
+
+  it('con dos adiciones en conflicto, reduce en orden alfabético descendente (Gomitas antes que Chocolate)', () => {
+    const gomitas = { id: 'gom', name: 'Gomitas', extra_price: 1000, available: true };
+    const chocolate = { id: 'cho', name: 'Chocolate', extra_price: 1500, available: true };
+    const group = {
+      id: 'ad', name: 'Adicionales', min_select: 0, max_select: 2, consume: false,
+      selection_mode: 'cantidad' as const, max_quantity_per_option: null, max_total_quantity: 2,
+      options: [gomitas, chocolate],
+    };
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo' } as never,
+      variant: { id: 'v1', price: 18000, option_groups: [group] } as never,
+      options: [
+        { option: gomitas, quantity: 2, groupName: 'Adicionales', selectionMode: 'cantidad' },
+        { option: chocolate, quantity: 1, groupName: 'Adicionales', selectionMode: 'cantidad' },
+      ],
+      quantity: 2, // tope vigente al crear: 2×2=4 (suma 3, válida)
+      notes: null,
+    });
+    const key = store.draftLines()[0].key;
+
+    store.decDraft(key); // cantidad de producto = 1 → nuevo tope 2×1=2
+
+    const [line] = store.draftLines();
+    if (line.kind === 'product') {
+      const porOpcion = Object.fromEntries(line.options.map((o) => [o.option.id, o.quantity]));
+      expect(porOpcion['gom']).toBe(1);
+      expect(porOpcion['cho']).toBe(1);
+    }
+  });
+
+  it('el cajero sube de nuevo la cantidad y la adición reducida NO revive sola', () => {
+    const gomitas = { id: 'gom', name: 'Gomitas', extra_price: 1000, available: true };
+    const group = {
+      id: 'ad', name: 'Adicionales', min_select: 0, max_select: 1, consume: false,
+      selection_mode: 'cantidad' as const, max_quantity_per_option: 1, max_total_quantity: null,
+      options: [gomitas],
+    };
+    store.addDraftFromSelection({
+      product: { id: 'p1', name: 'Ojo de Diablo' } as never,
+      variant: { id: 'v1', price: 18000, option_groups: [group] } as never,
+      options: [{ option: gomitas, quantity: 2, groupName: 'Adicionales', selectionMode: 'cantidad' }],
+      quantity: 2,
+      notes: null,
+    });
+    const key = store.draftLines()[0].key;
+    store.decDraft(key); // reduce gomitas a 1
+
+    store.incDraft(key); // sube de nuevo a cantidad de producto 2
+
+    const [line] = store.draftLines();
+    if (line.kind === 'product') {
+      expect(line.options[0].quantity).toBe(1); // no revive sola
+    }
   });
 });
 
@@ -3146,8 +3359,8 @@ describe('PosTerminalStore — adicionales del panel del pedido (spec 087, FR-01
       product: { id: 'p1', name: 'Cono' } as never,
       variant: { id: 'v1', price: 8000 } as never,
       options: [
-        { option: { id: 'o-queso', name: 'Queso extra' } as never, quantity: 1, groupName: 'Toppings' },
-        { option: { id: 'o-choco', name: 'Choco-chips' } as never, quantity: 2, groupName: 'Toppings' },
+        { option: { id: 'o-queso', name: 'Queso extra' } as never, quantity: 1, groupName: 'Toppings', selectionMode: 'conteo' },
+        { option: { id: 'o-choco', name: 'Choco-chips' } as never, quantity: 2, groupName: 'Toppings', selectionMode: 'conteo' },
       ],
       quantity: 1,
       notes: null,

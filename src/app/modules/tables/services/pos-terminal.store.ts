@@ -58,6 +58,10 @@ interface ProductDraftLine {
   quantity: number;
   notes: string | null;
   unitPrice: number;
+  /** spec 117 (A-126): Σ(extra × cantidad) de las opciones de grupos "cantidad" --
+   *  nunca multiplicadas por `quantity`, a diferencia de `unitPrice` (presentación +
+   *  opciones "conteo"). */
+  addonsTotal: number;
 }
 
 /**
@@ -1177,9 +1181,11 @@ export class PosTerminalStore {
         ),
         notes: l.notes || null,
         unitPrice,
-        // La terminal POS cobra los extras por unidad (dentro de `unitPrice`): sin adicionales por línea.
-        addonsTotal: 0,
-        subtotal: unitPrice * l.quantity,
+        // spec 117 (A-126): los extras de un grupo "cantidad" ya se separaron en
+        // `l.addonsTotal` (addDraftFromSelection) -- se cobran una vez por línea, no por
+        // unidad de producto, igual que en el backend.
+        addonsTotal: l.addonsTotal,
+        subtotal: unitPrice * l.quantity + l.addonsTotal,
         ready: true,
         kitchenStatus: null,
         pendingItemIds: [] as string[],
@@ -1821,8 +1827,17 @@ export class PosTerminalStore {
   }
 
   addDraftFromSelection(sel: ProductSelection): void {
+    // spec 117 (A-126): una opción de un grupo "cantidad" se cobra por línea, no por
+    // unidad de producto -- separada de `unitPrice` (presentación + opciones "conteo")
+    // en su propio `addonsTotal`, igual que ya hace el backend (`compute_unit_price`/
+    // `compute_addons_total`).
     const unitPrice =
-      sel.variant.price + sel.options.reduce((s, c) => s + c.option.extra_price * c.quantity, 0);
+      sel.variant.price + sel.options.reduce(
+        (s, c) => s + (c.selectionMode === 'cantidad' ? 0 : c.option.extra_price * c.quantity), 0,
+      );
+    const addonsTotal = sel.options.reduce(
+      (s, c) => s + (c.selectionMode === 'cantidad' ? c.option.extra_price * c.quantity : 0), 0,
+    );
     const key = this.productIdentityKey(sel.variant.id, sel.options, sel.notes);
     const line: ProductDraftLine = {
       kind: 'product',
@@ -1833,6 +1848,7 @@ export class PosTerminalStore {
       quantity: sel.quantity,
       notes: sel.notes,
       unitPrice,
+      addonsTotal,
     };
     const editKey = this.editingDraftKey();
     if (editKey) {
@@ -1845,6 +1861,11 @@ export class PosTerminalStore {
       // bloquea, es un caso raro que no amerita lógica adicional ahora.
       this.draftLines.update((lines) => lines.map((l) => (l.key === editKey ? line : l)));
     } else {
+      // FR-014 (spec 117, A-126): si la fusión combina la cantidad de producto de una
+      // línea con al menos una adición "Por cantidad" ya elegida, no se aplica la suma
+      // tácitamente -- se reabre el modal en modo edición para que el cajero confirme o
+      // reingrese la cantidad de cada adición "cantidad" para la cantidad combinada.
+      let reopenForQuantityConfirm: string | null = null;
       this.draftLines.update((lines) => {
         // spec 115 (A-134): no mezclar paquete con suelto en la misma línea -- se busca la
         // ÚLTIMA línea de la MISMA identidad (puede no ser la única si ya hay una hermana por
@@ -1873,8 +1894,17 @@ export class PosTerminalStore {
         // Sin promoción min_qty>1, o paquete incompleto: fusiona como siempre.
         const next = [...lines];
         next[lastIdx] = { ...existing, quantity: existing.quantity + sel.quantity };
+        if (existing.options.some((o) => o.selectionMode === 'cantidad')) {
+          reopenForQuantityConfirm = existing.key;
+        }
         return next;
       });
+      if (reopenForQuantityConfirm) {
+        this.openConfigForEdit(reopenForQuantityConfirm);
+        this.catalogOpen.set(false);
+        this.catalogSearchText.set('');
+        return;
+      }
     }
     this.configuringProduct.set(null);
     this.editingDraftKey.set(null);
@@ -1956,9 +1986,83 @@ export class PosTerminalStore {
   decDraft(key: string): void {
     this.draftLines.update((l) =>
       l
-        .map((x) => (x.key === key ? { ...x, quantity: x.quantity - 1 } : x))
+        .map((x) => (x.key === key ? this.decProductDraftLine(x) : x))
         .filter((x) => x.quantity > 0),
     );
+  }
+
+  /** Spec 117 (A-126, D4): mismo criterio determinista que `product-select.
+   *  component.ts::autoAdjustCantidadOptions` -- al reducir la cantidad de producto
+   *  de una línea draft ya enviada al carrito de Terminal POS, las adiciones
+   *  "cantidad" que excedan su nuevo tope escalado se reducen automáticamente antes
+   *  de que la línea llegue al backend (`createManualOrderFromDraft`/`saveOrder`).
+   *  100% client-side (research.md D3). Los combos no tienen este concepto. */
+  private decProductDraftLine(x: DraftLine): DraftLine {
+    const quantity = x.quantity - 1;
+    if (x.kind !== 'product' || quantity <= 0) {
+      return { ...x, quantity };
+    }
+    // Grupo dueño de cada opción "cantidad" elegida, para leer sus topes.
+    const groupsById = new Map(x.variant.option_groups?.map((g) => [g.id, g] as const) ?? []);
+    const groupOf = new Map<string, string>(); // option_id -> group_id
+    for (const group of x.variant.option_groups ?? []) {
+      for (const opt of group.options) groupOf.set(opt.id, group.id);
+    }
+    const byGroup = new Map<string, ChosenMenuOption[]>();
+    for (const c of x.options) {
+      if (c.selectionMode !== 'cantidad') continue;
+      const groupId = groupOf.get(c.option.id);
+      if (!groupId) continue;
+      byGroup.set(groupId, [...(byGroup.get(groupId) ?? []), c]);
+    }
+
+    let options = x.options;
+    for (const [groupId, chosenInGroup] of byGroup) {
+      const group = groupsById.get(groupId)!;
+      const adjusted = new Map(chosenInGroup.map((c) => [c.option.id, c.quantity]));
+
+      if (group.max_quantity_per_option !== null) {
+        const tope = group.max_quantity_per_option * quantity;
+        for (const [optId, qty] of adjusted) {
+          if (qty > tope) adjusted.set(optId, tope);
+        }
+      }
+      if (group.max_total_quantity !== null) {
+        const topeTotal = group.max_total_quantity * quantity;
+        let total = [...adjusted.values()].reduce((s, q) => s + q, 0);
+        if (total > topeTotal) {
+          const ordered = chosenInGroup
+            .filter((c) => (adjusted.get(c.option.id) ?? 0) > 0)
+            .sort((a, b) => {
+              const an = a.option.name.toLocaleLowerCase('es-CO');
+              const bn = b.option.name.toLocaleLowerCase('es-CO');
+              if (an !== bn) return an < bn ? 1 : -1; // descendente
+              return a.option.id < b.option.id ? 1 : -1;
+            });
+          let pos = 0;
+          while (total > topeTotal && pos < ordered.length) {
+            const optId = ordered[pos].option.id;
+            const current = adjusted.get(optId) ?? 0;
+            if (current <= 0) {
+              pos++;
+              continue;
+            }
+            adjusted.set(optId, current - 1);
+            total -= 1;
+            if (current - 1 <= 0) pos++;
+          }
+        }
+      }
+
+      options = options
+        .map((c) => (adjusted.has(c.option.id) ? { ...c, quantity: adjusted.get(c.option.id)! } : c))
+        .filter((c) => c.quantity > 0 || !adjusted.has(c.option.id));
+    }
+
+    const addonsTotal = options.reduce(
+      (s, c) => s + (c.selectionMode === 'cantidad' ? c.option.extra_price * c.quantity : 0), 0,
+    );
+    return { ...x, quantity, options, addonsTotal };
   }
   removeDraft(key: string): void {
     this.draftLines.update((l) => l.filter((x) => x.key !== key));
@@ -1989,7 +2093,12 @@ export class PosTerminalStore {
     const lines = [...this.draftLines()];
     const hadPreview = this.checkoutPreview() != null;
     if (hadPreview) {
-      this.publishEstimate(lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0));
+      this.publishEstimate(
+        lines.reduce(
+          (sum, l) => sum + l.unitPrice * l.quantity + (l.kind === 'product' ? l.addonsTotal : 0),
+          0,
+        ),
+      );
     }
 
     const savedKeys = new Set<string>();

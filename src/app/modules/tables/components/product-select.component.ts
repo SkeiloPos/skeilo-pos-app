@@ -17,6 +17,7 @@ import {
   MenuProduct,
   MenuVariant,
   MenuVariantPromotion,
+  OptionGroupSelectionMode,
 } from '../../products/interfaces/product.interface';
 import { normalizeText } from '../../../shared/normalize-text';
 import { DiscountInfo, discountInfo, effectivePrice, packagePrice } from '../../promotions/services/promotion-pricing.util';
@@ -31,6 +32,10 @@ export interface ChosenMenuOption {
    *  para que el detalle del pedido pueda mostrar la selección agrupada por
    *  su nombre real en vez de una lista plana sin distinguir el grupo. */
   groupName: string;
+  /** spec 117 (A-126): modo del grupo dueño de la opción -- un grupo "cantidad"
+   *  nunca se multiplica por la cantidad de producto de la línea, sin importar
+   *  `addonsPerLine` (eje 089, independiente de este). */
+  selectionMode: OptionGroupSelectionMode;
 }
 
 /** Emitted when the diner confirms their selection for a product. */
@@ -549,7 +554,11 @@ export class ProductSelectComponent implements OnInit {
       const entry = map[group.id] ?? {};
       for (const opt of group.options) {
         const quantity = entry[opt.id] ?? 0;
-        if (quantity > 0) chosen.push({ option: opt, quantity, groupName: group.name });
+        if (quantity > 0) {
+          chosen.push({
+            option: opt, quantity, groupName: group.name, selectionMode: group.selection_mode,
+          });
+        }
       }
     }
     return chosen;
@@ -623,9 +632,13 @@ export class ProductSelectComponent implements OnInit {
     const base = promo
       ? packagePrice(variant.price, promo, quantity)
       : effectivePrice(variant.price, variant.discounted_price) * quantity;
-    const extra = this.selectedOptions().reduce(
-      (s, c) => s + c.option.extra_price * c.quantity, 0,
-    ) * (this.addonsPerLine ? 1 : quantity);
+    const extra = this.selectedOptions().reduce((sum, c) => {
+      const addon = c.option.extra_price * c.quantity;
+      // spec 117 (A-126): un grupo "cantidad" nunca se multiplica por la cantidad de
+      // producto, sin importar `addonsPerLine` (eje 089, independiente de este).
+      const multiplier = c.selectionMode === 'cantidad' ? 1 : (this.addonsPerLine ? 1 : quantity);
+      return sum + addon * multiplier;
+    }, 0);
     return base + extra;
   });
 
@@ -923,14 +936,17 @@ export class ProductSelectComponent implements OnInit {
 
   // --- Cantidad libre por opción (spec 065, US2/US4) ---
 
-  /** `true` si el botón `+` de esta opción debe estar habilitado (US4, FR-008/FR-009). */
+  /** `true` si el botón `+` de esta opción debe estar habilitado (US4, FR-008/FR-009).
+   *  Spec 117 (A-126, D2): los topes se escalan por la cantidad de producto de la
+   *  línea, igual que en el backend (`validate_option_selection`). */
   canIncrement(group: MenuOptionGroup, opt: MenuOption): boolean {
     if (!opt.available) return false;
+    const qty = this.quantity();
     const current = this.optionQuantity(group.id, opt.id);
-    if (group.max_quantity_per_option !== null && current >= group.max_quantity_per_option) {
+    if (group.max_quantity_per_option !== null && current >= group.max_quantity_per_option * qty) {
       return false;
     }
-    if (group.max_total_quantity !== null && this.chosenTotal(group) >= group.max_total_quantity) {
+    if (group.max_total_quantity !== null && this.chosenTotal(group) >= group.max_total_quantity * qty) {
       return false;
     }
     return true;
@@ -976,6 +992,64 @@ export class ProductSelectComponent implements OnInit {
 
   dec(): void {
     this.quantity.update((q) => Math.max(this.minQty(), q - this.minQty()));
+    this.autoAdjustCantidadOptions();
+  }
+
+  /** Spec 117 (A-126, D4): mismo algoritmo que el backend
+   *  (`cart/service.py::_auto_adjust_cantidad_options`, contracts/cart-item-auto-
+   *  adjust.md) -- al reducir la cantidad de producto, las adiciones "cantidad" que
+   *  excedan su nuevo tope escalado se reducen automáticamente, antes de que el
+   *  cajero pueda pulsar "Agregar" (`confirm()`). 100% client-side (research.md D3):
+   *  esta línea todavía no existe en el backend. */
+  private autoAdjustCantidadOptions(): void {
+    const qty = this.quantity();
+    for (const group of this.activeGroups()) {
+      if (group.selection_mode !== 'cantidad') continue;
+      const entry = this.selected()[group.id];
+      if (!entry) continue;
+      const next = { ...entry };
+
+      // Paso 2 (D4): tope individual escalado.
+      if (group.max_quantity_per_option !== null) {
+        const tope = group.max_quantity_per_option * qty;
+        for (const optId of Object.keys(next)) {
+          if (next[optId] > tope) next[optId] = tope;
+        }
+      }
+
+      // Paso 3 (D4): tope total escalado, orden alfabético descendente sobre el
+      // nombre normalizado, desempate por id, una unidad a la vez.
+      if (group.max_total_quantity !== null) {
+        const topeTotal = group.max_total_quantity * qty;
+        let total = Object.values(next).reduce((s, q) => s + q, 0);
+        if (total > topeTotal) {
+          const ordered = group.options
+            .filter((o) => (next[o.id] ?? 0) > 0)
+            .sort((a, b) => {
+              const an = a.name.toLocaleLowerCase('es-CO');
+              const bn = b.name.toLocaleLowerCase('es-CO');
+              if (an !== bn) return an < bn ? 1 : -1; // descendente
+              return a.id < b.id ? 1 : -1;
+            });
+          let pos = 0;
+          while (total > topeTotal && pos < ordered.length) {
+            const optId = ordered[pos].id;
+            if ((next[optId] ?? 0) <= 0) {
+              pos++;
+              continue;
+            }
+            next[optId] -= 1;
+            total -= 1;
+            if (next[optId] <= 0) pos++;
+          }
+        }
+      }
+
+      for (const optId of Object.keys(next)) {
+        if (next[optId] <= 0) delete next[optId];
+      }
+      this.selected.update((map) => ({ ...map, [group.id]: next }));
+    }
   }
 
   confirm(): void {
