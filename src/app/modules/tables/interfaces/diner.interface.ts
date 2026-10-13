@@ -74,6 +74,16 @@ export interface CartItemOption {
   per_line?: boolean;
 }
 
+/** Spec 117 (A-126, D5): una adición "Por cantidad" que el backend redujo
+ *  automáticamente al reducir la cantidad de producto de la línea
+ *  (contracts/cart-item-auto-adjust.md). */
+export interface AdjustedOption {
+  option_id: string;
+  option_name: string;
+  previous_quantity: number;
+  new_quantity: number;
+}
+
 /** Una línea del carrito (`CartItemResponse`). Los importes llegan como string. */
 export interface CartItemResponse {
   id: string;
@@ -93,6 +103,10 @@ export interface CartItemResponse {
   discounted_line_total?: string | null;
   notes: string | null;
   options: CartItemOption[];
+  /** Spec 117 (A-126, D5): poblado SOLO en la respuesta del `PATCH` que disparó el
+   *  ajuste automático -- `[]`/ausente en toda otra lectura (`GET /cart`, que nunca
+   *  lo repite). */
+  adjusted_options?: AdjustedOption[];
 }
 
 /** Carrito completo (`CartResponse`). Toda mutación devuelve este objeto entero. */

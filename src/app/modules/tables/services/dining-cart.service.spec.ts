@@ -181,6 +181,86 @@ describe('DiningCartService', () => {
     expect(cart.total()).toBe(33000);
   });
 
+  // ── spec 117 (A-126): grupo "cantidad" fuera del eje 089 -------------------
+
+  it('verificación de lectura (T028): una línea de un grupo "cantidad" no 1:1 ya separada por el backend se lee igual, sin cambio de código', async () => {
+    await load({
+      ...emptyCart('Ana'),
+      total: '37000',
+      items: [
+        {
+          // 2 unidades de producto + 1 "gomitas" ($1.000) de un grupo "cantidad": el
+          // backend (US1, ya corregido) persiste unit_price/addons_total separados y
+          // marca per_line=true, exactamente igual que un adicional "con_recargo" del
+          // eje 089 -- dining-cart.service.ts no distingue el eje, solo lee los campos.
+          id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '18000', addons_total: '1000',
+          line_total: '37000', notes: null, options: [{ id: 'o1', option_id: 'gom', quantity: 1, per_line: true }],
+        },
+      ],
+    });
+
+    const [line] = cart.lines();
+    expect(line.unitPrice).toBe(18000);
+    expect(line.addonsTotal).toBe(1000);
+    expect(line.lineTotal).toBe(37000); // 2 × 18.000 + 1.000, no 38.000
+    expect(cart.total()).toBe(37000);
+  });
+
+  it('T040: setQuantity() devuelve adjusted_options cuando el backend disparó el ajuste automático (D4/D5)', async () => {
+    await load({
+      ...emptyCart('Ana'),
+      total: '21000',
+      items: [
+        {
+          id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', addons_total: '4000',
+          line_total: '34000', notes: null, options: [{ id: 'o1', option_id: 'gom', quantity: 2, per_line: true }],
+        },
+      ],
+    });
+
+    const promise = cart.setQuantity('i1', 1);
+    http.expectOne(`${API}/cart/items/i1`).flush({
+      ...emptyCart('Ana'),
+      total: '19000',
+      items: [
+        {
+          id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '15000', addons_total: '4000',
+          line_total: '19000', notes: null, options: [{ id: 'o1', option_id: 'gom', quantity: 1, per_line: true }],
+          adjusted_options: [
+            { option_id: 'gom', option_name: 'Gomitas', previous_quantity: 2, new_quantity: 1 },
+          ],
+        },
+      ],
+    });
+    const adjusted = await promise;
+
+    expect(adjusted).toEqual([
+      { option_id: 'gom', option_name: 'Gomitas', previous_quantity: 2, new_quantity: 1 },
+    ]);
+    expect(cart.lines()[0].quantity).toBe(1);
+  });
+
+  it('sin ajuste automático, setQuantity() devuelve un arreglo vacío', async () => {
+    await load({
+      ...emptyCart('Ana'),
+      total: '33000',
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 2, unit_price: '15000', addons_total: '3000', line_total: '33000', notes: null, options: [] },
+      ],
+    });
+
+    const promise = cart.setQuantity('i1', 3);
+    http.expectOne(`${API}/cart/items/i1`).flush({
+      ...emptyCart('Ana'),
+      total: '48000',
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 3, unit_price: '15000', addons_total: '3000', line_total: '48000', notes: null, options: [] },
+      ],
+    });
+
+    expect(await promise).toEqual([]);
+  });
+
   it('cambiar la cantidad del producto no toca addonsTotal', async () => {
     await load({
       ...emptyCart('Ana'),
@@ -262,7 +342,7 @@ describe('DiningCartService', () => {
     });
     const tocino = { id: 'toc', name: 'Tocino', extra_price: 3000, available: true };
 
-    const promise = cart.updateItem('i1', [{ option: tocino, quantity: 2, groupName: 'Adicionales' }], 'sin sal');
+    const promise = cart.updateItem('i1', [{ option: tocino, quantity: 2, groupName: 'Adicionales', selectionMode: 'conteo' }], 'sin sal');
     const req = http.expectOne(`${API}/cart/items/i1`);
     expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual({ options: [{ option_id: 'toc', quantity: 2 }], notes: 'sin sal' });

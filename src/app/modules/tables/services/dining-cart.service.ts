@@ -4,7 +4,7 @@ import {
   MenuVariant,
 } from '../../products/interfaces/product.interface';
 import { ChosenMenuOption } from '../components/product-select.component';
-import { CartResponse } from '../interfaces/diner.interface';
+import { AdjustedOption, CartResponse } from '../interfaces/diner.interface';
 import { DinerService } from './diner.service';
 import { effectivePrice } from '../../promotions/services/promotion-pricing.util';
 import { formatQuantifiedLabel } from './menu-lookup';
@@ -182,9 +182,16 @@ export class DiningCartService {
     );
   }
 
-  async setQuantity(itemId: string, quantity: number): Promise<void> {
-    if (quantity <= 0) return this.remove(itemId);
-    await this.mutate(() => this.api.updateItem(itemId, { quantity }));
+  /** Spec 117 (A-126, D5): devuelve las adiciones "cantidad" que el backend redujo
+   *  automáticamente al reducir la cantidad de producto, si las hubo (`[]` en el
+   *  caso normal, sin ajuste) -- para que la pantalla pueda avisar. */
+  async setQuantity(itemId: string, quantity: number): Promise<AdjustedOption[]> {
+    if (quantity <= 0) {
+      await this.remove(itemId);
+      return [];
+    }
+    const cart = await this.mutate(() => this.api.updateItem(itemId, { quantity }));
+    return cart.items.find((it) => it.id === itemId)?.adjusted_options ?? [];
   }
 
   async remove(itemId: string): Promise<void> {
@@ -208,10 +215,12 @@ export class DiningCartService {
     this.dinerName.set('');
   }
 
-  private async mutate(fn: () => Promise<CartResponse>): Promise<void> {
+  private async mutate(fn: () => Promise<CartResponse>): Promise<CartResponse> {
     this.busy.set(true);
     try {
-      this.apply(await fn());
+      const cart = await fn();
+      this.apply(cart);
+      return cart;
     } finally {
       this.busy.set(false);
     }
