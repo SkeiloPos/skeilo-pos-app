@@ -6,6 +6,34 @@
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <script>
+    // spec 116 (research.md R4, FR-012/FR-013/FR-014): fija el tema del panel
+    // ANTES del primer pintado -- Angular es 100% CSR aquí, así que si esto
+    // viviera dentro de un componente habría un frame real en el tema por
+    // defecto antes de corregirse (SC-002 lo prohíbe). Nunca lanza: sin esto
+    // ni señal del sistema, el tema por defecto (claro, sin atributo) ya es
+    // correcto.
+    (function () {
+      try {
+        var saved = localStorage.getItem('pos.panel.theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.dataset.theme = saved;
+          return;
+        }
+      } catch (e) {
+        // localStorage bloqueado (navegación privada u otro): sin preferencia
+        // guardada que leer, se sigue con la señal del sistema.
+      }
+      try {
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      } catch (e) {
+        // sin matchMedia (entorno de prueba u otro): el tema por defecto
+        // (claro, sin atributo) ya es correcto.
+      }
+    })();
+  </script>
 </head>
 <body>
   <app-root></app-root>

@@ -10,6 +10,8 @@ import { Injectable, signal } from '@angular/core';
  *  `sidebarOpen()`. */
 const DESKTOP_BREAKPOINT_PX = 1024;
 
+const DESKTOP_COLLAPSED_KEY = 'pos.panel.sidebar_collapsed';
+
 @Injectable({ providedIn: 'root' })
 export class LayoutService {
   /**
@@ -35,5 +37,34 @@ export class LayoutService {
 
   toggle(): void {
     this.sidebarOpen.update(v => !v);
+  }
+
+  /**
+   * Spec 116 (data-model.md §2; research.md R5): colapso del sidebar de
+   * tenant a solo-íconos **en escritorio**. Separado de `sidebarOpen` a
+   * propósito -- ese signal sigue gobernando, sin cambios, el
+   * mostrar/ocultar por completo de `SidebarComponent` (Super Admin) y el
+   * drawer móvil/tablet de `app-tenant-sidebar`; este solo decide el ancho
+   * en escritorio (72px colapsado vs. 248px expandido) y se persiste con el
+   * mismo patrón defensivo que `PanelThemeService`.
+   */
+  readonly desktopCollapsed = signal(this.readDesktopCollapsed());
+
+  toggleDesktopCollapsed(): void {
+    const next = !this.desktopCollapsed();
+    this.desktopCollapsed.set(next);
+    try {
+      localStorage.setItem(DESKTOP_COLLAPSED_KEY, next ? '1' : '0');
+    } catch {
+      /* navegación privada u otro bloqueo: la preferencia vive solo esta carga */
+    }
+  }
+
+  private readDesktopCollapsed(): boolean {
+    try {
+      return localStorage.getItem(DESKTOP_COLLAPSED_KEY) === '1';
+    } catch {
+      return false; // almacenamiento no disponible -- por defecto, expandido
+    }
   }
 }

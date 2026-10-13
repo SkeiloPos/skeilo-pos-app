@@ -8,6 +8,7 @@ import { PROMOTIONS_TAB_ID, PublicMenuComponent } from './public-menu.component'
 import { DinerService, DinerSessionExpiredError } from '../services/diner.service';
 import { DinerTokenStore } from '../services/diner-token.store';
 import { CartLine, DiningCartService } from '../services/dining-cart.service';
+import { AdjustedOption } from '../interfaces/diner.interface';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import {
   MenuCategory,
@@ -61,6 +62,9 @@ class FakeDiningCartService {
   readonly lines = signal<Partial<CartLine>[]>([]);
   /** spec 089 (Historia 3): `PATCH /cart/items/{id}` — cada test decide si acepta o rechaza. */
   updateItem = vi.fn(async (): Promise<void> => undefined);
+  /** spec 117 (A-126, D5): `[]` por defecto (sin ajuste automático) — cada test que
+   *  lo necesite sobreescribe la resolución para simular el ajuste. */
+  setQuantity = vi.fn(async (): Promise<AdjustedOption[]> => []);
   stepFor(): number {
     return 1;
   }
@@ -805,12 +809,12 @@ describe('PublicMenuComponent', () => {
 
       await component.onEditSaved({
         ...component.editing()!.selection,
-        options: [{ option: queso, quantity: 2, groupName: 'Adicionales' }],
+        options: [{ option: queso, quantity: 2, groupName: 'Adicionales', selectionMode: 'cantidad' }],
         notes: 'sin sal',
       });
 
       expect(cart.updateItem).toHaveBeenCalledWith(
-        'l1', [{ option: queso, quantity: 2, groupName: 'Adicionales' }], 'sin sal',
+        'l1', [{ option: queso, quantity: 2, groupName: 'Adicionales', selectionMode: 'cantidad' }], 'sin sal',
       );
       expect(component.editingLine()).toBeNull();
     });
@@ -882,6 +886,41 @@ describe('PublicMenuComponent', () => {
     it('una línea con su producto en el menú sí es editable', async () => {
       const { component } = await abrir();
       expect(component.nonEditableLineIds().has('l1')).toBe(false);
+    });
+  });
+
+  // ── spec 117 (A-126, D5): aviso al reducir y disparar el ajuste automático ──
+
+  describe('changeQuantity avisa cuando el backend ajustó automáticamente una adición (spec 117)', () => {
+    async function montar() {
+      const { fixture, component } = await createComponent('tok-1', [], { withSession: true });
+      const cart = TestBed.inject(DiningCartService) as unknown as FakeDiningCartService;
+      cart.isEmpty.set(false);
+      fixture.detectChanges();
+      return { fixture, component, cart };
+    }
+
+    it('muestra un aviso informativo con el detalle cuando adjusted_options no viene vacío', async () => {
+      const { fixture, component, cart } = await montar();
+      cart.setQuantity.mockResolvedValueOnce([
+        { option_id: 'gom', option_name: 'Gomitas', previous_quantity: 2, new_quantity: 1 },
+      ]);
+
+      await component.changeQuantity('i1', 1);
+      fixture.detectChanges();
+
+      expect(component.orderError()).toContain('Gomitas');
+      expect(component.orderError()).toContain('de 2 a 1');
+    });
+
+    it('sin ajuste (adjusted_options vacío), no muestra ningún aviso', async () => {
+      const { fixture, component, cart } = await montar();
+      cart.setQuantity.mockResolvedValueOnce([]);
+
+      await component.changeQuantity('i1', 3);
+      fixture.detectChanges();
+
+      expect(component.orderError()).toBeNull();
     });
   });
 

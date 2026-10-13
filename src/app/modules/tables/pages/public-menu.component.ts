@@ -6,6 +6,7 @@ import {
   MenuOption,
   MenuProduct,
   MenuVariant,
+  OptionGroupSelectionMode,
 } from '../../products/interfaces/product.interface';
 import {
   DinerService,
@@ -43,6 +44,7 @@ import { MoneyPipe } from '../../../shared/money.pipe';
 import { IconComponent } from '../../../shared/icon/icon.component';
 import { normalizeText } from '../../../shared/normalize-text';
 import {
+  ChosenMenuOption,
   ProductSelectComponent,
   ProductSelection,
 } from '../components/product-select.component';
@@ -827,14 +829,14 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     const found = this.findVariant(line.productVariantId);
     if (!found) return null;
     const { product, variant } = found;
-    const options: { option: MenuOption; quantity: number; groupName: string }[] = [];
+    const options: ChosenMenuOption[] = [];
     let missing = 0;
     for (const sel of line.optionSelections) {
-      let match: { option: MenuOption; groupName: string } | null = null;
+      let match: { option: MenuOption; groupName: string; selectionMode: OptionGroupSelectionMode } | null = null;
       for (const group of variant.option_groups) {
         const option = group.options.find((o) => o.id === sel.optionId);
         if (option) {
-          match = { option, groupName: group.name };
+          match = { option, groupName: group.name, selectionMode: group.selection_mode };
           break;
         }
       }
@@ -1230,11 +1232,22 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Cambia la cantidad de una línea (el carrito vive en el backend). */
+  /** Cambia la cantidad de una línea (el carrito vive en el backend).
+   *
+   *  Spec 117 (A-126, D5): si reducir la cantidad de producto obligó al backend a
+   *  reducir automáticamente alguna adición "Por cantidad" (porque ya no entraba en
+   *  su nuevo tope), se avisa reutilizando `orderError` como señal simple -- el
+   *  diseño visual concreto del aviso queda fuera de alcance de esta spec. */
   async changeQuantity(itemId: string, quantity: number): Promise<void> {
     this.orderError.set(null);
     try {
-      await this.cart.setQuantity(itemId, quantity);
+      const adjusted = await this.cart.setQuantity(itemId, quantity);
+      if (adjusted.length > 0) {
+        const detalle = adjusted
+          .map((a) => `${a.option_name} de ${a.previous_quantity} a ${a.new_quantity}`)
+          .join(', ');
+        this.orderError.set(`Se ajustó la cantidad de: ${detalle} (nuevo límite por la cantidad de producto).`);
+      }
     } catch (err) {
       this.showCartError(err);
     }
