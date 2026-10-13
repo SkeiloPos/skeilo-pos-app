@@ -9,6 +9,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/admin',
     group: 'PRINCIPAL',
     roles: [UserRole.ADMIN],
+    frame: { label: 'Dashboard', icon: 'layout-dashboard', group: 'Inicio' },
   },
   {
     label: 'Ventas',
@@ -16,6 +17,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/ventas',
     group: 'PRINCIPAL',
     roles: [UserRole.ADMIN, UserRole.CASHIER],
+    frame: { label: 'Ventas', icon: 'shopping-cart', group: 'Operación' },
   },
   {
     label: 'Reportes',
@@ -23,6 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/reports',
     group: 'PRINCIPAL',
     roles: [UserRole.ADMIN],
+    frame: { label: 'Reportes', icon: 'chart-column', group: 'Control' },
   },
 
   // ── OPERACIONES ────────────────────────────────────────────────────────
@@ -32,6 +35,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/orders',
     group: 'OPERACIONES',
     roles: [UserRole.ADMIN, UserRole.CASHIER, UserRole.MESERO],
+    frame: { label: 'Órdenes', icon: 'receipt', group: 'Operación' },
   },
   {
     label: 'Mesas',
@@ -39,6 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/mesas',
     group: 'OPERACIONES',
     roles: [UserRole.ADMIN],
+    frame: { label: 'Mesas', icon: 'layout-grid', group: 'Operación' },
   },
   {
     label: 'Terminal de mesas',
@@ -46,6 +51,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/mesas-sesiones',
     group: 'OPERACIONES',
     roles: [UserRole.ADMIN, UserRole.CASHIER, UserRole.MESERO],
+    frame: { label: 'Terminal de Mesas', icon: 'qr-code', group: 'Operación' },
   },
 
   // ── CATÁLOGO ───────────────────────────────────────────────────────────
@@ -57,6 +63,7 @@ export const NAV_ITEMS: NavItem[] = [
     // spec 093: el Cajero entra a la misma pantalla, en solo lectura salvo el
     // interruptor "Agotado" (ver ProductsPageComponent.isAdmin).
     roles: [UserRole.ADMIN, UserRole.CASHIER],
+    frame: { label: 'Carta del Menú', icon: 'book-open', group: 'Catálogo' },
   },
   {
     label: 'Categorías',
@@ -64,6 +71,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/categories',
     group: 'CATÁLOGO',
     roles: [UserRole.ADMIN],
+    frame: { label: 'Categorías', icon: 'tags', group: 'Catálogo' },
   },
   {
     label: 'Presentaciones',
@@ -73,6 +81,7 @@ export const NAV_ITEMS: NavItem[] = [
     roles: [UserRole.ADMIN],
     // spec 083 (research.md D3): sin moduleKey -- catálogo base, mismo criterio
     // que Categorías/Productos, no un módulo pago como Promociones.
+    frame: { label: 'Presentaciones', icon: 'cup-soda', group: 'Catálogo' },
   },
   {
     label: 'Promociones',
@@ -81,6 +90,7 @@ export const NAV_ITEMS: NavItem[] = [
     group: 'CATÁLOGO',
     roles: [UserRole.ADMIN],
     moduleKey: 'promociones',
+    frame: { label: 'Promociones', icon: 'percent', group: 'Catálogo' },
   },
 
   // ── ADMINISTRACIÓN ─────────────────────────────────────────────────────
@@ -91,6 +101,7 @@ export const NAV_ITEMS: NavItem[] = [
     group: 'ADMINISTRACIÓN',
     roles: [UserRole.ADMIN],
     moduleKey: 'inventario',
+    frame: { label: 'Inventario', icon: 'package', group: 'Inventario' },
   },
   {
     label: 'Proveedores',
@@ -98,6 +109,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/proveedores',
     group: 'ADMINISTRACIÓN',
     roles: [UserRole.ADMIN],
+    frame: { label: 'Proveedores', icon: 'truck', group: 'Inventario' },
   },
   {
     label: 'Caja',
@@ -105,6 +117,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/caja',
     group: 'ADMINISTRACIÓN',
     roles: [UserRole.ADMIN, UserRole.CASHIER],
+    frame: { label: 'Cajas', icon: 'banknote', group: 'Control' },
   },
   {
     label: 'Usuarios',
@@ -112,6 +125,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/users',
     group: 'ADMINISTRACIÓN',
     roles: [UserRole.ADMIN],
+    frame: { label: 'Usuarios', icon: 'users', group: 'Administración' },
   },
   {
     label: 'Ajustes',
@@ -119,6 +133,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/ajustes',
     group: 'ADMINISTRACIÓN',
     roles: [UserRole.ADMIN],
+    frame: { label: 'Ajustes', icon: 'settings', group: 'Administración' },
   },
 ];
 

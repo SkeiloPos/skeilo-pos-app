@@ -415,3 +415,76 @@ html, body {
   outline-offset: 2px;
   border-radius: 8px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Marco del panel (sidebar + navbar + fondo de contenido) de tenant — spec 116
+   ══════════════════════════════════════════════════════════════════════════
+
+   Valores tomados **literalmente** del sistema de diseño entregado
+   (`_ds/skeilopos-design-system-.../tokens/colors.css` y `theme-light.css`),
+   igual que `.auth-theme` (spec 095). Acotada a `app-tenant-sidebar`,
+   `app-tenant-header` y el fondo del contenedor de `router-outlet` — nunca al
+   contenido de cada módulo (FR-010; contracts/panel-theme-contract.md §1):
+   soltar estos tokens en `:root` repintaría las pantallas que esta spec no
+   toca, que es justo lo que el Principio V prohíbe.
+
+   Ajuste visual (2026-10-12) contra SkeiloPOS App.dc.html (sustituye a
+   Layout base.dc.html, desactualizado — ver spec.md, sección
+   Clarifications): `--panel-color-canvas` claro corregido a #F4F6F9
+   (`--color-canvas-dark` real del tema claro — #EDF1F5 es en realidad
+   `--color-surface-soft`, no el canvas); se añade `--panel-color-surface-card`
+   (`--color-surface` real, distinto de `--panel-color-surface` =
+   `--color-surface-soft` solo en tema oscuro) para los paneles flotantes
+   (menú de usuario, notificaciones) y el botón-píldora de usuario, que en el
+   diseño real NO comparten el mismo fondo que el propio sidebar/navbar. */
+.panel-theme {
+  --panel-color-primary: #7c3aed;
+  --panel-color-primary-active: #6d28d9;
+  --panel-color-primary-soft: rgba(124, 58, 237, 0.1);
+  --panel-color-primary-text: #6d28d9;
+  --panel-color-surface: #ffffff;
+  --panel-color-surface-card: #ffffff;
+  --panel-color-surface-elevated: #f1f5f9;
+  --panel-color-canvas: #f4f6f9;
+  --panel-color-border: #e5e9ef;
+  --panel-color-text-primary: #090d16;
+  --panel-color-text-secondary: #334155;
+  --panel-color-text-muted: #64748b;
+  --panel-color-text-subtle: #94a3b8;
+  --panel-color-success: #6d28d9;
+  --panel-color-success-soft: rgba(124, 58, 237, 0.1);
+  --panel-color-error: #e11d48;
+  --panel-color-overlay-hover: rgba(9, 13, 22, 0.05);
+
+  --panel-font-ui: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+  --panel-font-display: 'Sora', ui-sans-serif, system-ui, sans-serif;
+
+  font-family: var(--panel-font-ui);
+  color: var(--panel-color-text-primary);
+}
+
+.panel-theme[data-theme='dark'] {
+  --panel-color-primary: #7c3aed;
+  --panel-color-primary-active: #6d28d9;
+  --panel-color-primary-soft: rgba(124, 58, 237, 0.16);
+  --panel-color-primary-text: #a78bfa;
+  --panel-color-surface: #111827;
+  --panel-color-surface-card: #1e293b;
+  --panel-color-surface-elevated: #263449;
+  --panel-color-canvas: #090d16;
+  --panel-color-border: #334155;
+  --panel-color-text-primary: #f8fafc;
+  --panel-color-text-secondary: #cbd5e1;
+  --panel-color-text-muted: #94a3b8;
+  --panel-color-text-subtle: #64748b;
+  --panel-color-success: #00ff87;
+  --panel-color-success-soft: rgba(0, 255, 135, 0.1);
+  /* #F43F5E (--color-error real del sistema de diseño) mide 3.98:1 sobre
+     --panel-color-surface-card (#1E293B) -- por debajo del 4.5:1 de WCAG AA
+     para texto normal (14px), verificado con cálculo WCAG manual. Se usa un
+     rojo más claro (rose-400, 5.44:1) solo para este token en oscuro, mismo
+     criterio que la corrección de --panel-color-text-subtle (ver más abajo
+     en este archivo y spec.md). */
+  --panel-color-error: #fb7185;
+  --panel-color-overlay-hover: rgba(248, 250, 252, 0.06);
+}

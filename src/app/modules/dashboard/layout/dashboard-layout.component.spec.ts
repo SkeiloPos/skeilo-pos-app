@@ -1,13 +1,24 @@
 import { TestBed } from '@angular/core/testing';
-import { Component, NO_ERRORS_SCHEMA } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Router, provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { SwPush } from '@angular/service-worker';
+import { vi } from 'vitest';
 import { DashboardLayoutComponent } from './dashboard-layout.component';
 import { LayoutService } from './layout.service';
+import { PanelThemeService } from './panel-theme.service';
 import { SidebarComponent } from './sidebar.component';
 import { HeaderComponent } from './header.component';
+import { TenantSidebarComponent } from './tenant-sidebar.component';
+import { TenantHeaderComponent } from './tenant-header.component';
+import { AuthService } from '../../../core/services/auth.service';
+import { UserRole } from '../../../core/interfaces/user.interface';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
+import { PlanSummaryService } from '../../plan/services/plan-summary.service';
+import { CashService } from '../../cash-register/services/cash.service';
+import { NotificationCenterService } from '../../../core/notifications/notification-center.service';
+import { PushRegistrationService } from '../../../core/notifications/push-registration.service';
 import { ToastContainerComponent } from '../../../shared/feedback/toast-container.component';
 import { ConfirmDialogComponent } from '../../../shared/feedback/confirm-dialog.component';
 
@@ -166,10 +177,29 @@ describe('DashboardLayoutComponent — impresión del reporte de caja (spec 089,
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [DashboardLayoutComponent],
-      providers: [provideRouter([]), swPushStub, provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter([]),
+        swPushStub,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        // spec 116: este bloque solo verifica el CSS de impresión del shell
+        // de Super Admin (legado) -- sin este doble, `isSuperAdmin()` (real
+        // AuthService, sin sesión) resolvería `false` y montaría los
+        // componentes nuevos de tenant, que no son el objeto de esta prueba.
+        { provide: AuthService, useValue: { currentUser: () => ({ isSuperAdmin: true }) } },
+      ],
     });
     TestBed.overrideComponent(DashboardLayoutComponent, {
-      remove: { imports: [SidebarComponent, HeaderComponent, ToastContainerComponent, ConfirmDialogComponent] },
+      remove: {
+        imports: [
+          SidebarComponent,
+          HeaderComponent,
+          TenantSidebarComponent,
+          TenantHeaderComponent,
+          ToastContainerComponent,
+          ConfirmDialogComponent,
+        ],
+      },
       add: { schemas: [NO_ERRORS_SCHEMA] },
     });
     const fixture = TestBed.createComponent(DashboardLayoutComponent);
@@ -207,5 +237,148 @@ describe('DashboardLayoutComponent — impresión del reporte de caja (spec 089,
     const css = estilos();
     expect(css).toMatch(/printing-cash-report[^{}]*app-sidebar/);
     expect(css).toMatch(/printing-cash-report[^{}]*app-header/);
+  });
+
+  // spec 116: quien cierra turno e imprime el reporte desde el panel de
+  // tenant (ADMIN/CASHIER) necesita el mismo tratamiento de impresión.
+  it('también oculta app-tenant-sidebar/app-tenant-header durante esa impresión (spec 116)', () => {
+    const css = estilos();
+    expect(css).toMatch(/printing-cash-report[^{}]*app-tenant-sidebar/);
+    expect(css).toMatch(/printing-cash-report[^{}]*app-tenant-header/);
+  });
+});
+
+/**
+ * spec 116 (T021, contracts/tenant-layout-contract.md §1): la única
+ * bifurcación del shell compartido -- Super Admin sigue montando
+ * `app-sidebar`/`app-header` sin ningún cambio; el resto (Administrador,
+ * Cajero, Mesero) monta los componentes nuevos.
+ */
+describe('DashboardLayoutComponent — bifurcación Super Admin vs. tenant (spec 116, research.md R1)', () => {
+  function render(isSuperAdmin: boolean): HTMLElement {
+    const currentUser = signal({
+      id: 'u1',
+      email: 'a@b.c',
+      role: isSuperAdmin ? UserRole.SUPER_ADMIN : UserRole.ADMIN,
+      tenantId: isSuperAdmin ? null : 1,
+      isSuperAdmin,
+      mustChangePassword: false,
+    });
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [DashboardLayoutComponent],
+      providers: [
+        provideRouter([]),
+        swPushStub,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: AuthService, useValue: { currentUser, logout: vi.fn() } },
+        { provide: TenantInfoService, useValue: { businessName: () => 'Heladería', logoUrl: () => null } },
+        { provide: PlanSummaryService, useValue: { summary: signal(null) } },
+        {
+          provide: CashService,
+          useValue: { shift: signal(null), isOpen: () => false, discoverOpenShift: vi.fn() },
+        },
+        {
+          provide: NotificationCenterService,
+          useValue: { pendingCount: signal(0), list: signal([]), attend: vi.fn() },
+        },
+        { provide: PushRegistrationService, useValue: { supported: false, register: vi.fn() } },
+      ],
+    });
+    const fixture = TestBed.createComponent(DashboardLayoutComponent);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  it('un usuario no-super-admin monta app-tenant-sidebar/app-tenant-header (y no app-sidebar/app-header)', () => {
+    const el = render(false);
+    expect(el.querySelector('app-tenant-sidebar')).not.toBeNull();
+    expect(el.querySelector('app-tenant-header')).not.toBeNull();
+    expect(el.querySelector('app-sidebar')).toBeNull();
+    expect(el.querySelector('app-header')).toBeNull();
+  });
+
+  it('un super admin sigue montando app-sidebar/app-header sin ningún cambio (prueba negativa, research.md R1)', () => {
+    const el = render(true);
+    expect(el.querySelector('app-sidebar')).not.toBeNull();
+    expect(el.querySelector('app-header')).not.toBeNull();
+    expect(el.querySelector('app-tenant-sidebar')).toBeNull();
+    expect(el.querySelector('app-tenant-header')).toBeNull();
+  });
+
+  it('solo el shell de tenant lleva la clase .panel-theme; Super Admin nunca la recibe (FR-009, FR-010)', () => {
+    const tenantRoot = render(false).querySelector('.shell-root')!;
+    expect(tenantRoot.classList.contains('panel-theme')).toBe(true);
+
+    const superAdminRoot = render(true).querySelector('.shell-root')!;
+    expect(superAdminRoot.classList.contains('panel-theme')).toBe(false);
+    expect(superAdminRoot.getAttribute('data-theme')).toBeNull();
+  });
+});
+
+/**
+ * spec 116 (T024, contracts/panel-theme-contract.md §1/§3): alternar el tema
+ * actualiza `data-theme` en la raíz del shell; Super Admin nunca ve el
+ * interruptor ni la clase `.panel-theme` (research.md R1).
+ */
+describe('DashboardLayoutComponent — tema claro/oscuro (spec 116, T024)', () => {
+  function render(isSuperAdmin: boolean) {
+    const currentUser = signal({
+      id: 'u1',
+      email: 'a@b.c',
+      role: isSuperAdmin ? UserRole.SUPER_ADMIN : UserRole.ADMIN,
+      tenantId: isSuperAdmin ? null : 1,
+      isSuperAdmin,
+      mustChangePassword: false,
+    });
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [DashboardLayoutComponent],
+      providers: [
+        provideRouter([]),
+        swPushStub,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: AuthService, useValue: { currentUser, logout: vi.fn() } },
+        { provide: TenantInfoService, useValue: { businessName: () => 'Heladería', logoUrl: () => null } },
+        { provide: PlanSummaryService, useValue: { summary: signal(null) } },
+        {
+          provide: CashService,
+          useValue: { shift: signal(null), isOpen: () => false, discoverOpenShift: vi.fn() },
+        },
+        {
+          provide: NotificationCenterService,
+          useValue: { pendingCount: signal(0), list: signal([]), attend: vi.fn() },
+        },
+        { provide: PushRegistrationService, useValue: { supported: false, register: vi.fn() } },
+      ],
+    });
+    const fixture = TestBed.createComponent(DashboardLayoutComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('alternar el tema actualiza data-theme en la raíz y cambia el ícono del botón (moon↔sun)', () => {
+    const fixture = render(false);
+    const panelTheme = TestBed.inject(PanelThemeService);
+    panelTheme.setTheme('light');
+    fixture.detectChanges();
+
+    const root = (fixture.nativeElement as HTMLElement).querySelector('.shell-root')!;
+    expect(root.getAttribute('data-theme')).toBe('light');
+
+    panelTheme.toggleTheme();
+    fixture.detectChanges();
+
+    expect(root.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('un super admin nunca recibe la clase .panel-theme ni ve el interruptor de tema', () => {
+    const fixture = render(true);
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelector('.shell-root')!.classList.contains('panel-theme')).toBe(false);
+    expect(el.querySelector('app-tenant-header')).toBeNull();
   });
 });

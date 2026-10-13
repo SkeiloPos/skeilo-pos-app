@@ -14,6 +14,18 @@ export interface NavItem {
    * el ítem se oculta del sidebar. Sin definir = siempre visible para los
    * roles indicados (no todo módulo está gobernado por el plan). */
   moduleKey?: keyof ModuleAccess;
+  /**
+   * Presentación nueva del sidebar/navbar de tenant (spec 116,
+   * data-model.md §4) — aditiva: `route`/`roles`/`moduleKey` siguen siendo la
+   * única fuente de verdad del acceso (FR-005/FR-006), sin cambios. Solo la
+   * lee `app-tenant-sidebar`; el componente legado (Super Admin,
+   * research.md R1) no la necesita.
+   */
+  frame?: {
+    label: string;
+    icon: string;
+    group: 'Inicio' | 'Operación' | 'Catálogo' | 'Inventario' | 'Control' | 'Administración';
+  };
 }
 
 /** Order in which sidebar sections are rendered. */
@@ -23,4 +35,19 @@ export const NAV_GROUP_ORDER = [
   'CATÁLOGO',
   'ADMINISTRACIÓN',
   'PLATAFORMA',
+] as const;
+
+/**
+ * Orden de los 6 grupos del sidebar/navbar de tenant rediseñado (spec 116,
+ * data-model.md §4; contracts/navigation-grouping-contract.md). Independiente
+ * de `NAV_GROUP_ORDER`, que sigue gobernando solo al componente legado
+ * (Super Admin, grupo único `PLATAFORMA`).
+ */
+export const TENANT_FRAME_GROUP_ORDER = [
+  'Inicio',
+  'Operación',
+  'Catálogo',
+  'Inventario',
+  'Control',
+  'Administración',
 ] as const;

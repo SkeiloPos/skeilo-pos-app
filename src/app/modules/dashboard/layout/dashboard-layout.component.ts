@@ -1,10 +1,14 @@
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject } from '@angular/core';
 import { RouterOutlet, Router, NavigationEnd } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs/operators';
 import { SidebarComponent } from './sidebar.component';
 import { HeaderComponent } from './header.component';
+import { TenantSidebarComponent } from './tenant-sidebar.component';
+import { TenantHeaderComponent } from './tenant-header.component';
 import { LayoutService } from './layout.service';
+import { PanelThemeService } from './panel-theme.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { BootstrapService } from '../../../core/bootstrap/bootstrap.service';
 import { ToastContainerComponent } from '../../../shared/feedback/toast-container.component';
 import { ConfirmDialogComponent } from '../../../shared/feedback/confirm-dialog.component';
@@ -13,33 +17,62 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, SidebarComponent, HeaderComponent, ToastContainerComponent, ConfirmDialogComponent],
+  imports: [
+    RouterOutlet,
+    SidebarComponent,
+    HeaderComponent,
+    TenantSidebarComponent,
+    TenantHeaderComponent,
+    ToastContainerComponent,
+    ConfirmDialogComponent,
+  ],
   template: `
-    <div class="shell-root flex h-screen bg-gray-50 overflow-hidden">
-      <!-- Overlay backdrop — visible en móvil y tablet cuando el sidebar está
-           abierto (spec 078, US6: umbral md → lg). -->
-      @if (layoutService.sidebarOpen()) {
+    <div
+      class="shell-root flex h-screen bg-gray-50 overflow-hidden"
+      [class.panel-theme]="!isSuperAdmin()"
+      [attr.data-theme]="isSuperAdmin() ? null : panelThemeService.theme()"
+    >
+      <!--
+        Overlay backdrop del sidebar legado (Super Admin) — spec 078, US6.
+        Acotado a Super Admin (spec 116, contracts/tenant-layout-contract.md
+        §2): app-tenant-sidebar pinta su propio scrim, autosuficiente; sin
+        este guard, los dos backdrops (idéntico bg-black/40) se dibujarían
+        encima uno del otro para tenant, oscureciendo el doble de lo previsto.
+      -->
+      @if (isSuperAdmin() && layoutService.sidebarOpen()) {
         <div
           class="fixed inset-0 bg-black/40 z-30 lg:hidden print:hidden"
           (click)="layoutService.close()"
         ></div>
       }
 
-      <app-sidebar />
+      @if (isSuperAdmin()) {
+        <app-sidebar />
+      } @else {
+        <app-tenant-sidebar />
+      }
 
       <!--
-        El sidebar es "fixed" en todos los breakpoints (spec 036, FR-012): en
-        escritorio no ocupa espacio de flexbox por sí solo, así que este
-        margen es lo que le cede el ancho al contenido cuando está colapsado
-        (y se lo devuelve cuando vuelve a abrirse). En móvil y tablet no aplica
-        (prefijo "lg:" en el nombre de la clase, spec 078 US6) — ahí sigue
-        siendo un slide-over con backdrop, sin desplazar el contenido.
+        Los dos sidebars son fixed en todos los breakpoints: en escritorio
+        no ocupan espacio de flexbox por sí solos, así que este margen es lo
+        que les cede el ancho al contenido. Super Admin conserva exactamente
+        su margen fijo de siempre (ml-64, spec 036); el panel de tenant usa un
+        margen que sigue su propio ancho variable (72px colapsado / 248px
+        expandido, spec 116, data-model.md §2) — nunca los dos a la vez. En
+        móvil/tablet ninguno aplica (prefijo lg:), donde ambos sidebars
+        siguen siendo un slide-over superpuesto, sin desplazar el contenido.
       -->
       <div
         class="shell-content flex flex-col flex-1 min-w-0 overflow-hidden transition-[margin-left] duration-300 ease-in-out"
-        [class.lg:ml-64]="layoutService.sidebarOpen()"
+        [class.lg:ml-64]="isSuperAdmin() && layoutService.sidebarOpen()"
+        [class.lg:ml-[248px]]="!isSuperAdmin() && !layoutService.desktopCollapsed()"
+        [class.lg:ml-[72px]]="!isSuperAdmin() && layoutService.desktopCollapsed()"
       >
-        <app-header />
+        @if (isSuperAdmin()) {
+          <app-header />
+        } @else {
+          <app-tenant-header />
+        }
         <main class="shell-main flex-1 overflow-y-auto p-4 md:p-6">
           <router-outlet />
         </main>
@@ -70,11 +103,17 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
   //     altura automática, sin overflow, sin margen y sin fondo.
   // Acotado a `body.printing-cash-report` (salvo el telón, que nunca debe imprimirse) para no tocar
   // recibos, cuenta de mesa ni la hoja de QR.
+  //
+  // spec 116: `app-tenant-sidebar`/`app-tenant-header` reciben el mismo tratamiento que
+  // `app-sidebar`/`app-header` -- quien cierra un turno e imprime el reporte desde este panel es
+  // casi siempre ADMIN/CASHIER (el panel de tenant), no Super Admin.
   styles: [
     `
       @media print {
         :host-context(body.printing-cash-report) app-sidebar,
-        :host-context(body.printing-cash-report) app-header {
+        :host-context(body.printing-cash-report) app-header,
+        :host-context(body.printing-cash-report) app-tenant-sidebar,
+        :host-context(body.printing-cash-report) app-tenant-header {
           display: none;
         }
         :host-context(body.printing-cash-report) .shell-root,
@@ -97,8 +136,15 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
 })
 export class DashboardLayoutComponent implements OnInit, OnDestroy {
   readonly layoutService = inject(LayoutService);
+  readonly panelThemeService = inject(PanelThemeService);
+  private readonly authService = inject(AuthService);
   private readonly bootstrapService = inject(BootstrapService);
   private readonly realtime = inject(RealtimeService);
+
+  /** Misma fuente que ya usa SidebarComponent (research.md R1) -- la única
+   *  bifurcación entre el panel legado (Super Admin) y el rediseñado
+   *  (Administrador/Cajero/Mesero, spec 116). */
+  readonly isSuperAdmin = computed(() => !!this.authService.currentUser()?.isSuperAdmin);
 
   /** Carga branding, plan y notificaciones recientes en una sola petición
    * agregada (spec 100) para todo el dashboard (los lee el sidebar para
