@@ -223,6 +223,7 @@ describe('PosCatalogDrawerComponent', () => {
         quantity: 1,
         notes: null,
         unitPrice: 5000,
+        addonsTotal: 0,
       },
     ]);
     store.catalogOpen.set(true);
