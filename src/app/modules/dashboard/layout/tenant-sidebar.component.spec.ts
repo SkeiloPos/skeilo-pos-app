@@ -89,8 +89,11 @@ describe('TenantSidebarComponent (spec 116)', () => {
       providers: [
         provideRouter([
           { path: 'dashboard/inventario', component: BlankComponent },
+          { path: 'dashboard/inventario/editar/:id', component: BlankComponent },
           { path: 'dashboard/caja', component: BlankComponent },
           { path: 'dashboard/orders', component: BlankComponent },
+          { path: 'dashboard/mesas', component: BlankComponent },
+          { path: 'dashboard/mesas-sesiones', component: BlankComponent },
         ]),
         { provide: AuthService, useValue: { currentUser } },
         { provide: PlanSummaryService, useValue: { summary: planSummary } },
@@ -185,32 +188,61 @@ describe('TenantSidebarComponent (spec 116)', () => {
     expect(activeLink.className).toContain('var(--panel-color-primary-soft)');
   });
 
-  // SkeiloPOS App.dc.html: el botón de colapso vive dentro del propio
-  // sidebar (junto al logo), no en el navbar -- tenant-header.component.ts
-  // ya no tiene este control en modo desktop.
-  it('en modo desktop, muestra un botón de colapso que alterna desktopCollapsed()', () => {
+  it('resalta el ítem padre en una subvista sin ítem propio en el Sidebar (FR-004)', async () => {
     currentUser.set(makeUser({ role: UserRole.ADMIN }));
-    createComponent(1280);
+    createComponent();
+    const router = TestBed.inject(Router);
 
-    const button = (fixture.nativeElement as HTMLElement).querySelector(
-      'button[aria-label="Contraer menú"]',
-    ) as HTMLButtonElement;
-    expect(button).not.toBeNull();
-
-    button.click();
+    await router.navigateByUrl('/dashboard/inventario/editar/5');
     fixture.detectChanges();
 
-    expect(layoutService.desktopCollapsed()).toBe(true);
+    const activeLink = (fixture.nativeElement as HTMLElement).querySelector(
+      'a[href="/dashboard/inventario"]',
+    )!;
+    expect(activeLink.className).toContain('var(--panel-color-primary-soft)');
   });
 
-  it('en modo drawer, no muestra el botón de colapso (no aplica sin escritorio)', () => {
+  it('no confunde módulos cuyas rutas comparten prefijo de texto (FR-004)', async () => {
+    // "/dashboard/mesas-sesiones" no es una subvista de "/dashboard/mesas" --
+    // la coincidencia por segmento de Angular (exact: false) no debe resaltar
+    // "Mesas" cuando la ruta activa es en realidad "Terminal de Mesas".
     currentUser.set(makeUser({ role: UserRole.ADMIN }));
-    createComponent(900);
+    createComponent();
+    const router = TestBed.inject(Router);
 
-    const button = (fixture.nativeElement as HTMLElement).querySelector(
-      'button[aria-label="Contraer menú"], button[aria-label="Expandir menú"]',
-    );
-    expect(button).toBeNull();
+    await router.navigateByUrl('/dashboard/mesas-sesiones');
+    fixture.detectChanges();
+
+    const mesas = (fixture.nativeElement as HTMLElement).querySelector(
+      'a[href="/dashboard/mesas"]',
+    )!;
+    const sesiones = (fixture.nativeElement as HTMLElement).querySelector(
+      'a[href="/dashboard/mesas-sesiones"]',
+    )!;
+    expect(mesas.className).not.toContain('var(--panel-color-primary-soft)');
+    expect(sesiones.className).toContain('var(--panel-color-primary-soft)');
+  });
+
+  // research.md R15 (revierte R13 para este punto): Layout base.dc.html
+  // vuelve a ser la fuente de verdad -- el botón de colapso ya NO vive en el
+  // propio sidebar, se reubica en app-tenant-header como un único control
+  // siempre visible (ver tenant-header.component.spec.ts, T059).
+  it('no renderiza ningún botón de colapso, en ningún modo (se reubicó al navbar)', () => {
+    currentUser.set(makeUser({ role: UserRole.ADMIN }));
+
+    createComponent(1280);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        'button[aria-label="Contraer menú"], button[aria-label="Expandir menú"]',
+      ),
+    ).toBeNull();
+
+    createComponent(900);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        'button[aria-label="Contraer menú"], button[aria-label="Expandir menú"]',
+      ),
+    ).toBeNull();
   });
 
   it('colapsar y expandir no navega ni cambia la ruta activa', async () => {
