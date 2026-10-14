@@ -44,7 +44,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <div class="flex items-center gap-3 mb-4">
           <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-            <app-mi-icon name="palette" [size]="20" />
+            <app-mi-icon name="palette" [size]="20" class="text-indigo-600" />
           </span>
           <div>
             <h2 class="text-base font-semibold text-gray-900">Logotipo</h2>
@@ -87,7 +87,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <div class="flex items-center gap-3 mb-4">
           <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-            <app-mi-icon name="receipt" [size]="20" />
+            <app-mi-icon name="receipt" [size]="20" class="text-indigo-600" />
           </span>
           <div>
             <h2 class="text-base font-semibold text-gray-900">Mensaje del recibo</h2>
@@ -122,7 +122,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <div class="flex items-center gap-3 mb-4">
           <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-            <app-mi-icon name="print" [size]="20" />
+            <app-mi-icon name="print" [size]="20" class="text-indigo-600" />
           </span>
           <div>
             <h2 class="text-base font-semibold text-gray-900">Impresión</h2>
@@ -176,7 +176,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <div class="flex items-center gap-3 mb-4">
             <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-              <app-mi-icon name="storefront" [size]="20" />
+              <app-mi-icon name="storefront" [size]="20" class="text-indigo-600" />
             </span>
             <h2 class="text-base font-semibold text-gray-900">Negocio</h2>
           </div>
@@ -196,7 +196,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <div class="flex items-center gap-3 mb-4">
             <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-              <app-mi-icon name="person" [size]="20" />
+              <app-mi-icon name="person" [size]="20" class="text-indigo-600" />
             </span>
             <h2 class="text-base font-semibold text-gray-900">Tu cuenta</h2>
           </div>

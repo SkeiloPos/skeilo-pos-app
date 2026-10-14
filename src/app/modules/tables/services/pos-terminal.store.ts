@@ -148,13 +148,13 @@ export interface OrderSummaryCardView {
 }
 
 const STATUS_META: Record<TableDisplayStatus, { label: string; chip: string }> = {
-  libre: { label: 'Libre', chip: 'bg-[#f3f4f6] text-[#4b5563]' },
-  por_confirmar: { label: 'Por confirmar', chip: 'bg-[#fbbf24] text-[#111827]' },
-  en_preparacion: { label: 'En preparación', chip: 'bg-[#ccfbf1] text-[#0f766e]' },
-  listo: { label: 'Listo', chip: 'bg-[#dcfce7] text-[#15803d]' },
-  pago_pendiente: { label: 'Pago pendiente', chip: 'bg-[#7c3aed] text-white' },
-  ocupada: { label: 'Ocupada', chip: 'bg-[#e0f2fe] text-[#0369a1]' },
-  reservada: { label: 'Reservada', chip: 'bg-[#e5e7eb] text-[#374151]' },
+  libre: { label: 'Libre', chip: 'bg-gray-100 text-gray-600' },
+  por_confirmar: { label: 'Por confirmar', chip: 'bg-amber-400 text-gray-900' },
+  en_preparacion: { label: 'En preparación', chip: 'bg-teal-100 text-teal-700' },
+  listo: { label: 'Listo', chip: 'bg-green-100 text-green-700' },
+  pago_pendiente: { label: 'Pago pendiente', chip: 'bg-violet-600 text-white' },
+  ocupada: { label: 'Ocupada', chip: 'bg-sky-100 text-sky-700' },
+  reservada: { label: 'Reservada', chip: 'bg-gray-200 text-gray-700' },
 };
 
 /**

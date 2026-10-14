@@ -461,6 +461,16 @@ html, body {
 
   font-family: var(--panel-font-ui);
   color: var(--panel-color-text-primary);
+
+  /* FR-024 (spec.md, Session 2026-10-14): scrollbar acorde al tema activo,
+     con las propiedades estándar `scrollbar-color`/`scrollbar-width` (sin
+     pseudo-elementos `::-webkit-scrollbar`, sin dependencias nuevas). El
+     color del thumb reutiliza `--panel-color-border`, que ya cambia entre
+     temas en el bloque `.panel-theme[data-theme='dark']` de abajo -- esta
+     única declaración (heredada por `scrollbar-color`, igual que `color`)
+     resuelve ambos temas sin repetirla ahí. */
+  scrollbar-color: var(--panel-color-border) transparent;
+  scrollbar-width: thin;
 }
 
 .panel-theme[data-theme='dark'] {
@@ -487,4 +497,221 @@ html, body {
      en este archivo y spec.md). */
   --panel-color-error: #fb7185;
   --panel-color-overlay-hover: rgba(248, 250, 252, 0.06);
+
+  /* Tokens de tema de Tailwind CSS v4 redeclarados — así el contenido de los
+     ~18 módulos de tenant (tablas, formularios, tarjetas) responde al tema
+     oscuro sin tocar esos archivos (research.md R16;
+     contracts/panel-theme-contract.md §6). Alias, no valores nuevos: cada uno
+     apunta a un --panel-color-* ya auditado con Lighthouse arriba.
+     --color-white/--color-black y los colores semánticos (indigo-*, amber-*,
+     etc.) NO se redeclaran a propósito — ver R16 (texto de botón vs. superficie). */
+  --color-gray-50: var(--panel-color-surface-elevated);
+  --color-gray-100: var(--panel-color-border);
+  --color-gray-200: var(--panel-color-border);
+  --color-gray-300: var(--panel-color-border);
+  --color-gray-400: var(--panel-color-text-subtle);
+  --color-gray-500: var(--panel-color-text-muted);
+  --color-gray-600: var(--panel-color-text-secondary);
+  --color-gray-700: var(--panel-color-text-secondary);
+  --color-gray-800: var(--panel-color-text-primary);
+  --color-gray-900: var(--panel-color-text-primary);
+  --color-slate-50: var(--panel-color-surface-elevated);
+  --color-slate-200: var(--panel-color-border);
+  --color-slate-400: var(--panel-color-text-subtle);
+  --color-slate-700: var(--panel-color-text-secondary);
+  --color-slate-800: var(--panel-color-text-primary);
+}
+
+/* `white` no se resuelve con una variable (repintaría también `text-white`,
+   casi siempre texto de botón sobre fondo saturado — research R16): una
+   lista cerrada de selectores de SUPERFICIE, verificada contra un inventario
+   real (223 `bg-white`, 9 `focus:bg-white`, 1 `hover:bg-white`). */
+.panel-theme[data-theme='dark'] .bg-white,
+.panel-theme[data-theme='dark'] .focus\:bg-white:focus,
+.panel-theme[data-theme='dark'] .hover\:bg-white:hover {
+  background-color: var(--panel-color-surface-card);
+}
+
+/* `via-white`/`to-white` (paradas de degradado, research R22 — Clarifications
+   Session 2026-10-14) son un caso distinto de `bg-white`: Tailwind v4 no les
+   fija `background-color` -- fijan `--tw-gradient-via`/`--tw-gradient-to`
+   (confirmado compilando el motor real), que alimentan
+   `background-image: linear-gradient(var(--tw-gradient-stops))` en la clase
+   `.bg-gradient-to-*`. Sobrescribir `background-color` ahí no tendría ningún
+   efecto visual -- hay que sobrescribir esas mismas variables de degradado.
+   Única ocurrencia en el repo: product-select.component.ts (panel de
+   "adicionales"); el acento `from-indigo-50/40` del mismo degradado queda
+   sin tocar a propósito (decorativo, confirmado con el usuario). */
+.panel-theme[data-theme='dark'] .via-white {
+  --tw-gradient-via: var(--panel-color-surface-card);
+}
+.panel-theme[data-theme='dark'] .to-white {
+  --tw-gradient-to: var(--panel-color-surface-card);
+}
+
+/* FR-023 (spec.md, Session 2026-10-14): fondo/texto legibles para todo
+   `<select>` del panel de tenant en modo oscuro, de forma sistemática --
+   no solo los ya detectados en verificación visual. Un `<select>` nativo
+   sin ninguna clase de color de Tailwind no pasa por ninguna variable (no
+   es `bg-white` ni `text-gray-*`), así que el repintado general de arriba
+   no lo alcanza y queda con el fondo/texto nativo del navegador, casi
+   siempre claro -- ilegible sobre el resto del panel ya oscuro. Esta regla
+   por elemento (no por variable) cubre ese caso por construcción, para
+   cualquier `<select>` futuro que no declare sus propias clases de color;
+   su especificidad (una clase + un atributo + un tipo) es menor que la de
+   cualquier utilidad de Tailwind ya presente (`.bg-white`, `.text-gray-*`,
+   `.border-gray-*`), así que donde un `<select>` ya tenga esas clases esta
+   regla no cambia el resultado -- solo actúa donde no había ninguna. */
+.panel-theme[data-theme='dark'] select {
+  background-color: var(--panel-color-surface-card);
+  color: var(--panel-color-text-secondary);
+  border-color: var(--panel-color-border);
+}
+
+/* Dos superficies deben RESISTIR el repintado de arriba — el reporte de
+   cierre de caja y la hoja de QR de mesas siempre se ven/imprimen en claro,
+   sin importar el tema activo (FR-010, research.md R17;
+   contracts/panel-theme-contract.md §7). Re-fija, dentro de su propio
+   subárbol, cada variable redeclarada arriba de vuelta a su valor claro
+   original — el mismo `oklch(...)` literal de `tailwindcss@4.3.0`, no un
+   alias — para que una redeclaración más profunda en el DOM gane sobre la
+   de `.panel-theme[data-theme='dark']`. */
+.panel-theme[data-theme='dark'] .force-light-surface {
+  /* Hallazgo real de verificación visual (no estaba en el research original):
+     re-fijar las variables de texto no basta -- ninguno de los dos
+     componentes trae su propio fondo (ambos heredan el de la página,
+     transparente hasta el --panel-color-surface-elevated oscuro de
+     shell-root), así que sin esto el texto oscuro recién forzado quedaba
+     casi invisible sobre un fondo igual de oscuro (~1:1 de contraste,
+     confirmado con DevTools). El fondo blanco es, precisamente, lo mismo que
+     "siempre claras" (FR-010) ya pedía para estas dos superficies. */
+  background-color: #fff;
+  color: oklch(21% 0.034 264.665);
+
+  --color-gray-50: oklch(98.5% 0.002 247.839);
+  --color-gray-100: oklch(96.7% 0.003 264.542);
+  --color-gray-200: oklch(92.8% 0.006 264.531);
+  --color-gray-300: oklch(87.2% 0.01 258.338);
+  --color-gray-400: oklch(70.7% 0.022 261.325);
+  --color-gray-500: oklch(55.1% 0.027 264.364);
+  --color-gray-600: oklch(44.6% 0.03 256.802);
+  --color-gray-700: oklch(37.3% 0.034 259.733);
+  --color-gray-800: oklch(27.8% 0.033 256.848);
+  --color-gray-900: oklch(21% 0.034 264.665);
+  --color-slate-50: oklch(98.4% 0.003 247.858);
+  --color-slate-200: oklch(92.9% 0.013 255.508);
+  --color-slate-400: oklch(70.4% 0.04 256.788);
+  --color-slate-700: oklch(37.2% 0.044 257.287);
+  --color-slate-800: oklch(27.9% 0.041 260.031);
+}
+
+/* `.bg-white`/`.focus:bg-white`/`.hover:bg-white` (arriba) no pasan por una
+   variable CSS -- son un selector fijo, así que el bloque de variables de
+   `.force-light-surface` no los alcanza por sí solo. Mayor especificidad
+   (un selector de clase más) para que esta regla gane dentro del subárbol. */
+.panel-theme[data-theme='dark'] .force-light-surface .bg-white,
+.panel-theme[data-theme='dark'] .force-light-surface .focus\:bg-white:focus,
+.panel-theme[data-theme='dark'] .force-light-surface .hover\:bg-white:hover {
+  background-color: #fff;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Transiciones de navegación — barra de carga + skeleton + aparición
+   escalonada (Historia 4, FR-019 a FR-022; spec 116, segunda iteración)
+   ══════════════════════════════════════════════════════════════════════════
+
+   Coreografía ya aprobada de `Layout base.dc.html`, orquestada por
+   `NavigationTransitionService` (fases idle/out/skeleton/in,
+   data-model.md §6.1) y pintada aquí solo con CSS — el servicio nunca lee
+   esta hoja de estilos ni sabe que existe (Principio VI). */
+
+.nav-transition-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 0%;
+  background: var(--panel-color-primary);
+  opacity: 0;
+  z-index: 20;
+  pointer-events: none;
+  transition: width 300ms ease, opacity 200ms ease;
+}
+
+.nav-transition-bar--visible {
+  opacity: 1;
+}
+
+/* Contenido anterior: se desvanece y sube 4px al salir (fase 'out'). */
+.nav-transition[data-phase='out'] .nav-transition__content {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+/* Skeleton genérico (FR-021): salto instantáneo a un estado visual fijo, sin
+   brillo/pulso adicional (research.md R20 -- la animación ocurre al SALIR de
+   este estado, no al entrar). Oculto salvo durante la fase 'skeleton'. */
+.nav-skeleton {
+  display: none;
+}
+.nav-transition[data-phase='skeleton'] .nav-skeleton {
+  display: block;
+}
+.nav-transition[data-phase='skeleton'] .nav-transition__content {
+  display: none;
+}
+.nav-skeleton__block {
+  background: var(--panel-color-surface-elevated);
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
+
+/* Aparición escalonada del contenido real (FR-020): solo los hijos directos
+   de nivel superior del contenedor de `router-outlet` -- nunca filas de
+   tabla ni tarjetas anidadas (research.md R20: escalonar 200 filas reales a
+   55ms cada una tardaría ~11s). Tope en el 8º hijo: los siguientes comparten
+   su mismo retraso en vez de seguir acumulando. */
+.nav-transition[data-phase='in'] .nav-transition__content > * {
+  animation: nav-stagger-in 380ms ease both;
+}
+.nav-transition[data-phase='in'] .nav-transition__content > *:nth-child(1) { animation-delay: 0ms; }
+.nav-transition[data-phase='in'] .nav-transition__content > *:nth-child(2) { animation-delay: 55ms; }
+.nav-transition[data-phase='in'] .nav-transition__content > *:nth-child(3) { animation-delay: 110ms; }
+.nav-transition[data-phase='in'] .nav-transition__content > *:nth-child(4) { animation-delay: 165ms; }
+.nav-transition[data-phase='in'] .nav-transition__content > *:nth-child(5) { animation-delay: 220ms; }
+.nav-transition[data-phase='in'] .nav-transition__content > *:nth-child(6) { animation-delay: 275ms; }
+.nav-transition[data-phase='in'] .nav-transition__content > *:nth-child(7) { animation-delay: 330ms; }
+.nav-transition[data-phase='in'] .nav-transition__content > *:nth-child(n+8) { animation-delay: 385ms; }
+
+@keyframes nav-stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* FR-022: solo las animaciones NUEVAS de esta sesión (barra + aparición
+   escalonada) -- no se extiende a las transiciones ya shippeadas de colapso/
+   drawer (research.md R21, primera aparición de esta media query en el
+   proyecto). El cronómetro de `NavigationTransitionService` sigue corriendo
+   igual bajo esta media query; solo deja de haber algo que animar. */
+@media (prefers-reduced-motion: reduce) {
+  .nav-transition-bar {
+    transition: none;
+  }
+  .nav-transition[data-phase='out'] .nav-transition__content {
+    transition: none;
+    opacity: 1;
+    transform: none;
+  }
+  .nav-transition[data-phase='in'] .nav-transition__content > * {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }

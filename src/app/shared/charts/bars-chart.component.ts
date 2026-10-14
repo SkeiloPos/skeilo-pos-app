@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, Input, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } from '@angular/core';
 import { ChartConfiguration } from 'chart.js';
 import { BaseChartDirective } from 'ng2-charts';
 import { PRIMARY_SERIES, ValueKind, baseOptions } from './chart-theme';
+import { PanelThemeService } from '../../modules/dashboard/layout/panel-theme.service';
 
 /**
  * Barras verticales de **una sola serie**: evolución en el tiempo (ventas por
@@ -34,6 +35,8 @@ export class BarsChartComponent {
   }
   @Input() height = 220;
 
+  private readonly panelThemeService = inject(PanelThemeService);
+
   private readonly labelsSig = signal<string[]>([]);
   private readonly valuesSig = signal<number[]>([]);
   private readonly kindSig = signal<ValueKind>('money');
@@ -52,5 +55,5 @@ export class BarsChartComponent {
     ],
   }));
 
-  readonly options = computed(() => baseOptions(this.kindSig()));
+  readonly options = computed(() => baseOptions(this.kindSig(), this.panelThemeService.theme()));
 }

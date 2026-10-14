@@ -1,13 +1,15 @@
-import { Component, OnDestroy, OnInit, computed, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, effect, inject } from '@angular/core';
 import { RouterOutlet, Router, NavigationEnd } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs/operators';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { SidebarComponent } from './sidebar.component';
 import { HeaderComponent } from './header.component';
 import { TenantSidebarComponent } from './tenant-sidebar.component';
 import { TenantHeaderComponent } from './tenant-header.component';
 import { LayoutService } from './layout.service';
 import { PanelThemeService } from './panel-theme.service';
+import { NavigationTransitionService } from './navigation-transition.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { BootstrapService } from '../../../core/bootstrap/bootstrap.service';
 import { ToastContainerComponent } from '../../../shared/feedback/toast-container.component';
@@ -63,7 +65,7 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
         siguen siendo un slide-over superpuesto, sin desplazar el contenido.
       -->
       <div
-        class="shell-content flex flex-col flex-1 min-w-0 overflow-hidden transition-[margin-left] duration-300 ease-in-out"
+        class="shell-content relative flex flex-col flex-1 min-w-0 overflow-hidden transition-[margin-left] duration-300 ease-in-out"
         [class.lg:ml-64]="isSuperAdmin() && layoutService.sidebarOpen()"
         [class.lg:ml-[248px]]="!isSuperAdmin() && !layoutService.desktopCollapsed()"
         [class.lg:ml-[72px]]="!isSuperAdmin() && layoutService.desktopCollapsed()"
@@ -73,8 +75,38 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
         } @else {
           <app-tenant-header />
         }
+
+        <!--
+          Barra de carga + skeleton + aparición escalonada (Historia 4,
+          FR-019 a FR-022; contracts/navigation-transition-contract.md) —
+          acotada a !isSuperAdmin() (research.md R1/R20, mismo criterio que
+          el resto de esta spec). La barra vive en shell-content (no en
+          shell-root) para no superponerse al sidebar, igual que el navbar.
+        -->
+        @if (!isSuperAdmin()) {
+          <div
+            class="nav-transition-bar"
+            [class.nav-transition-bar--visible]="navigationTransitionService.barVisible()"
+            [style.width.%]="navigationTransitionService.barProgress()"
+          ></div>
+        }
         <main class="shell-main flex-1 overflow-y-auto p-4 md:p-6">
-          <router-outlet />
+          @if (isSuperAdmin()) {
+            <router-outlet />
+          } @else {
+            <div class="nav-transition" [attr.data-phase]="navigationTransitionService.phase()">
+              <!-- Skeleton genérico (FR-021): bloques fijos, nunca derivados de
+                   los datos reales de la sección destino (research.md R20). -->
+              <div class="nav-skeleton" aria-hidden="true">
+                <div class="nav-skeleton__block" style="height: 88px"></div>
+                <div class="nav-skeleton__block" style="height: 220px"></div>
+                <div class="nav-skeleton__block" style="height: 160px"></div>
+              </div>
+              <div class="nav-transition__content">
+                <router-outlet />
+              </div>
+            </div>
+          }
         </main>
       </div>
 
@@ -137,14 +169,24 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
 export class DashboardLayoutComponent implements OnInit, OnDestroy {
   readonly layoutService = inject(LayoutService);
   readonly panelThemeService = inject(PanelThemeService);
+  readonly navigationTransitionService = inject(NavigationTransitionService);
   private readonly authService = inject(AuthService);
   private readonly bootstrapService = inject(BootstrapService);
   private readonly realtime = inject(RealtimeService);
+  private readonly overlayContainer = inject(OverlayContainer);
 
   /** Misma fuente que ya usa SidebarComponent (research.md R1) -- la única
    *  bifurcación entre el panel legado (Super Admin) y el rediseñado
    *  (Administrador/Cajero/Mesero, spec 116). */
   readonly isSuperAdmin = computed(() => !!this.authService.currentUser()?.isSuperAdmin);
+
+  /** El `cdk-overlay-container` es compartido por toda la app (un único nodo,
+   *  hijo directo de `<body>`, fuera del subárbol de `.panel-theme`) -- sin
+   *  esto, el único `cdkConnectedOverlay` del panel de tenant (el menú de
+   *  acciones de Promociones) quedaría congelado en paleta clara aunque el
+   *  resto del panel esté en oscuro (research.md R18;
+   *  contracts/panel-theme-contract.md §9). Cubre automáticamente cualquier
+   *  overlay de CDK futuro, no solo el de Promociones -- un único punto. */
 
   /** Carga branding, plan y notificaciones recientes en una sola petición
    * agregada (spec 100) para todo el dashboard (los lee el sidebar para
@@ -165,6 +207,16 @@ export class DashboardLayoutComponent implements OnInit, OnDestroy {
   }
 
   constructor() {
+    effect(() => {
+      const el = this.overlayContainer.getContainerElement();
+      el.classList.toggle('panel-theme', !this.isSuperAdmin());
+      if (this.isSuperAdmin()) {
+        el.removeAttribute('data-theme');
+      } else {
+        el.setAttribute('data-theme', this.panelThemeService.theme());
+      }
+    });
+
     inject(Router).events
       .pipe(
         filter(e => e instanceof NavigationEnd),

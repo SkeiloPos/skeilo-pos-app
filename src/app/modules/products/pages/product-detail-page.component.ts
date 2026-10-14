@@ -53,7 +53,7 @@ import { RelativeTimePipe } from '../../../shared/relative-time.pipe';
               <img [src]="p.image_url" [alt]="p.name" class="w-24 h-24 rounded-xl object-cover shrink-0" />
             } @else {
               <div class="w-24 h-24 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
-                <app-mi-icon name="image-off" ariaLabel="Sin imagen" [size]="32" />
+                <app-mi-icon name="image-off" ariaLabel="Sin imagen" [size]="32" class="text-indigo-600" />
               </div>
             }
             <div class="flex-1 min-w-0">

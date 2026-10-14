@@ -25,7 +25,7 @@ interface TableQrCard {
   imports: [RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="max-w-5xl mx-auto">
+    <div class="force-light-surface max-w-5xl mx-auto">
       <!-- Cabecera: no se imprime -->
       <div class="print:hidden mb-6">
         <div class="flex items-center justify-between gap-4 flex-wrap">

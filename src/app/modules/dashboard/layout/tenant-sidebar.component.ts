@@ -53,20 +53,11 @@ const DESKTOP_COLLAPSED_WIDTH_PX = 72;
       [style.width.px]="widthPx()"
     >
       <!-- Encabezado: logo + nombre del negocio (research.md R9: una sola
-           línea, sin "sede") + botón de colapso (SkeiloPOS App.dc.html,
-           reubicado aquí -- antes vivía en el navbar; ver tenant-header).
-
-           Colapsado (72px) apila logo + botón en columna, centrados: en fila
-           no caben los dos (36px logo + 8px gap + 32px botón + 16px padding
-           = 92px > 72px disponibles) -- antes se superponían/deformaban
-           (hallazgo real verificado con Chrome: el elemento img hereda
-           max-width: 100% del preflight de Tailwind, así que al faltar
-           espacio se aplastaba en vez de desbordar). -->
-      <div
-        class="flex items-center gap-2 px-2 pb-4 min-h-11"
-        [class.justify-between]="!collapsed()"
-        [class.flex-col]="collapsed()"
-      >
+           línea, sin "sede"). El botón de colapso ya NO vive aquí -- research.md
+           R15 revierte el ajuste de R13: Layout base.dc.html vuelve a ser la
+           fuente de verdad, y ahí ese botón vive en app-tenant-header, único y
+           siempre visible (ver tenant-header.component.ts). -->
+      <div class="flex items-center gap-2 px-2 pb-4 min-h-11" [class.justify-center]="collapsed()">
         <div class="flex items-center gap-2.5 min-w-0 pt-2" [class.flex-1]="!collapsed()">
           @if (logoUrl()) {
             <img
@@ -91,18 +82,6 @@ const DESKTOP_COLLAPSED_WIDTH_PX = 72;
             </h1>
           }
         </div>
-        @if (viewMode() === 'desktop') {
-          <button
-            type="button"
-            (click)="layoutService.toggleDesktopCollapsed()"
-            title="{{ collapsed() ? 'Expandir menú' : 'Contraer menú' }}"
-            [attr.aria-label]="collapsed() ? 'Expandir menú' : 'Contraer menú'"
-            class="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-colors
-                   text-[var(--panel-color-text-muted)] hover:bg-[var(--panel-color-overlay-hover)]"
-          >
-            <span class="w-[18px] h-[18px]"><app-icon name="panel-left" /></span>
-          </button>
-        }
       </div>
 
       <!-- Navegación: 6 grupos (contracts/navigation-grouping-contract.md) -->
@@ -123,13 +102,18 @@ const DESKTOP_COLLAPSED_WIDTH_PX = 72;
                 {{ group.title }}
               </p>
             }
+            <!-- exact: false (FR-004, spec.md Session 2026-10-14): el Router compara por
+                 segmento de ruta, no por substring, así que una subvista sin ítem propio
+                 (editar/crear/detalle) sigue resaltando a su módulo padre sin que rutas
+                 distintas que comparten prefijo de texto (p. ej. /dashboard/mesas vs.
+                 /dashboard/mesas-sesiones) se confundan entre sí. -->
             <div class="space-y-0.5">
               @for (item of group.items; track item.route) {
                 <a
                   [routerLink]="item.route"
                   routerLinkActive
                   #rla="routerLinkActive"
-                  [routerLinkActiveOptions]="{ exact: true }"
+                  [routerLinkActiveOptions]="{ exact: false }"
                   (click)="onItemSelected()"
                   (mouseenter)="collapsed() && showTooltip($event, item.frame!.label)"
                   (mouseleave)="hideTooltip()"

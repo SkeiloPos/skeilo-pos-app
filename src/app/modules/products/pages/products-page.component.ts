@@ -150,7 +150,7 @@ import { UserRole } from '../../../core/interfaces/user.interface';
                           <div
                             class="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0"
                           >
-                            <app-mi-icon name="image-off" ariaLabel="Sin imagen" [size]="18" />
+                            <app-mi-icon name="image-off" ariaLabel="Sin imagen" [size]="18" class="text-indigo-600" />
                           </div>
                         }
                         <div>

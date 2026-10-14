@@ -9,7 +9,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IconMiComponent],
   template: `
-    <div class="flex-1 w-full max-w-[900px] mx-auto p-6">
+    <div class="force-light-surface flex-1 w-full max-w-[900px] mx-auto p-6">
       <div class="flex items-center gap-2 mb-2 text-gray-500">
         <app-mi-icon name="lock" [size]="18" />
         <span class="text-xs uppercase tracking-wide text-indigo-600 font-semibold">Turno cerrado</span>
