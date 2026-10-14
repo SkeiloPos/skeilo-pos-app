@@ -604,7 +604,7 @@ describe('ManualOrderPageComponent', () => {
     const todosButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
       (b as HTMLButtonElement).textContent?.includes('Todos'),
     ) as HTMLButtonElement;
-    expect(todosButton.className).toContain('bg-[#f3f4f6]');
+    expect(todosButton.className).toContain('bg-gray-100');
   });
 
   it('elegir una categoría puntual filtra el grid; volver a "Todos" restaura la lista combinada', async () => {
