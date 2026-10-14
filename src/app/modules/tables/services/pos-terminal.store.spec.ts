@@ -2616,10 +2616,13 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
 
-    const itemId = store.ordersView()[1].items[0].key;
-    const promise = store.avanzarItem(itemId);
+    // spec 118: `key` ya no es necesariamente el `id` real de la fila (una
+    // card agrupada comparte un `key` sintético, FR-008) -- `avanzarItem`
+    // sigue operando sobre los `id` reales vía `pendingItemIds`.
+    const linea = store.ordersView()[1].items[0];
+    const promise = store.avanzarItem(linea.key);
     http
-      .expectOne(`${API}/orders/items/${itemId}/kitchen`)
+      .expectOne(`${API}/orders/items/${linea.pendingItemIds[0]}/kitchen`)
       .flush({ detail: 'boom' }, { status: 500, statusText: 'Error' });
     await promise;
 
@@ -3377,6 +3380,146 @@ describe('PosTerminalStore — adicionales del panel del pedido (spec 087, FR-01
     store.selectedTableId.set('t1');
 
     expect(store.ordersView()[0].items[0].options).toEqual([]);
+  });
+});
+
+/**
+ * spec 118 (research.md D4, contracts/detail-panel-line-grouping.md, FR-005
+ * a FR-008): dos filas `OrderItem` reales de la misma presentación,
+ * agregadas en mutaciones distintas (dos `add_item_to_order` sucesivos, no
+ * una sola llamada con `quantity=2`), se presentan en el detalle como una
+ * sola card -- sin fusionar ninguna fila subyacente.
+ */
+describe('PosTerminalStore.persistedItemsView — agrupamiento de adiciones sucesivas (spec 118, Historia 2)', () => {
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  function pedidoConItems(items: Partial<DiningOrderItem>[]): DiningOrder {
+    const base = order('o1', 'abierta', []);
+    return {
+      ...base,
+      channel: 'POS',
+      dining_table_id: 't1',
+      items: items.map((i, idx) => ({
+        id: `oi${idx + 1}`,
+        product_variant_id: 'v1',
+        quantity: 1,
+        unit_price: '7000',
+        estado_cocina: 'listo',
+        ...i,
+      })) as DiningOrderItem[],
+    } as DiningOrder;
+  }
+
+  it('dos filas de la misma presentación+opciones+notas, agregadas por separado, se agrupan en una sola card con qty/subtotal/insignia correctos (research.md D4, ejemplo discountedAmount=12000 sobre originalAmount=14000)', () => {
+    store.orders.set([
+      pedidoConItems([
+        { discounted_unit_price: '6000', discounted_line_total: '6000' },
+        { discounted_unit_price: '6000', discounted_line_total: '6000' },
+      ]),
+    ]);
+    store.selectedTableId.set('t1');
+
+    const items = store.ordersView()[0].items;
+
+    expect(items.length).toBe(1);
+    const [card] = items;
+    expect(card.qty).toBe(2);
+    expect(card.subtotal).toBe(12000);
+    expect(card.promo).toEqual({
+      badge: '-14%',
+      originalAmount: 14000,
+      discountedAmount: 12000,
+      savings: 2000,
+    });
+  });
+
+  it('anular una de las dos filas revierte el grupo a una sola card sin insignia (FR-006)', () => {
+    // La fila sobreviviente ya no califica sola para el umbral: tras
+    // `void_item`, `refresh_order_item_discounts` la devuelve con
+    // `discounted_unit_price=null` (research.md D3) -- el fixture refleja
+    // ese estado posterior al backend, no el valor previo a la anulación.
+    store.orders.set([
+      pedidoConItems([
+        { discounted_unit_price: null, discounted_line_total: null },
+        { discounted_unit_price: '6000', discounted_line_total: '6000', estado_cocina: 'anulado' },
+      ]),
+    ]);
+    store.selectedTableId.set('t1');
+
+    const items = store.ordersView()[0].items;
+
+    expect(items.length).toBe(1);
+    expect(items[0].qty).toBe(1);
+    expect(items[0].promo).toBeNull();
+  });
+
+  it('el grupo expone los `id` de ambas filas `OrderItem` subyacentes sin fusionarlas (FR-008): el `id` usado para anular sigue siendo el de cada fila original', () => {
+    store.orders.set([
+      pedidoConItems([
+        { discounted_unit_price: '6000', discounted_line_total: '6000' },
+        { discounted_unit_price: '6000', discounted_line_total: '6000' },
+      ]),
+    ]);
+    store.selectedTableId.set('t1');
+
+    const [card] = store.ordersView()[0].items;
+    expect(card.itemIds).toEqual(['oi1', 'oi2']);
+  });
+
+  it('dos filas de presentaciones distintas NO se agrupan (la clave incluye product_variant_id)', () => {
+    store.orders.set([
+      pedidoConItems([
+        { product_variant_id: 'v1' },
+        { product_variant_id: 'v2' },
+      ]),
+    ]);
+    store.selectedTableId.set('t1');
+
+    expect(store.ordersView()[0].items.length).toBe(2);
+  });
+
+  it('dos filas con notas distintas NO se agrupan (la clave incluye notes)', () => {
+    store.orders.set([
+      pedidoConItems([
+        { notes: 'sin azúcar' },
+        { notes: null },
+      ]),
+    ]);
+    store.selectedTableId.set('t1');
+
+    expect(store.ordersView()[0].items.length).toBe(2);
+  });
+
+  it('abrir el detalle de la mesa con filas agrupables no dispara ninguna petición checkout-preview por tarjeta (regresión, Assumption spec.md)', () => {
+    store.orders.set([
+      pedidoConItems([
+        { discounted_unit_price: '6000', discounted_line_total: '6000' },
+        { discounted_unit_price: '6000', discounted_line_total: '6000' },
+      ]),
+    ]);
+    store.selectedTableId.set('t1');
+
+    store.ordersView();
+
+    http.expectNone((r) => r.url.includes('/checkout-preview'));
   });
 });
 
