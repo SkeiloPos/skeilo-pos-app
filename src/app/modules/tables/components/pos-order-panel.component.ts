@@ -31,7 +31,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   template: `
     @if (!store.hasActiveSelection()) {
       <div
-        class="flex-1 flex flex-col items-center justify-center text-center text-[#9ca3af] p-6 gap-2"
+        class="flex-1 flex flex-col items-center justify-center text-center text-gray-400 p-6 gap-2"
       >
         <app-mi-icon name="restaurant" [size]="40" />
         <p class="text-[13px] max-w-xs">
@@ -46,7 +46,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
            aquí solo llevaría a un guardado que falla. Se guía directo a
            "Crear pedido manual". -->
       <div
-        class="flex-1 flex flex-col items-center justify-center text-center text-[#9ca3af] p-6 gap-2"
+        class="flex-1 flex flex-col items-center justify-center text-center text-gray-400 p-6 gap-2"
       >
         <app-mi-icon name="receipt_long" [size]="40" />
         <p class="text-[13px] max-w-xs">
@@ -58,20 +58,20 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
         <!-- Header: mesa + estado + cliente en una sola fila, siempre de solo
              lectura (spec 049, FR-006/FR-008) — el nombre ya no se edita
              desde aquí. -->
-        <div class="p-4 border-b border-[#e5e7eb] space-y-2 shrink-0">
+        <div class="p-4 border-b border-gray-200 space-y-2 shrink-0">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
             <div class="flex items-center gap-2.5 min-w-0">
               <!-- Insignia numerada: solo tiene sentido con una mesa real
                    (Domicilio/Para llevar no tienen un número que mostrar). -->
               @if (store.selectedTable(); as t) {
                 <span
-                  class="w-8 h-8 rounded-[6px] bg-[#4f46e5] text-white flex items-center justify-center text-[13px] font-bold shrink-0"
+                  class="w-8 h-8 rounded-[6px] bg-indigo-600 text-white flex items-center justify-center text-[13px] font-bold shrink-0"
                   >{{ t.number }}</span
                 >
               }
               <div class="min-w-0 space-y-1">
                 <div class="flex items-center gap-2 flex-wrap">
-                  <h3 class="text-[16px] font-bold text-[#111827] truncate">{{ headerTitle() }}</h3>
+                  <h3 class="text-[16px] font-bold text-gray-900 truncate">{{ headerTitle() }}</h3>
                   @if (store.selectedTableStatusMeta(); as meta) {
                     <span
                       class="px-2 py-0.5 rounded-[6px] text-[11px] font-medium"
@@ -80,8 +80,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                     >
                   }
                 </div>
-                <span class="flex items-center gap-1 text-[13px] font-semibold text-[#111827]">
-                  <app-mi-icon name="person" [size]="14" class="text-[#4f46e5] shrink-0" />
+                <span class="flex items-center gap-1 text-[13px] font-semibold text-gray-900">
+                  <app-mi-icon name="person" [size]="14" class="text-indigo-600 shrink-0" />
                   {{ displayCustomerName() }}
                 </span>
               </div>
@@ -105,8 +105,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                       class="px-3 py-1.5 text-[12px] font-medium rounded-[6px] border transition-colors"
                       [class]="
                         store.selectedOrderId() === ot.id
-                          ? 'border-[#4f46e5] bg-[#4f46e5] text-white'
-                          : 'border-[#e5e7eb] text-[#4b5563] hover:bg-[#f9fafb]'
+                          ? 'border-indigo-600 bg-indigo-600 text-white'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                       "
                     >
                       <!-- A pedido del usuario: un pago QR por confirmar es
@@ -129,7 +129,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                    vistazo -- no se inventa ningún estado nuevo. -->
               @if (headerStatusText() === 'pago pendiente') {
                 <span
-                  class="px-2.5 py-1 rounded-[6px] bg-[#4f46e5] text-white text-[11px] font-semibold whitespace-nowrap"
+                  class="px-2.5 py-1 rounded-[6px] bg-indigo-600 text-white text-[11px] font-semibold whitespace-nowrap"
                   >Cobro pendiente</span
                 >
               }
@@ -148,7 +148,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           @if (!store.selectedTable() && store.selectedOrder()?.order_type === 'DELIVERY') {
             <div
               data-testid="delivery-info-row"
-              class="text-[12px] text-[#6b7280] flex flex-wrap items-start gap-x-3 gap-y-1 shrink-0"
+              class="text-[12px] text-gray-500 flex flex-wrap items-start gap-x-3 gap-y-1 shrink-0"
             >
               <span class="min-w-0 break-words inline-flex items-center gap-1">
                 <app-mi-icon name="location_on" [size]="14" />
@@ -189,7 +189,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                las opciones (y la nota) iban en una lista plana de "•", sin
                forma de distinguir de qué grupo venía cada una ni qué era
                nota y qué era una opción elegida. -->
-          <div class="px-4 divide-y divide-[#e5e7eb]">
+          <div class="px-4 divide-y divide-gray-200">
             @for (it of cartItems(); track it.key) {
               <!-- Rediseño (a pedido del usuario): insignia de cantidad +
                    nombre/variante en pastillas + precio unitario debajo del
@@ -199,7 +199,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               @let parts = splitVariantLabel(it.name);
               <div class="py-3 flex items-start gap-3">
                 <div
-                  class="shrink-0 w-9 h-9 rounded-[8px] bg-[#eef2ff] text-[#4f46e5] flex items-center justify-center text-[13px] font-bold"
+                  class="shrink-0 w-9 h-9 rounded-[8px] bg-indigo-50 text-indigo-600 flex items-center justify-center text-[13px] font-bold"
                 >
                   {{ it.qty }}x
                 </div>
@@ -207,21 +207,21 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                   <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0">
                       <div class="flex items-center gap-1.5 flex-wrap">
-                        <span class="font-bold text-[#111827] text-[14px]">{{ parts.product }}</span>
+                        <span class="font-bold text-gray-900 text-[14px]">{{ parts.product }}</span>
                         @if (parts.variant) {
                           <span
-                            class="bg-[#f3f4f6] text-[#4b5563] text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                            class="bg-gray-100 text-gray-600 text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
                             >{{ parts.variant }}</span
                           >
                         }
                       </div>
-                      <div class="text-[11px] text-[#9ca3af]">{{ store.fmt(it.unitPrice) }} c/u</div>
+                      <div class="text-[11px] text-gray-400">{{ store.fmt(it.unitPrice) }} c/u</div>
                       @if (it.promo; as promo) {
                         <!-- spec 115 (A-129): mismo formato de condición que ya usa
                              product-select.component.ts (data-testid="variant-promo"), en vez
                              del esquema rojo/"Ahorras" anterior -- consistencia con el modal. -->
                         <span
-                          class="inline-block bg-[#e0e7ff] text-[#4338ca] text-[10px] font-semibold px-1.5 py-0.5 rounded mt-0.5 whitespace-nowrap"
+                          class="inline-block bg-indigo-100 text-indigo-700 text-[10px] font-semibold px-1.5 py-0.5 rounded mt-0.5 whitespace-nowrap"
                           >{{ promo.badge }}</span
                         >
                       }
@@ -229,25 +229,25 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                     <div class="text-right shrink-0">
                       @if (it.promo; as promo) {
                         <div class="flex items-center justify-end gap-1.5">
-                          <span class="line-through text-[11px] text-[#9ca3af] font-mono">{{
+                          <span class="line-through text-[11px] text-gray-400 font-mono">{{
                             store.fmt(promo.originalAmount)
                           }}</span>
-                          <span class="font-bold text-[#4f46e5] text-[14px]">{{
+                          <span class="font-bold text-indigo-600 text-[14px]">{{
                             store.fmt(promo.discountedAmount)
                           }}</span>
                         </div>
                       } @else {
-                        <div class="font-bold text-[#111827] text-[14px]">{{ store.fmt(it.subtotal) }}</div>
+                        <div class="font-bold text-gray-900 text-[14px]">{{ store.fmt(it.subtotal) }}</div>
                       }
                       @if (!it.promo) {
                         <!-- spec 115 (A-133): se quita con promoción -- con cantidades que no
                              completan un paquete exacto, el precio promedio por unidad no
                              representa ningún precio real cobrado, solo confunde. -->
-                        <div class="text-[11px] text-[#9ca3af]">{{ it.qty }} × {{ store.fmt(it.unitPrice) }}</div>
+                        <div class="text-[11px] text-gray-400">{{ it.qty }} × {{ store.fmt(it.unitPrice) }}</div>
                       }
                       @if (it.addonsTotal > 0) {
                         <!-- spec 089 (A-94): adicionales del Menú QR, cobrados una vez por línea. -->
-                        <div class="text-[11px] text-[#9ca3af]">+ {{ store.fmt(it.addonsTotal) }} adicionales</div>
+                        <div class="text-[11px] text-gray-400">+ {{ store.fmt(it.addonsTotal) }} adicionales</div>
                       }
                     </div>
                   </div>
@@ -260,21 +260,21 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                       <div class="flex items-center gap-2">
                         <button
                           (click)="store.decDraft(it.key)"
-                          class="w-7 h-7 rounded-[6px] border border-[#e5e7eb] text-[#4b5563] hover:bg-[#f9fafb] font-bold"
+                          class="w-7 h-7 rounded-[6px] border border-gray-200 text-gray-600 hover:bg-gray-50 font-bold"
                         >
                           −
                         </button>
                         <span class="w-5 text-center font-bold text-[13px]">{{ it.qty }}</span>
                         <button
                           (click)="store.incDraft(it.key)"
-                          class="w-7 h-7 rounded-[6px] border border-[#e5e7eb] text-[#4b5563] hover:bg-[#f9fafb] font-bold"
+                          class="w-7 h-7 rounded-[6px] border border-gray-200 text-gray-600 hover:bg-gray-50 font-bold"
                         >
                           +
                         </button>
                       </div>
                       <button
                         (click)="store.removeDraft(it.key)"
-                        class="text-[11px] font-medium text-[#dc2626] hover:text-[#b91c1c]"
+                        class="text-[11px] font-medium text-red-600 hover:text-red-700"
                       >
                         Eliminar
                       </button>
@@ -299,7 +299,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                           <button
                             (click)="store.avanzarItem(it.key)"
                             [disabled]="store.submitting()"
-                            class="px-2.5 py-1 rounded-[6px] border border-[#bbf7d0] text-[11px] font-semibold text-[#15803d] hover:bg-[#f0fdf4] disabled:opacity-50 transition-colors"
+                            class="px-2.5 py-1 rounded-[6px] border border-green-200 text-[11px] font-semibold text-green-700 hover:bg-green-50 disabled:opacity-50 transition-colors"
                           >
                             Marcar listo
                           </button>
@@ -314,7 +314,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                                 ? store.voidPersistedCombo(it.comboId)
                                 : store.voidPersistedItem(it.key)
                             "
-                            class="px-2.5 py-1 rounded-[6px] border border-[#fecaca] text-[11px] font-medium text-[#dc2626] hover:bg-[#fef2f2] transition-colors"
+                            class="px-2.5 py-1 rounded-[6px] border border-red-200 text-[11px] font-medium text-red-600 hover:bg-red-50 transition-colors"
                           >
                             Anular
                           </button>
@@ -331,7 +331,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               </div>
             }
             @if (cartIsEmpty()) {
-              <div class="text-center text-[#9ca3af] py-10 text-[13px]">
+              <div class="text-center text-gray-400 py-10 text-[13px]">
                 Aún no hay productos en este pedido.
               </div>
             }
@@ -352,7 +352,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             <div class="px-4 pb-4" [class]="cartIsEmpty() ? '' : 'pt-3'">
               <button
                 (click)="store.openCatalog()"
-                class="w-full py-2.5 border border-[#e5e7eb] rounded-[6px] text-[13px] font-medium text-[#4b5563] hover:bg-[#f9fafb] flex items-center justify-center gap-1"
+                class="w-full py-2.5 border border-gray-200 rounded-[6px] text-[13px] font-medium text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-1"
               >
                 ＋ Agregar producto
               </button>
@@ -368,11 +368,11 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                subió a la cabecera, a la derecha de "Mesa N" (a pedido del
                usuario). -->
           @if (store.hasDraft()) {
-            <div class="p-4 pt-3 border-t border-[#e5e7eb] shrink-0">
+            <div class="p-4 pt-3 border-t border-gray-200 shrink-0">
               <button
                 (click)="store.saveOrder()"
                 [disabled]="store.submitting()"
-                class="w-full py-2.5 bg-[#4f46e5] text-white rounded-[6px] text-[13px] font-semibold hover:bg-[#4338ca] disabled:opacity-50 transition-colors"
+                class="w-full py-2.5 bg-indigo-600 text-white rounded-[6px] text-[13px] font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
                 {{ store.submitting() ? 'Guardando…' : 'Guardar pedido' }}
               </button>

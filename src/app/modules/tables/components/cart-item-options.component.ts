@@ -26,11 +26,11 @@ import { CartOptionLine } from '../services/pos-terminal.store';
   template: `
     @let grupos = optionGroups();
     @if (grupos.length > 0) {
-      <div class="border border-[#e5e7eb] rounded-[8px] px-2.5 py-2 space-y-1.5">
+      <div class="border border-gray-200 rounded-[8px] px-2.5 py-2 space-y-1.5">
         @for (g of grupos; track g.label ?? $index) {
-          <div class="text-[12px] text-[#4b5563]">
+          <div class="text-[12px] text-gray-600">
             @if (g.label) {
-              <span class="font-semibold text-[#374151]">{{ g.label }}:</span>
+              <span class="font-semibold text-gray-700">{{ g.label }}:</span>
             }
             {{ g.items.join(', ') }}
           </div>

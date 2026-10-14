@@ -42,13 +42,13 @@ import { ToastService } from '../../../shared/feedback/toast.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col h-full">
-      <h2 class="text-[15px] font-bold text-[#111827] mb-3">Cuenta de la mesa</h2>
+      <h2 class="text-[15px] font-bold text-gray-900 mb-3">Cuenta de la mesa</h2>
 
       @if (selectedOrderTotal !== null) {
         <!-- A pedido del usuario: al navegar entre pestañas "Pedido N" (a la
              izquierda), este total acompaña -- antes solo se veía el de toda
              la mesa, sin pista de cuánto sumaba el pedido enfocado. -->
-        <div class="mb-3 pb-3 border-b border-[#e5e7eb]">
+        <div class="mb-3 pb-3 border-b border-gray-200">
           <app-bill-summary [total]="selectedOrderTotal" totalLabel="Total de este pedido" size="sm" />
         </div>
       }
@@ -60,7 +60,7 @@ import { ToastService } from '../../../shared/feedback/toast.service';
              bloque se ve incluso sin bill (mesa ya toda pagada, nada
              pendiente que desglosar). -->
         <div class="mb-3 pb-3 space-y-1">
-          <p class="text-[11px] font-semibold text-[#6b7280] uppercase tracking-wide">Ya pagado</p>
+          <p class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Ya pagado</p>
           <!-- spec 115 (A-132): sin la fila "Descuento" -- "Subtotal" ya se muestra neto, igual
                que A-125/A-127/A-131. -->
           <app-bill-summary
@@ -75,14 +75,14 @@ import { ToastService } from '../../../shared/feedback/toast.service';
 
       @if (!bill) {
         @if (orphan) {
-          <div class="bg-[#fffbeb] border border-[#fef3c7] rounded-[6px] px-3 py-3 space-y-1">
-            <p class="text-[14px] font-semibold text-[#92400e]">No se puede cobrar esta mesa</p>
-            <p class="text-[13px] text-[#b45309]">
+          <div class="bg-amber-50 border border-amber-100 rounded-[6px] px-3 py-3 space-y-1">
+            <p class="text-[14px] font-semibold text-amber-800">No se puede cobrar esta mesa</p>
+            <p class="text-[13px] text-amber-700">
               Tiene pedidos sin cobrar, pero su sesión está cerrada. Avisa al administrador.
             </p>
           </div>
         } @else {
-          <p class="text-[14px] text-[#9ca3af] py-6 text-center">Selecciona una mesa con consumo.</p>
+          <p class="text-[14px] text-gray-400 py-6 text-center">Selecciona una mesa con consumo.</p>
         }
       } @else {
         <!-- Total de TODA la mesa -- lo que realmente cobra el botón de
@@ -127,15 +127,15 @@ import { ToastService } from '../../../shared/feedback/toast.service';
         </div>
 
         @if (error()) {
-          <div class="bg-[#fef2f2] border border-[#fecaca] rounded-[6px] px-3 py-2 mb-3">
-            <p class="text-[13px] text-[#b91c1c]">{{ error() }}</p>
+          <div class="bg-red-50 border border-red-200 rounded-[6px] px-3 py-2 mb-3">
+            <p class="text-[13px] text-red-700">{{ error() }}</p>
           </div>
         }
 
         <button
           (click)="charge()"
           [disabled]="submitting() || !ready()"
-          class="w-full min-h-11 py-2.5 bg-[#4f46e5] hover:bg-[#4338ca] text-white text-[14px] font-semibold rounded-[6px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          class="w-full min-h-11 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[14px] font-semibold rounded-[6px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {{ submitting() ? 'Cobrando...' : 'Cobrar y cerrar mesa' }}
         </button>

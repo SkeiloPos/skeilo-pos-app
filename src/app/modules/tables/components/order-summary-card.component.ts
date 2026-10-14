@@ -22,24 +22,24 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
     <button
       type="button"
       (click)="select.emit()"
-      class="w-full h-full text-left bg-white rounded-[6px] border p-2.5 flex flex-col justify-between gap-1 min-h-11 transition-colors hover:bg-[#f3f4f6]"
+      class="w-full h-full text-left bg-white rounded-[6px] border p-2.5 flex flex-col justify-between gap-1 min-h-11 transition-colors hover:bg-gray-100"
       [class]="selected ? 'border-indigo-500 ring-1 ring-indigo-200' : 'border-gray-200'"
     >
       <div class="flex items-start justify-between gap-2">
-        <span class="text-[15px] font-semibold tracking-[-0.01em] text-[#111827]">{{ title }}</span>
+        <span class="text-[15px] font-semibold tracking-[-0.01em] text-gray-900">{{ title }}</span>
         <span class="px-2 py-0.5 text-[11px] font-medium rounded-[6px] shrink-0" [class]="statusClass">{{ statusLabel }}</span>
       </div>
-      <div class="flex items-center justify-between gap-2 text-[12px] text-[#6b7280]">
+      <div class="flex items-center justify-between gap-2 text-[12px] text-gray-500">
         <span class="truncate">{{ secondaryLabel }} · {{ elapsedLabel }}</span>
         @if (ordersCount && ordersCount > 1) {
-          <span class="shrink-0 px-1.5 py-0.5 rounded-[6px] bg-[#f3f4f6] text-[#4b5563] text-[11px]">{{ ordersCount }} pedidos</span>
+          <span class="shrink-0 px-1.5 py-0.5 rounded-[6px] bg-gray-100 text-gray-600 text-[11px]">{{ ordersCount }} pedidos</span>
         }
       </div>
-      <div class="flex items-baseline justify-between pt-1 border-t border-[#e5e7eb]">
-        <span class="text-[11px] text-[#6b7280] uppercase tracking-wider font-medium">Total</span>
+      <div class="flex items-baseline justify-between pt-1 border-t border-gray-200">
+        <span class="text-[11px] text-gray-500 uppercase tracking-wider font-medium">Total</span>
         <span
           class="tabular-nums"
-          [class]="totalLabel === '—' ? 'text-[14px] font-medium text-[#6b7280]' : 'text-[15px] font-semibold text-[#111827] tracking-[-0.01em]'"
+          [class]="totalLabel === '—' ? 'text-[14px] font-medium text-gray-500' : 'text-[15px] font-semibold text-gray-900 tracking-[-0.01em]'"
         >
           {{ totalLabel }}
         </span>

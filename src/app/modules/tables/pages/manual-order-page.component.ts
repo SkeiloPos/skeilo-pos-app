@@ -80,16 +80,16 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="flex flex-col -m-4 md:-m-6 bg-[#f9fafb] overflow-x-hidden">
+    <div class="flex flex-col -m-4 md:-m-6 bg-gray-50 overflow-x-hidden">
       <app-pos-terminal-header />
 
       <!-- Barra secundaria: solo volver (spec 052 — el resto vive en el
            encabezado "Nueva orden" del panel derecho). -->
-      <div class="h-10 bg-white border-b border-[#e5e7eb] px-4 flex items-center shrink-0">
+      <div class="h-10 bg-white border-b border-gray-200 px-4 flex items-center shrink-0">
         <button
           type="button"
           (click)="backToTerminal()"
-          class="flex items-center gap-1 text-[13px] font-medium text-[#6b7280] hover:text-[#111827] transition-colors"
+          class="flex items-center gap-1 text-[13px] font-medium text-gray-500 hover:text-gray-900 transition-colors"
         >
           <app-mi-icon name="arrow_back" [size]="16" />
           Volver a la Terminal
@@ -109,27 +109,27 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
         >
           <!-- Barra de búsqueda + contadores (mockup: una sola caja blanca). -->
           <div
-            class="h-11 shrink-0 bg-white border border-[#e5e7eb] rounded-[6px] px-3 flex items-center gap-2"
+            class="h-11 shrink-0 bg-white border border-gray-200 rounded-[6px] px-3 flex items-center gap-2"
           >
-            <div class="flex-1 flex items-center gap-2 min-w-0 pr-3 border-r border-[#e5e7eb]">
-              <app-mi-icon name="search" [size]="18" class="text-[#6b7280] shrink-0" />
+            <div class="flex-1 flex items-center gap-2 min-w-0 pr-3 border-r border-gray-200">
+              <app-mi-icon name="search" [size]="18" class="text-gray-500 shrink-0" />
               <input
                 type="text"
                 [value]="store.catalogSearchText()"
                 (input)="store.setCatalogSearchText($any($event.target).value)"
                 placeholder="Buscar producto, sabor o código... [F2]"
-                class="flex-1 min-w-0 bg-transparent border-none text-[13px] text-[#111827] placeholder-[#6b7280] focus:outline-none h-full"
+                class="flex-1 min-w-0 bg-transparent border-none text-[13px] text-gray-900 placeholder-gray-500 focus:outline-none h-full"
               />
               <div class="flex items-center gap-1.5 shrink-0">
                 <kbd
-                  class="font-mono text-[11px] font-semibold text-[#6b7280] bg-[#f3f4f6] px-1.5 py-0.5 border border-[#e5e7eb] rounded-[6px]"
+                  class="font-mono text-[11px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 border border-gray-200 rounded-[6px]"
                   >[F2]</kbd
                 >
                 <button
                   type="button"
                   title="Escanear código"
                   aria-label="Escanear código"
-                  class="w-7 h-7 rounded-[6px] flex items-center justify-center text-[#6b7280] hover:text-[#111827] hover:bg-[#f3f4f6] transition-colors"
+                  class="w-7 h-7 rounded-[6px] flex items-center justify-center text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
                 >
                   <app-mi-icon name="qr_code_scanner" [size]="17" />
                 </button>
@@ -137,32 +137,32 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
             </div>
             <div class="hidden sm:flex items-center gap-1.5 shrink-0 pl-1 overflow-x-auto">
               <div
-                class="flex items-center gap-1.5 px-2 py-1 bg-[#fffbeb] border border-[#fef3c7] rounded-[6px] text-[11px] font-semibold text-[#b45309] whitespace-nowrap"
+                class="flex items-center gap-1.5 px-2 py-1 bg-amber-50 border border-amber-100 rounded-[6px] text-[11px] font-semibold text-amber-700 whitespace-nowrap"
               >
-                <span class="w-1.5 h-1.5 bg-[#f59e0b] rounded-full inline-block"></span>
+                <span class="w-1.5 h-1.5 bg-amber-500 rounded-full inline-block"></span>
                 <span>{{ store.tableCounts().pendientes }} Por atender</span>
               </div>
               <div
-                class="flex items-center gap-1 px-2 py-1 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[11px] text-[#4b5563] font-medium whitespace-nowrap"
+                class="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded-[6px] text-[11px] text-gray-600 font-medium whitespace-nowrap"
               >
-                <app-mi-icon name="table_restaurant" [size]="14" class="text-[#6b7280]" />
-                <span class="text-[#111827] font-semibold">{{ store.tableCounts().ocupadas }}</span>
+                <app-mi-icon name="table_restaurant" [size]="14" class="text-gray-500" />
+                <span class="text-gray-900 font-semibold">{{ store.tableCounts().ocupadas }}</span>
                 <span>Mesas</span>
               </div>
               <div
-                class="flex items-center gap-1 px-2 py-1 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[11px] text-[#4b5563] font-medium whitespace-nowrap"
+                class="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded-[6px] text-[11px] text-gray-600 font-medium whitespace-nowrap"
               >
-                <app-mi-icon name="shopping_bag" [size]="14" class="text-[#6b7280]" />
-                <span class="text-[#111827] font-semibold">{{
+                <app-mi-icon name="shopping_bag" [size]="14" class="text-gray-500" />
+                <span class="text-gray-900 font-semibold">{{
                   store.ordersByType('para-llevar').length
                 }}</span>
                 <span>Llevar</span>
               </div>
               <div
-                class="flex items-center gap-1 px-2 py-1 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[11px] text-[#4b5563] font-medium whitespace-nowrap"
+                class="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded-[6px] text-[11px] text-gray-600 font-medium whitespace-nowrap"
               >
-                <app-mi-icon name="delivery_dining" [size]="14" class="text-[#4f46e5]" />
-                <span class="text-[#111827] font-semibold">{{
+                <app-mi-icon name="delivery_dining" [size]="14" class="text-indigo-600" />
+                <span class="text-gray-900 font-semibold">{{
                   store.ordersByType('domicilios').length
                 }}</span>
                 <span>Domicilios</span>
@@ -173,7 +173,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
           <!-- Nav de categorías: "Todos" junta todas las categorías (nuevo,
                computed aparte catalogProductsAllFiltered), igual al mockup. -->
           <nav
-            class="h-12 shrink-0 bg-white border border-[#e5e7eb] rounded-[6px] p-1 flex items-center gap-1 overflow-x-auto"
+            class="h-12 shrink-0 bg-white border border-gray-200 rounded-[6px] p-1 flex items-center gap-1 overflow-x-auto"
           >
             <button
               type="button"
@@ -181,11 +181,11 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               class="h-full px-3.5 text-[13px] whitespace-nowrap rounded-[6px] flex items-center gap-1.5 transition-colors"
               [class]="
                 showingAllCategories()
-                  ? 'bg-[#f3f4f6] border border-[#e5e7eb] text-[#111827] font-semibold'
-                  : 'bg-white hover:bg-[#f9fafb] border border-transparent hover:border-[#e5e7eb] text-[#4b5563] hover:text-[#111827] font-medium'
+                  ? 'bg-gray-100 border border-gray-200 text-gray-900 font-semibold'
+                  : 'bg-white hover:bg-gray-50 border border-transparent hover:border-gray-200 text-gray-600 hover:text-gray-900 font-medium'
               "
             >
-              <span class="text-[11px] text-[#6b7280] font-mono">[F1]</span>
+              <span class="text-[11px] text-gray-500 font-mono">[F1]</span>
               <span>Todos</span>
             </button>
             <button
@@ -194,8 +194,8 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               class="h-full px-3.5 text-[13px] whitespace-nowrap rounded-[6px] flex items-center transition-colors"
               [class]="
                 showingPromotions()
-                  ? 'bg-[#f3f4f6] border border-[#e5e7eb] text-[#111827] font-semibold'
-                  : 'bg-white hover:bg-[#f9fafb] border border-transparent hover:border-[#e5e7eb] text-[#4b5563] hover:text-[#111827] font-medium'
+                  ? 'bg-gray-100 border border-gray-200 text-gray-900 font-semibold'
+                  : 'bg-white hover:bg-gray-50 border border-transparent hover:border-gray-200 text-gray-600 hover:text-gray-900 font-medium'
               "
             >
               Promociones
@@ -207,8 +207,8 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 class="h-full px-3.5 text-[13px] whitespace-nowrap rounded-[6px] flex items-center transition-colors"
                 [class]="
                   !showingAllCategories() && !showingPromotions() && store.catalogCategoryId() === c.id
-                    ? 'bg-[#f3f4f6] border border-[#e5e7eb] text-[#111827] font-semibold'
-                    : 'bg-white hover:bg-[#f9fafb] border border-transparent hover:border-[#e5e7eb] text-[#4b5563] hover:text-[#111827] font-medium'
+                    ? 'bg-gray-100 border border-gray-200 text-gray-900 font-semibold'
+                    : 'bg-white hover:bg-gray-50 border border-transparent hover:border-gray-200 text-gray-600 hover:text-gray-900 font-medium'
                 "
               >
                 {{ c.name }}
@@ -222,33 +222,33 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 <button
                   type="button"
                   (click)="store.openConfig(p, showingPromotions())"
-                  class="relative p-2.5 bg-white border border-[#e5e7eb] hover:bg-[#f9fafb] active:bg-[#f3f4f6] rounded-[6px] flex flex-col gap-2 text-left transition-colors"
+                  class="relative p-2.5 bg-white border border-gray-200 hover:bg-gray-50 active:bg-gray-100 rounded-[6px] flex flex-col gap-2 text-left transition-colors"
                 >
-                  <div class="relative w-full h-28 overflow-hidden bg-[#f3f4f6] rounded-[6px]">
+                  <div class="relative w-full h-28 overflow-hidden bg-gray-100 rounded-[6px]">
                     @if (store.cardPromotionText(p.variants); as promo) {
                       <!-- spec 073, FR-016: condición legible del backend (spec 066), no la insignia local. -->
                       <span
-                        class="absolute top-1 left-1 text-[10px] font-bold px-1.5 py-0.5 rounded-[6px] bg-[#fffbeb] text-[#b45309] border border-[#fef3c7] z-10"
+                        class="absolute top-1 left-1 text-[10px] font-bold px-1.5 py-0.5 rounded-[6px] bg-amber-50 text-amber-700 border border-amber-100 z-10"
                         >{{ promo }}</span
                       >
                     }
                     @if (p.image_url) {
                       <img [src]="p.image_url" [alt]="p.name" class="w-full h-full object-cover" />
                     } @else {
-                      <span class="w-full h-full flex items-center justify-center text-[#d1d5db]"
+                      <span class="w-full h-full flex items-center justify-center text-gray-300"
                         ><app-mi-icon name="image-off" [size]="40" ariaLabel="Sin imagen"
                       /></span>
                     }
                   </div>
                   <div class="flex flex-col justify-between flex-1 min-w-0 w-full">
                     <span
-                      class="text-[14px] font-semibold text-[#111827] tracking-tight leading-tight truncate"
+                      class="text-[14px] font-semibold text-gray-900 tracking-tight leading-tight truncate"
                       >{{ p.name }}</span
                     >
                     <div class="flex items-center justify-between mt-2">
                       <div class="flex flex-col">
-                        <span class="text-[11px] text-[#6b7280] leading-none">Desde</span>
-                        <span class="font-mono font-bold text-[15px] text-[#111827]">{{
+                        <span class="text-[11px] text-gray-500 leading-none">Desde</span>
+                        <span class="font-mono font-bold text-[15px] text-gray-900">{{
                           store.fmt(minPrice(p))
                         }}</span>
                       </div>
@@ -256,7 +256,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                            tarjeta, no un botón anidado (evita <button> dentro
                            de <button>). -->
                       <span
-                        class="w-9 h-9 rounded-[6px] flex items-center justify-center bg-[#4f46e5] text-white shrink-0"
+                        class="w-9 h-9 rounded-[6px] flex items-center justify-center bg-indigo-600 text-white shrink-0"
                         aria-hidden="true"
                       >
                         <app-mi-icon name="shopping_cart" [size]="18" />
@@ -266,7 +266,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 </button>
               }
               @if (catalogProducts().length === 0) {
-                <p class="col-span-full text-center text-[13px] text-[#9ca3af] py-10">
+                <p class="col-span-full text-center text-[13px] text-gray-400 py-10">
                   @if (showingPromotions()) {
                     No hay promociones activas en este momento.
                   } @else {
@@ -283,7 +283,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               <button
                 type="button"
                 (click)="viewingCart.set(true)"
-                class="w-full h-11 rounded-[6px] bg-[#4f46e5] hover:bg-[#4338ca] text-white text-[14px] font-semibold flex items-center justify-between px-4 transition-colors"
+                class="w-full h-11 rounded-[6px] bg-indigo-600 hover:bg-indigo-700 text-white text-[14px] font-semibold flex items-center justify-between px-4 transition-colors"
               >
                 <span>Ver pedido ({{ store.cartView().length }})</span>
                 <span>{{ store.fmt(store.subtotal()) }}</span>
@@ -294,7 +294,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
 
         <div
           data-testid="ticket-column"
-          class="flex-col min-h-0 lg:w-[35%] lg:shrink-0 lg:flex-none bg-white rounded-[6px] border border-[#e5e7eb] lg:overflow-hidden"
+          class="flex-col min-h-0 lg:w-[35%] lg:shrink-0 lg:flex-none bg-white rounded-[6px] border border-gray-200 lg:overflow-hidden"
           [class]="viewingCart() ? 'flex flex-1' : 'hidden lg:flex'"
         >
           <div class="lg:hidden shrink-0 px-3 pt-3">
@@ -302,33 +302,33 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               type="button"
               data-testid="page-back-button"
               (click)="viewingCart.set(false)"
-              class="px-3 py-1.5 text-[13px] border border-[#e5e7eb] rounded-[6px] text-[#4b5563] hover:bg-[#f3f4f6]"
+              class="px-3 py-1.5 text-[13px] border border-gray-200 rounded-[6px] text-gray-600 hover:bg-gray-100"
             >
               ← Volver al catálogo
             </button>
           </div>
 
           <!-- Encabezado + tipo de orden + campos (mockup: una sola sección). -->
-          <div class="border-b border-[#e5e7eb] bg-white shrink-0 p-3 flex flex-col gap-2.5">
+          <div class="border-b border-gray-200 bg-white shrink-0 p-3 flex flex-col gap-2.5">
             <div class="flex items-center justify-between">
-              <h2 class="text-[14px] font-bold tracking-tight text-[#111827]">Nueva orden</h2>
+              <h2 class="text-[14px] font-bold tracking-tight text-gray-900">Nueva orden</h2>
             </div>
 
-            <div class="grid grid-cols-3 p-0.5 bg-[#f3f4f6] border border-[#e5e7eb] rounded-[6px]">
+            <div class="grid grid-cols-3 p-0.5 bg-gray-100 border border-gray-200 rounded-[6px]">
               <button
                 type="button"
                 (click)="setOrderTypeTab('mesas')"
                 class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all"
                 [class]="
                   store.orderTypeTab() === 'mesas'
-                    ? 'bg-white text-[#111827] font-semibold border border-[#e5e7eb]'
-                    : 'text-[#4b5563] hover:text-[#111827] font-medium'
+                    ? 'bg-white text-gray-900 font-semibold border border-gray-200'
+                    : 'text-gray-600 hover:text-gray-900 font-medium'
                 "
               >
                 <app-mi-icon
                   name="table_restaurant"
                   [size]="18"
-                  [class]="store.orderTypeTab() === 'mesas' ? 'text-[#4f46e5]' : ''"
+                  [class]="store.orderTypeTab() === 'mesas' ? 'text-indigo-600' : ''"
                 />
                 Mesa
               </button>
@@ -338,14 +338,14 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all"
                 [class]="
                   store.orderTypeTab() === 'para-llevar'
-                    ? 'bg-white text-[#111827] font-semibold border border-[#e5e7eb]'
-                    : 'text-[#4b5563] hover:text-[#111827] font-medium'
+                    ? 'bg-white text-gray-900 font-semibold border border-gray-200'
+                    : 'text-gray-600 hover:text-gray-900 font-medium'
                 "
               >
                 <app-mi-icon
                   name="shopping_bag"
                   [size]="18"
-                  [class]="store.orderTypeTab() === 'para-llevar' ? 'text-[#4f46e5]' : ''"
+                  [class]="store.orderTypeTab() === 'para-llevar' ? 'text-indigo-600' : ''"
                 />
                 Para llevar
               </button>
@@ -355,14 +355,14 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all"
                 [class]="
                   store.orderTypeTab() === 'domicilios'
-                    ? 'bg-white text-[#111827] font-semibold border border-[#e5e7eb]'
-                    : 'text-[#4b5563] hover:text-[#111827] font-medium'
+                    ? 'bg-white text-gray-900 font-semibold border border-gray-200'
+                    : 'text-gray-600 hover:text-gray-900 font-medium'
                 "
               >
                 <app-mi-icon
                   name="delivery_dining"
                   [size]="18"
-                  [class]="store.orderTypeTab() === 'domicilios' ? 'text-[#4f46e5]' : ''"
+                  [class]="store.orderTypeTab() === 'domicilios' ? 'text-indigo-600' : ''"
                 />
                 Domicilio
               </button>
@@ -374,7 +374,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                    ocupadas siguen visibles en el select, no seleccionables). -->
               <div class="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:items-end">
                 <div class="sm:col-span-7 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
+                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
                     >Cliente</label
                   >
                   <input
@@ -383,14 +383,14 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     (input)="store.customerName.set($any($event.target).value)"
                     (focus)="$any($event.target).select()"
                     placeholder="Ej: Juan Pérez"
-                    class="h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] font-medium focus:outline-none focus:border-[#111827] focus:bg-white"
+                    class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] text-gray-900 font-medium focus:outline-none focus:border-gray-900 focus:bg-white"
                   />
                   @if (mostrarErrorNombre()) {
-                    <span class="text-[11px] text-[#dc2626]">El nombre del cliente es obligatorio.</span>
+                    <span class="text-[11px] text-red-600">El nombre del cliente es obligatorio.</span>
                   }
                 </div>
                 <div class="sm:col-span-5 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
+                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
                     >Mesa asignada</label
                   >
                   <app-searchable-select
@@ -408,7 +408,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                    seleccionado por completo al enfocarlo, pero siempre editable -- a diferencia
                    de "Domicilio", si queda vacío se guarda con ese valor por defecto. -->
               <div class="flex flex-col gap-0.5">
-                <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
+                <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
                   >Cliente / Para llevar</label
                 >
                 <input
@@ -417,10 +417,10 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                   (input)="store.customerName.set($any($event.target).value)"
                   (focus)="$any($event.target).select()"
                   placeholder="Ej: Juan Pérez"
-                  class="h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] font-medium focus:outline-none focus:border-[#111827] focus:bg-white"
+                  class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] text-gray-900 font-medium focus:outline-none focus:border-gray-900 focus:bg-white"
                 />
                 @if (mostrarErrorNombre()) {
-                  <span class="text-[11px] text-[#dc2626]">El nombre del cliente es obligatorio.</span>
+                  <span class="text-[11px] text-red-600">El nombre del cliente es obligatorio.</span>
                 }
               </div>
             }
@@ -434,7 +434,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                    siempre opcional (FR-008). -->
               <div class="grid grid-cols-1 sm:grid-cols-12 gap-1.5">
                 <div class="sm:col-span-7 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
+                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
                     >Nombre cliente</label
                   >
                   <input
@@ -442,14 +442,14 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     [value]="store.customerName()"
                     (input)="store.customerName.set($any($event.target).value)"
                     placeholder="Ej: Juan Pérez"
-                    class="h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] font-medium focus:outline-none focus:border-[#111827] focus:bg-white"
+                    class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] text-gray-900 font-medium focus:outline-none focus:border-gray-900 focus:bg-white"
                   />
                   @if (mostrarErrorNombre()) {
-                    <span class="text-[11px] text-[#dc2626]">El nombre del cliente es obligatorio.</span>
+                    <span class="text-[11px] text-red-600">El nombre del cliente es obligatorio.</span>
                   }
                 </div>
                 <div class="sm:col-span-5 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
+                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
                     >Teléfono</label
                   >
                   <input
@@ -457,13 +457,13 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     [value]="store.deliveryPhone()"
                     (input)="store.deliveryPhone.set($any($event.target).value)"
                     placeholder="Ej: 300 123 4567"
-                    class="h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] font-mono text-[#111827] focus:outline-none focus:border-[#111827] focus:bg-white"
+                    class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] font-mono text-gray-900 focus:outline-none focus:border-gray-900 focus:bg-white"
                   />
                 </div>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-12 gap-1.5">
                 <div class="sm:col-span-7 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
+                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
                     >Dirección de entrega</label
                   >
                   <input
@@ -471,11 +471,11 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     [value]="store.deliveryAddress()"
                     (input)="store.deliveryAddress.set($any($event.target).value)"
                     placeholder="Ej: Calle 45 # 22-10"
-                    class="h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] focus:outline-none focus:border-[#111827] focus:bg-white"
+                    class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] text-gray-900 focus:outline-none focus:border-gray-900 focus:bg-white"
                   />
                 </div>
                 <div class="sm:col-span-5 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-[#6b7280] uppercase tracking-wider"
+                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
                     >Tarifa Domicilio</label
                   >
                   <input
@@ -484,7 +484,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     [value]="store.deliveryFee()"
                     (input)="onDeliveryFeeInput($any($event.target).value)"
                     placeholder="$5.000"
-                    class="h-11 px-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-[6px] text-[13px] font-mono font-semibold text-[#111827] focus:outline-none focus:border-[#111827] focus:bg-white"
+                    class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] font-mono font-semibold text-gray-900 focus:outline-none focus:border-gray-900 focus:bg-white"
                   />
                 </div>
               </div>
@@ -500,16 +500,16 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                interno (columna de ancho fijo, layout de escritorio del
                mockup). -->
           <div class="lg:flex-1 lg:overflow-y-auto px-4 py-3 flex flex-col bg-white">
-            <div class="flex items-center gap-2 flex-wrap pb-3 border-b border-[#e5e7eb]">
+            <div class="flex items-center gap-2 flex-wrap pb-3 border-b border-gray-200">
               <span
-                class="px-2 py-0.5 text-[12px] font-medium text-[#4b5563] bg-[#f3f4f6] border border-[#e5e7eb] rounded-[6px] whitespace-nowrap"
+                class="px-2 py-0.5 text-[12px] font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded-[6px] whitespace-nowrap"
                 >Ítems: {{ store.cartView().length }}</span
               >
             </div>
 
             @if (!store.cartEmpty()) {
               <div
-                class="hidden sm:grid grid-cols-12 text-[13px] font-semibold text-[#111827] py-2.5 border-b border-[#e5e7eb]"
+                class="hidden sm:grid grid-cols-12 text-[13px] font-semibold text-gray-900 py-2.5 border-b border-gray-200"
               >
                 <div class="col-span-5 text-left">Producto</div>
                 <div class="col-span-2 text-center">Cant.</div>
@@ -518,7 +518,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               </div>
             }
 
-            <div class="flex flex-col divide-y divide-[#e5e7eb]">
+            <div class="flex flex-col divide-y divide-gray-200">
               @for (it of store.cartView(); track it.key) {
                 <!-- Envoltorio único por ítem: divide-y del contenedor padre
                      necesita un solo hijo por iteración (si las dos variantes
@@ -531,24 +531,24 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                   <div
                     class="hidden sm:grid grid-cols-12 items-center py-3 gap-1"
                     [class]="
-                      it.promo ? 'bg-[#fffbeb]/40 -mx-2 px-2 border-l-2 border-[#f59e0b]' : ''
+                      it.promo ? 'bg-amber-50/40 -mx-2 px-2 border-l-2 border-amber-500' : ''
                     "
                   >
                     <div class="col-span-5 flex flex-col min-w-0 pr-1">
                       <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
                         <span
-                          class="text-[13px] font-semibold text-[#111827] truncate leading-tight"
+                          class="text-[13px] font-semibold text-gray-900 truncate leading-tight"
                           >{{ partsDesktop.product }}</span
                         >
                         @if (partsDesktop.variant) {
                           <span
-                            class="bg-[#f3f4f6] text-[#4b5563] text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                            class="bg-gray-100 text-gray-600 text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
                             >{{ partsDesktop.variant }}</span
                           >
                         }
                         @if (it.promo; as promo) {
                           <span
-                            class="bg-[#fffbeb] text-[#b45309] border border-[#fef3c7] text-[10px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
+                            class="bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
                             >{{ promo.badge }}</span
                           >
                         }
@@ -556,10 +556,10 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                       <app-cart-item-options [options]="it.options" [notes]="it.notes" />
                       @if (it.promo; as promo) {
                         <div class="flex items-center gap-1.5 mt-0.5">
-                          <span class="line-through text-[11px] text-[#6b7280] font-mono">{{
+                          <span class="line-through text-[11px] text-gray-500 font-mono">{{
                             store.fmt(promo.originalAmount)
                           }}</span>
-                          <span class="text-[11px] text-[#15803d] font-semibold font-mono"
+                          <span class="text-[11px] text-green-700 font-semibold font-mono"
                             >Ahorras {{ store.fmt(promo.savings) }}</span
                           >
                         </div>
@@ -568,17 +568,17 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     <div class="col-span-2 flex items-center justify-center gap-1">
                       <button
                         (click)="store.decDraft(it.key)"
-                        class="w-6 h-6 rounded-full bg-[#f3f4f6] hover:bg-[#e5e7eb] text-[#4b5563] flex items-center justify-center text-[13px] font-bold transition-colors"
+                        class="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-[13px] font-bold transition-colors"
                       >
                         −
                       </button>
                       <span
-                        class="font-mono font-medium text-[13px] text-[#111827] tabular-nums min-w-[12px] text-center"
+                        class="font-mono font-medium text-[13px] text-gray-900 tabular-nums min-w-[12px] text-center"
                         >{{ it.qty }}</span
                       >
                       <button
                         (click)="store.incDraft(it.key)"
-                        class="w-6 h-6 rounded-full bg-[#f3f4f6] hover:bg-[#e5e7eb] text-[#4b5563] flex items-center justify-center text-[13px] font-bold transition-colors"
+                        class="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-[13px] font-bold transition-colors"
                       >
                         +
                       </button>
@@ -586,13 +586,13 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     <div class="col-span-3 text-right pr-3">
                       @if (it.promo; as promo) {
                         <div
-                          class="font-semibold text-[15px] text-[#dc2626] tabular-nums font-mono"
+                          class="font-semibold text-[15px] text-red-600 tabular-nums font-mono"
                         >
                           {{ store.fmt(promo.discountedAmount) }}
                         </div>
                       } @else {
                         <div
-                          class="font-semibold text-[15px] text-[#111827] tabular-nums font-mono"
+                          class="font-semibold text-[15px] text-gray-900 tabular-nums font-mono"
                         >
                           {{ store.fmt(it.subtotal) }}
                         </div>
@@ -604,7 +604,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                           type="button"
                           (click)="store.openConfigForEdit(it.key)"
                           title="Ver/Editar Notas"
-                          class="p-1 text-[#6b7280] hover:text-[#4f46e5] hover:bg-[#f3f4f6] rounded-[6px] transition-colors"
+                          class="p-1 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-[6px] transition-colors"
                         >
                           <app-mi-icon name="edit" ariaLabel="Ver/Editar Notas" [size]="16" />
                         </button>
@@ -612,7 +612,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                           type="button"
                           (click)="store.openConfigForEdit(it.key)"
                           title="Modificar Toppings"
-                          class="p-1 text-[#6b7280] hover:text-[#4f46e5] hover:bg-[#f3f4f6] rounded-[6px] transition-colors"
+                          class="p-1 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-[6px] transition-colors"
                         >
                           <app-mi-icon name="tune" ariaLabel="Modificar Toppings" [size]="16" />
                         </button>
@@ -620,7 +620,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                       <button
                         (click)="store.removeDraft(it.key)"
                         title="Eliminar ítem"
-                        class="p-1 text-[#6b7280] hover:text-[#dc2626] hover:bg-[#f3f4f6] rounded-[6px] transition-colors"
+                        class="p-1 text-gray-500 hover:text-red-600 hover:bg-gray-100 rounded-[6px] transition-colors"
                       >
                         <app-mi-icon name="delete" ariaLabel="Eliminar ítem" [size]="16" />
                       </button>
@@ -633,25 +633,25 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                   <div
                     class="flex sm:hidden flex-col gap-2 py-3"
                     [class]="
-                      it.promo ? 'bg-[#fffbeb]/40 -mx-2 px-2 border-l-2 border-[#f59e0b]' : ''
+                      it.promo ? 'bg-amber-50/40 -mx-2 px-2 border-l-2 border-amber-500' : ''
                     "
                   >
                     @let partsMobile = splitVariantLabel(it.name);
                     <div class="flex items-start justify-between gap-2">
                       <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-1.5 flex-wrap">
-                          <span class="text-[13px] font-semibold text-[#111827] leading-tight">{{
+                          <span class="text-[13px] font-semibold text-gray-900 leading-tight">{{
                             partsMobile.product
                           }}</span>
                           @if (partsMobile.variant) {
                             <span
-                              class="bg-[#f3f4f6] text-[#4b5563] text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                              class="bg-gray-100 text-gray-600 text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
                               >{{ partsMobile.variant }}</span
                             >
                           }
                           @if (it.promo; as promo) {
                             <span
-                              class="bg-[#fffbeb] text-[#b45309] border border-[#fef3c7] text-[10px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
+                              class="bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
                               >{{ promo.badge }}</span
                             >
                           }
@@ -659,10 +659,10 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                         <app-cart-item-options [options]="it.options" [notes]="it.notes" />
                         @if (it.promo; as promo) {
                           <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            <span class="line-through text-[11px] text-[#6b7280] font-mono">{{
+                            <span class="line-through text-[11px] text-gray-500 font-mono">{{
                               store.fmt(promo.originalAmount)
                             }}</span>
-                            <span class="text-[11px] text-[#15803d] font-semibold font-mono"
+                            <span class="text-[11px] text-green-700 font-semibold font-mono"
                               >Ahorras {{ store.fmt(promo.savings) }}</span
                             >
                           </div>
@@ -671,13 +671,13 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                       <div class="text-right shrink-0">
                         @if (it.promo; as promo) {
                           <div
-                            class="font-semibold text-[15px] text-[#dc2626] tabular-nums font-mono"
+                            class="font-semibold text-[15px] text-red-600 tabular-nums font-mono"
                           >
                             {{ store.fmt(promo.discountedAmount) }}
                           </div>
                         } @else {
                           <div
-                            class="font-semibold text-[15px] text-[#111827] tabular-nums font-mono"
+                            class="font-semibold text-[15px] text-gray-900 tabular-nums font-mono"
                           >
                             {{ store.fmt(it.subtotal) }}
                           </div>
@@ -688,17 +688,17 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                       <div class="flex items-center gap-2">
                         <button
                           (click)="store.decDraft(it.key)"
-                          class="w-7 h-7 rounded-full bg-[#f3f4f6] hover:bg-[#e5e7eb] text-[#4b5563] flex items-center justify-center text-[13px] font-bold transition-colors"
+                          class="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-[13px] font-bold transition-colors"
                         >
                           −
                         </button>
                         <span
-                          class="font-mono font-medium text-[13px] text-[#111827] tabular-nums min-w-[12px] text-center"
+                          class="font-mono font-medium text-[13px] text-gray-900 tabular-nums min-w-[12px] text-center"
                           >{{ it.qty }}</span
                         >
                         <button
                           (click)="store.incDraft(it.key)"
-                          class="w-7 h-7 rounded-full bg-[#f3f4f6] hover:bg-[#e5e7eb] text-[#4b5563] flex items-center justify-center text-[13px] font-bold transition-colors"
+                          class="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-[13px] font-bold transition-colors"
                         >
                           +
                         </button>
@@ -709,7 +709,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                             type="button"
                             (click)="store.openConfigForEdit(it.key)"
                             title="Ver/Editar Notas"
-                            class="p-1.5 text-[#6b7280] hover:text-[#4f46e5] hover:bg-[#f3f4f6] rounded-[6px] transition-colors"
+                            class="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-[6px] transition-colors"
                           >
                             <app-mi-icon name="edit" ariaLabel="Ver/Editar Notas" [size]="16" />
                           </button>
@@ -717,7 +717,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                             type="button"
                             (click)="store.openConfigForEdit(it.key)"
                             title="Modificar Toppings"
-                            class="p-1.5 text-[#6b7280] hover:text-[#4f46e5] hover:bg-[#f3f4f6] rounded-[6px] transition-colors"
+                            class="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-[6px] transition-colors"
                           >
                             <app-mi-icon name="tune" ariaLabel="Modificar Toppings" [size]="16" />
                           </button>
@@ -725,7 +725,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                         <button
                           (click)="store.removeDraft(it.key)"
                           title="Eliminar ítem"
-                          class="p-1.5 text-[#6b7280] hover:text-[#dc2626] hover:bg-[#f3f4f6] rounded-[6px] transition-colors"
+                          class="p-1.5 text-gray-500 hover:text-red-600 hover:bg-gray-100 rounded-[6px] transition-colors"
                         >
                           <app-mi-icon name="delete" ariaLabel="Eliminar ítem" [size]="16" />
                         </button>
@@ -736,14 +736,14 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               }
             </div>
             @if (store.cartEmpty()) {
-              <div class="text-center text-[#9ca3af] py-10 text-[13px]">
+              <div class="text-center text-gray-400 py-10 text-[13px]">
                 Agrega productos desde el catálogo.
               </div>
             }
           </div>
 
-          <div class="border-t border-[#e5e7eb] bg-white shrink-0 flex flex-col">
-            <div class="p-3 bg-[#f9fafb] border-b border-[#e5e7eb] flex flex-col gap-1">
+          <div class="border-t border-gray-200 bg-white shrink-0 flex flex-col">
+            <div class="p-3 bg-gray-50 border-b border-gray-200 flex flex-col gap-1">
               @let tot = store.totals();
               @if (store.draftPreview(); as p) {
                 <!-- spec 073, FR-013/FR-014: el desglose (con descuento por
@@ -777,9 +777,9 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                   size="lg"
                 />
                 @if (store.draftPreviewError()) {
-                  <p class="text-[11px] text-[#b45309]">El descuento se confirma al cobrar.</p>
+                  <p class="text-[11px] text-amber-700">El descuento se confirma al cobrar.</p>
                 } @else if (store.draftPreviewLoading()) {
-                  <p class="text-[11px] text-[#9ca3af]">Calculando el descuento…</p>
+                  <p class="text-[11px] text-gray-400">Calculando el descuento…</p>
                 }
               }
             </div>
@@ -792,7 +792,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 <div
                   data-testid="total-cambio-aviso"
                   role="status"
-                  class="rounded-[6px] border border-[#fef3c7] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]"
+                  class="rounded-[6px] border border-amber-100 bg-amber-50 px-3 py-2 text-[12px] text-amber-800"
                 >
                   El total cambió: ahora es {{ store.fmt(n.now) }} (antes {{ store.fmt(n.before) }}).
                   Revisa el importe y vuelve a pulsar Crear pedido.
@@ -809,7 +809,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                       !store.deliveryAddress().trim() ||
                       store.deliveryFee() == null))
                 "
-                class="w-full h-12 bg-[#4f46e5] hover:bg-[#4338ca] active:bg-[#3730a3] text-white font-semibold text-[15px] flex items-center justify-center gap-2 rounded-[6px] disabled:opacity-50 transition-colors"
+                class="w-full h-12 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-[15px] flex items-center justify-center gap-2 rounded-[6px] disabled:opacity-50 transition-colors"
               >
                 <app-mi-icon name="credit_card" [size]="20" />
                 <span>{{ store.submitting() ? 'Guardando…' : 'Crear pedido' }}</span>
@@ -817,7 +817,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               <button
                 type="button"
                 (click)="backToTerminal()"
-                class="w-full h-8 border border-[#e5e7eb] bg-white hover:bg-[#f3f4f6] text-[#4b5563] hover:text-[#111827] text-[12px] font-medium flex items-center justify-center gap-1.5 rounded-[6px] transition-colors"
+                class="w-full h-8 border border-gray-200 bg-white hover:bg-gray-100 text-gray-600 hover:text-gray-900 text-[12px] font-medium flex items-center justify-center gap-1.5 rounded-[6px] transition-colors"
               >
                 Regresar
               </button>

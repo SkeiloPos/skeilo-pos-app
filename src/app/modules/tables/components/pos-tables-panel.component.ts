@@ -23,7 +23,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   template: `
     <div class="w-full min-w-0 h-full flex flex-col bg-white">
       @if (store.orderTypeTab() === 'mesas') {
-        <div class="flex flex-col gap-2 p-3 border-b border-[#e5e7eb] sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div class="flex flex-col gap-2 p-3 border-b border-gray-200 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <div class="flex gap-1.5 overflow-x-auto pb-0.5 sm:overflow-visible sm:flex-wrap shrink-0">
             @for (f of filters; track f.key) {
               <button
@@ -31,8 +31,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 class="shrink-0 h-9 sm:h-11 px-3 rounded-[6px] text-[13px] flex items-center gap-2 transition-colors whitespace-nowrap"
                 [class]="
                   store.filter() === f.key
-                    ? 'bg-[#f3f4f6] text-[#111827] font-semibold'
-                    : 'border border-[#e5e7eb] text-[#4b5563] font-medium hover:bg-[#f3f4f6]'
+                    ? 'bg-gray-100 text-gray-900 font-semibold'
+                    : 'border border-gray-200 text-gray-600 font-medium hover:bg-gray-100'
                 "
               >
                 <span>{{ f.label }}</span>
@@ -40,8 +40,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                   class="px-1.5 py-0.5 text-[11px] font-medium rounded-[6px] tabular-nums"
                   [class]="
                     store.filter() === f.key
-                      ? 'bg-white border border-[#e5e7eb] text-[#111827]'
-                      : 'bg-[#f3f4f6] text-[#4b5563]'
+                      ? 'bg-white border border-gray-200 text-gray-900'
+                      : 'bg-gray-100 text-gray-600'
                   "
                 >
                   {{ countFor(f.key) }}
@@ -51,7 +51,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           </div>
           <div class="relative sm:w-64 shrink-0">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
-              <app-mi-icon name="search" [size]="18" class="text-[#6b7280]" />
+              <app-mi-icon name="search" [size]="18" class="text-gray-500" />
             </span>
             <input
               #searchInput
@@ -59,9 +59,9 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               [value]="store.search()"
               (input)="store.search.set($any($event.target).value)"
               placeholder="Buscar mesa…"
-              class="w-full h-9 sm:h-11 pl-9 pr-12 bg-white border border-[#e5e7eb] rounded-[6px] text-[13px] text-[#111827] placeholder-[#6b7280] focus:outline-none focus:border-[#111827]"
+              class="w-full h-9 sm:h-11 pl-9 pr-12 bg-white border border-gray-200 rounded-[6px] text-[13px] text-gray-900 placeholder-gray-500 focus:outline-none focus:border-gray-900"
             />
-            <span class="hidden sm:inline absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 bg-[#f3f4f6] border border-[#e5e7eb] text-[#6b7280] text-[11px] rounded-[6px] pointer-events-none">
+            <span class="hidden sm:inline absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 bg-gray-100 border border-gray-200 text-gray-500 text-[11px] rounded-[6px] pointer-events-none">
               [F2]
             </span>
           </div>
@@ -87,7 +87,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             }
           </div>
           @if (store.noTablesFound()) {
-            <p class="text-center text-[13px] text-[#6b7280] py-8">Sin resultados</p>
+            <p class="text-center text-[13px] text-gray-500 py-8">Sin resultados</p>
           }
         </div>
       } @else if (store.ordersByType(store.orderTypeTab()).length > 0) {
@@ -113,7 +113,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
       } @else {
         <!-- FR-003/FR-009: listado vacío con mensaje claro, no un error ni
              una grilla en blanco sin explicación. -->
-        <div class="flex flex-col items-center justify-center text-center text-[#6b7280] p-8 gap-3">
+        <div class="flex flex-col items-center justify-center text-center text-gray-500 p-8 gap-3">
           <app-mi-icon name="receipt" [size]="40" />
           <p class="text-[13px] max-w-xs">
             Todavía no hay ningún pedido de

@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, Input, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } from '@angular/core';
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { BaseChartDirective } from 'ng2-charts';
-import { CHART_MUTED, PRIMARY_SERIES, ValueKind, formatValue } from './chart-theme';
+import { PRIMARY_SERIES, ValueKind, axisColors, formatValue } from './chart-theme';
+import { PanelThemeService } from '../../modules/dashboard/layout/panel-theme.service';
 
 /**
  * Barras horizontales ordenadas: un ranking de magnitud (productos más
@@ -36,6 +37,8 @@ export class RankedBarsChartComponent {
   @Input() rowHeight = 34;
   @Input() minHeight = 120;
 
+  private readonly panelThemeService = inject(PanelThemeService);
+
   private readonly labelsSig = signal<string[]>([]);
   private readonly valuesSig = signal<number[]>([]);
   private readonly kindSig = signal<ValueKind>('units');
@@ -61,6 +64,7 @@ export class RankedBarsChartComponent {
 
   readonly options = computed<ChartOptions<'bar'>>(() => {
     const kind = this.kindSig();
+    const { muted, tooltipBg } = axisColors(this.panelThemeService.theme());
     return {
       indexAxis: 'y',
       responsive: true,
@@ -69,7 +73,7 @@ export class RankedBarsChartComponent {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: '#111827',
+          backgroundColor: tooltipBg,
           padding: 10,
           cornerRadius: 8,
           displayColors: false,
@@ -81,7 +85,7 @@ export class RankedBarsChartComponent {
         y: {
           grid: { display: false },
           border: { display: false },
-          ticks: { color: CHART_MUTED, crossAlign: 'far', autoSkip: false },
+          ticks: { color: muted, crossAlign: 'far', autoSkip: false },
         },
       },
     };

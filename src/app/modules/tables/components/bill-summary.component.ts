@@ -20,43 +20,43 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   imports: [IconMiComponent],
   template: `
     @if (subtotal !== undefined) {
-      <div class="flex justify-between items-center text-[13px] text-[#6b7280]">
+      <div class="flex justify-between items-center text-[13px] text-gray-500">
         <span>{{ subtotalLabel }}</span>
-        <span class="font-mono font-medium text-[#111827] tabular-nums">{{ money(subtotal) }}</span>
+        <span class="font-mono font-medium text-gray-900 tabular-nums">{{ money(subtotal) }}</span>
       </div>
     }
     @if (discount > 0) {
-      <div class="flex justify-between items-center text-[13px] text-[#15803d]">
+      <div class="flex justify-between items-center text-[13px] text-green-700">
         <span>{{ discountLabel }}</span>
         <span class="font-mono font-medium tabular-nums">− {{ money(discount) }}</span>
       </div>
     }
     @if (deliveryFee > 0) {
-      <div class="flex justify-between items-center text-[13px] text-[#6b7280] pt-0.5">
-        <span class="flex items-center gap-1" [class]="showDeliveryIcon ? 'text-[#111827] font-medium' : ''">
+      <div class="flex justify-between items-center text-[13px] text-gray-500 pt-0.5">
+        <span class="flex items-center gap-1" [class]="showDeliveryIcon ? 'text-gray-900 font-medium' : ''">
           @if (showDeliveryIcon) {
-            <app-mi-icon name="delivery_dining" [size]="15" class="text-[#4f46e5]" />
+            <app-mi-icon name="delivery_dining" [size]="15" class="text-indigo-600" />
           }
           {{ deliveryFeeLabel }}
         </span>
         <span
           class="font-mono font-semibold tabular-nums"
-          [class]="showDeliveryIcon ? 'text-[#4f46e5]' : 'text-[#111827]'"
+          [class]="showDeliveryIcon ? 'text-indigo-600' : 'text-gray-900'"
           >{{ showDeliveryIcon ? '+' : '' }}{{ money(deliveryFee) }}</span
         >
       </div>
     }
     <div
       class="flex justify-between items-baseline"
-      [class]="totalBorder && (subtotal !== undefined || discount > 0 || deliveryFee > 0) ? 'border-t border-[#e5e7eb] mt-0.5 pt-1.5' : ''"
+      [class]="totalBorder && (subtotal !== undefined || discount > 0 || deliveryFee > 0) ? 'border-t border-gray-200 mt-0.5 pt-1.5' : ''"
     >
       <span
-        class="font-bold tracking-tight text-[#111827]"
+        class="font-bold tracking-tight text-gray-900"
         [class]="size === 'lg' ? 'text-[14px]' : size === 'md' ? 'text-[14px]' : 'text-[13px]'"
         >{{ totalLabel }}</span
       >
       <span
-        class="font-mono font-bold tabular-nums tracking-tight leading-none text-[#111827]"
+        class="font-mono font-bold tabular-nums tracking-tight leading-none text-gray-900"
         [class]="size === 'lg' ? 'text-[30px]' : size === 'md' ? 'text-[26px] font-extrabold' : 'text-[19px]'"
         >{{ money(total) }}</span
       >
