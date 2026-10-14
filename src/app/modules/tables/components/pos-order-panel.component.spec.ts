@@ -1060,3 +1060,87 @@ describe('PosOrderPanelComponent — pedido sin mesa (spec 059, Historia 3)', ()
     );
   });
 });
+
+/**
+ * spec 118 (FR-005/FR-007, contracts/detail-panel-line-grouping.md): dos
+ * adiciones sucesivas de la misma presentación que alcanzan el umbral de
+ * una promoción por volumen se renderizan como una sola card del detalle,
+ * con el mismo formato de insignia/tachado/monto ajustado que ya usa una
+ * card de una sola adición -- no dos cards separadas.
+ */
+describe('PosOrderPanelComponent — una sola card para adiciones sucesivas con promoción (spec 118, Historia 2)', () => {
+  let fixture: ComponentFixture<PosOrderPanelComponent>;
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [PosOrderPanelComponent],
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    fixture = TestBed.createComponent(PosOrderPanelComponent);
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  /** "Fresa boom" a $7.000, promoción `2 x $12.000` ya persistida por el
+   *  backend en ambas filas (`refresh_order_item_discounts`) -- agregadas
+   *  en dos `add_item_to_order` sucesivos, no en una sola llamada. */
+  function pedidoConDosAdicionesSucesivas(): DiningOrder {
+    return {
+      id: 'o1',
+      channel: 'POS',
+      status: 'abierta',
+      dining_table_id: 't1',
+      customer_name: null,
+      created_at: '2026-08-21T10:00:00',
+      paid: false,
+      items: [
+        {
+          id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '7000',
+          estado_cocina: 'listo', discounted_unit_price: '6000', discounted_line_total: '6000',
+        },
+        {
+          id: 'i2', product_variant_id: 'v1', quantity: 1, unit_price: '7000',
+          estado_cocina: 'listo', discounted_unit_price: '6000', discounted_line_total: '6000',
+        },
+      ] as DiningOrderItem[],
+    } as DiningOrder;
+  }
+
+  const cardRows = (): HTMLElement[] =>
+    Array.from(fixture.nativeElement.querySelectorAll('.py-3.flex.items-start.gap-3')) as HTMLElement[];
+
+  it('renderiza una sola card (no dos) para las dos filas agrupadas', () => {
+    store.orders.set([pedidoConDosAdicionesSucesivas()]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    fixture.detectChanges();
+
+    expect(cardRows().length).toBe(1);
+  });
+
+  it('la card agrupada muestra insignia, precio tachado y monto ajustado -- el mismo formato que una card de una sola adición', () => {
+    store.orders.set([pedidoConDosAdicionesSucesivas()]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    fixture.detectChanges();
+
+    const [row] = cardRows();
+    expect(row.textContent).toContain('2x');
+    expect(row.textContent).toContain('-14%');
+    const strike = row.querySelector('.line-through') as HTMLElement;
+    expect(strike).toBeTruthy();
+    expect(strike.textContent?.trim()).toBe(store.fmt(14000));
+    expect(row.textContent).toContain(store.fmt(12000));
+  });
+});
