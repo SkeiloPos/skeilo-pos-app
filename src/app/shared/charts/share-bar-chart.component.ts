@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, Input, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } from '@angular/core';
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { BaseChartDirective } from 'ng2-charts';
-import { ValueKind, formatValue, seriesColor } from './chart-theme';
+import { ValueKind, axisColors, formatValue, seriesColor } from './chart-theme';
+import { PanelThemeService } from '../../modules/dashboard/layout/panel-theme.service';
 
 export interface ShareItem {
   label: string;
@@ -48,6 +49,8 @@ export class ShareBarChartComponent {
     this.kindSig.set(value);
   }
 
+  private readonly panelThemeService = inject(PanelThemeService);
+
   private readonly itemsSig = signal<ShareItem[]>([]);
   private readonly kindSig = signal<ValueKind>('money');
 
@@ -65,25 +68,31 @@ export class ShareBarChartComponent {
     }));
   });
 
-  readonly data = computed<ChartConfiguration<'bar'>['data']>(() => ({
-    labels: [''],
-    // Un dataset por categoría: cada uno con su color y su entrada de tooltip.
-    datasets: this.itemsSig().map((item, i) => ({
-      label: item.label,
-      data: [item.value],
-      backgroundColor: seriesColor(i),
-      hoverBackgroundColor: seriesColor(i),
-      // 2 px de hueco entre segmentos contiguos, en el color de la superficie.
-      borderColor: '#ffffff',
-      borderWidth: 2,
-      borderRadius: 4,
-      borderSkipped: false,
-    })),
-  }));
+  readonly data = computed<ChartConfiguration<'bar'>['data']>(() => {
+    const { segmentBorder } = axisColors(this.panelThemeService.theme());
+    return {
+      labels: [''],
+      // Un dataset por categoría: cada uno con su color y su entrada de tooltip.
+      datasets: this.itemsSig().map((item, i) => ({
+        label: item.label,
+        data: [item.value],
+        backgroundColor: seriesColor(i),
+        hoverBackgroundColor: seriesColor(i),
+        // 2 px de hueco entre segmentos contiguos, en el color de la
+        // superficie real tras la gráfica (app-chart-card) -- blanco en
+        // claro, tarjeta oscura en oscuro (research.md R19).
+        borderColor: segmentBorder,
+        borderWidth: 2,
+        borderRadius: 4,
+        borderSkipped: false,
+      })),
+    };
+  });
 
   readonly options = computed<ChartOptions<'bar'>>(() => {
     const kind = this.kindSig();
     const total = this.total();
+    const { tooltipBg } = axisColors(this.panelThemeService.theme());
     return {
       indexAxis: 'y',
       responsive: true,
@@ -91,7 +100,7 @@ export class ShareBarChartComponent {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: '#111827',
+          backgroundColor: tooltipBg,
           padding: 10,
           cornerRadius: 8,
           callbacks: {
