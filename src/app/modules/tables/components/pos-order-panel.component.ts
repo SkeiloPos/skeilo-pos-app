@@ -312,7 +312,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                             (click)="
                               it.comboId
                                 ? store.voidPersistedCombo(it.comboId)
-                                : store.voidPersistedItem(it.key)
+                                : store.voidPersistedItem(it.itemIds[0])
                             "
                             class="px-2.5 py-1 rounded-[6px] border border-red-200 text-[11px] font-medium text-red-600 hover:bg-red-50 transition-colors"
                           >

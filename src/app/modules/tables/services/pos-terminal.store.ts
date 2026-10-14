@@ -9,7 +9,7 @@ import { PaymentMethod, Sale } from '../../sales/interfaces/sales.interface';
 import { MenuService } from '../../../core/services/menu.service';
 import { Promotion } from '../../promotions/interfaces/promotion.interface';
 import { PromotionService } from '../../promotions/services/promotion.service';
-import { discountInfo, effectivePrice, hasPromotion, packagePrice } from '../../promotions/services/promotion-pricing.util';
+import { effectivePrice, hasPromotion, packagePrice } from '../../promotions/services/promotion-pricing.util';
 import { PaymentMethodService } from '../../sales/services/payment-method.service';
 import { CashService } from '../../cash-register/services/cash.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
@@ -527,45 +527,62 @@ export class PosTerminalStore {
   }
 
   /**
-   * Igual que `cartLinePromo()` pero para un ítem ya persistido. Un pedido
-   * manual nace `hold_for_payment` ("recibida"/"Pendiente") SIN descuento
-   * congelado: `OrderItem` solo guarda `unit_price` al crearse — el backend
-   * resuelve y congela `discounted_unit_price` recién en `checkout_and_send`
-   * (spec 063 FR-023, `pos-backend/app/api/v1/orders/service.py`), el mismo
-   * punto único de descuento del flujo QR. Mientras tanto (`discounted_unit_price`
-   * aún `null`), este método usa `catalogPromo` (la promoción vigente de esta
-   * variante en el catálogo, vía `lk.variantPromotion()`) para ESTIMAR la
-   * insignia/tachado con el mismo cálculo por bloques de `cartLinePromo()`
-   * (`packagePrice()`) — una estimación visible para el personal antes de
-   * cobrar, nunca el importe autoritativo (spec 115, hallazgo adicional).
+   * Igual que `cartLinePromo()` pero para un grupo de una o más filas ya
+   * persistidas de la misma presentación+opciones+notas (spec 118,
+   * research.md D4 — el agrupamiento visual vive en `persistedItemsView()`,
+   * que llama a este método con las filas del grupo).
+   *
+   * `OrderItem.discounted_unit_price`/`.discounted_line_total` (spec 038) se
+   * recalculan y persisten en `refresh_order_item_discounts`
+   * (`pos-backend/app/api/v1/orders/checkout.py`, spec 118), llamada al
+   * final de cada mutación de líneas de un pedido abierto —
+   * `orders.service.create_order`, `orders.consolidation.consolidate_table`/
+   * `add_item_to_order` y `orders.kitchen.void_item` — y también en
+   * `cart.service.submit_cart` (canal QR, sin cambio de comportamiento desde
+   * spec 089). Antes de esta spec, solo `submit_cart` los escribía: toda
+   * línea creada por la Terminal (mostrador/mesero) quedaba en `NULL`.
+   *
+   * Mientras alguna fila del grupo no tenga `discounted_unit_price` (pedido
+   * histórico creado antes de esta spec, aún sin ninguna mutación nueva que
+   * dispare el recálculo — research.md D7), este método cae a `catalogPromo`
+   * (la promoción vigente de esta variante en el catálogo, vía
+   * `lk.variantPromotion()`) para ESTIMAR la insignia/tachado con el mismo
+   * cálculo por bloques de `cartLinePromo()` (`packagePrice()`) — una
+   * estimación visible para el personal antes de cobrar, nunca el importe
+   * autoritativo (spec 115, hallazgo adicional).
    */
   private persistedLinePromo(
-    unitPrice: number,
-    discountedUnitPrice: number | null | undefined,
-    quantity: number,
-    addonsTotal = 0,
+    rows: DiningOrderItem[],
     catalogPromo: MenuVariantPromotion | null = null,
   ): CartLinePromo | null {
-    if (discountedUnitPrice == null) {
-      if (!catalogPromo || quantity < catalogPromo.min_qty) return null;
-      const originalAmount = unitPrice * quantity + addonsTotal;
-      const discountedAmount = packagePrice(unitPrice, catalogPromo, quantity) + addonsTotal;
+    const totalQty = rows.reduce((s, r) => s + r.quantity, 0);
+    const originalAmount = rows.reduce(
+      (s, r) => s + Number(r.unit_price) * r.quantity + Number(r.addons_total ?? 0), 0,
+    );
+    const anyDiscounted = rows.some((r) => r.discounted_unit_price != null);
+    if (anyDiscounted) {
+      const discountedAmount = rows.reduce((s, r) => s + this.itemLineTotal(r), 0);
       if (discountedAmount >= originalAmount) return null;
+      const percent = Math.round((1 - discountedAmount / originalAmount) * 100);
+      if (percent <= 0) return null;
       return {
-        badge: catalogPromo.short_condition,
+        badge: `-${percent}%`,
         originalAmount,
         discountedAmount,
         savings: originalAmount - discountedAmount,
       };
     }
-    const info = discountInfo(unitPrice, discountedUnitPrice);
-    if (!info) return null;
-    // spec 089: una promoción nunca descuenta los adicionales; van enteros en ambos importes.
+    if (!catalogPromo || totalQty < catalogPromo.min_qty) return null;
+    // Misma presentación+opciones ⇒ mismo `unit_price` en todas las filas del grupo.
+    const unitPrice = Number(rows[0].unit_price);
+    const addonsTotal = rows.reduce((s, r) => s + Number(r.addons_total ?? 0), 0);
+    const discountedAmount = packagePrice(unitPrice, catalogPromo, totalQty) + addonsTotal;
+    if (discountedAmount >= originalAmount) return null;
     return {
-      badge: `-${info.percent}%`,
-      originalAmount: info.original * quantity + addonsTotal,
-      discountedAmount: info.discounted * quantity + addonsTotal,
-      savings: info.amountOff * quantity,
+      badge: catalogPromo.short_condition,
+      originalAmount,
+      discountedAmount,
+      savings: originalAmount - discountedAmount,
     };
   }
 
@@ -1037,17 +1054,29 @@ export class PosTerminalStore {
     const promos = syncedNow === null ? [] : this.promotionService.activePromotions();
     const items = (order?.items ?? []).filter((i) => i.estado_cocina !== 'anulado');
 
+    // spec 118 (research.md D4, FR-005): varias filas de la misma
+    // presentación+opciones+notas, agregadas en momentos distintos, se
+    // presentan como una sola card -- igual que ya hace `groupByCombo()`
+    // para combos, pero sin fusionar ningún `OrderItem` real (FR-008): cada
+    // `id` original sigue vivo en `itemIds`.
     const plainItems = items.filter((i) => !i.combo_id);
-    const persistedPlain = plainItems.map((i) => {
-      const unitPrice = this.itemUnitPrice(i);
-      const discountedUnit = i.discounted_unit_price != null ? Number(i.discounted_unit_price) : null;
+    const plainGroups = this.groupPlainItems(plainItems);
+    const persistedPlain = [...plainGroups.entries()].map(([key, rows]) => {
+      const first = rows[0];
       return {
         kind: 'persisted' as const,
-        key: i.id,
+        // `order.id` entra en la clave porque `tableItemsView()` aplana las
+        // líneas de TODOS los pedidos de la mesa (spec 049, D6): sin el id
+        // del pedido, dos pedidos distintos con la misma presentación suelta
+        // (p. ej. ambos con 1x "Fresa boom" sin opciones) producirían la
+        // misma clave sintética y `avanzarItem`/`voidPersistedCombo`
+        // ubicarían la línea del pedido equivocado.
+        key: `plain:${order?.id}:${key}`,
         comboId: undefined as string | undefined,
-        qty: i.quantity,
-        name: lk.variantLabel(i.product_variant_id),
-        options: (i.options ?? [])
+        itemIds: rows.map((r) => r.id),
+        qty: rows.reduce((s, r) => s + r.quantity, 0),
+        name: lk.variantLabel(first.product_variant_id),
+        options: (first.options ?? [])
           .map((o) => ({ o, name: lk.optionLabel(o.option_id) || o.name || '' }))
           .filter(({ name }) => !!name)
           .map(
@@ -1056,17 +1085,16 @@ export class PosTerminalStore {
               text: formatQuantifiedLabel(name, o.quantity ?? 1),
             }),
           ),
-        notes: i.notes || null,
-        unitPrice,
-        addonsTotal: Number(i.addons_total ?? 0),
-        subtotal: this.itemLineTotal(i),
-        ready: !KITCHEN_NOT_READY.includes(i.estado_cocina),
-        kitchenStatus: i.estado_cocina as KitchenStatus | null,
-        pendingItemIds: KITCHEN_NOT_READY.includes(i.estado_cocina) ? [i.id] : [],
-        promo: this.persistedLinePromo(
-          Number(i.unit_price), discountedUnit, i.quantity, Number(i.addons_total ?? 0),
-          lk.variantPromotion(i.product_variant_id),
-        ),
+        notes: first.notes || null,
+        unitPrice: this.itemUnitPrice(first),
+        addonsTotal: rows.reduce((s, r) => s + Number(r.addons_total ?? 0), 0),
+        subtotal: rows.reduce((s, r) => s + this.itemLineTotal(r), 0),
+        ready: rows.every((r) => !KITCHEN_NOT_READY.includes(r.estado_cocina)),
+        kitchenStatus: leastAdvanced(rows),
+        pendingItemIds: rows
+          .filter((r) => KITCHEN_NOT_READY.includes(r.estado_cocina))
+          .map((r) => r.id),
+        promo: this.persistedLinePromo(rows, lk.variantPromotion(first.product_variant_id)),
       };
     });
 
@@ -1081,6 +1109,7 @@ export class PosTerminalStore {
         kind: 'persisted' as const,
         key: 'combo:' + comboId,
         comboId,
+        itemIds: its.map((it) => it.id),
         qty: units > 0 ? units : 1,
         name: `🎁 ${promo?.name ?? 'Combo'}`,
         // Los componentes de un combo no pertenecen a un grupo de opciones
@@ -1937,6 +1966,32 @@ export class PosTerminalStore {
     return groups;
   }
 
+  /**
+   * spec 118 (research.md D4, contracts/detail-panel-line-grouping.md):
+   * agrupa ítems "planos" (sin `combo_id`) por `(product_variant_id, notes,
+   * firma_de_opciones)` -- misma presentación, mismas notas y exactamente
+   * las mismas opciones con la misma cantidad cada una. Análogo a
+   * `groupByCombo()`, pero por presentación+opciones en vez de por
+   * `combo_id`: resuelve que varias adiciones sucesivas de la misma
+   * presentación (agregadas en momentos distintos, FR-005) se presenten
+   * como una sola card del detalle.
+   */
+  private groupPlainItems(items: DiningOrderItem[]): Map<string, DiningOrderItem[]> {
+    const groups = new Map<string, DiningOrderItem[]>();
+    for (const it of items) {
+      const firma = (it.options ?? [])
+        .map((o) => [o.option_id, o.quantity] as const)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([id, qty]) => `${id}:${qty}`)
+        .join(',');
+      const key = `${it.product_variant_id}|${it.notes ?? ''}|${firma}`;
+      const arr = groups.get(key) ?? [];
+      arr.push(it);
+      groups.set(key, arr);
+    }
+    return groups;
+  }
+
   private comboUnitsPresent(_comboId: string, _items: DiningOrderItem[]): number {
     return 0;
   }
@@ -2180,6 +2235,15 @@ export class PosTerminalStore {
     }
   }
 
+  /**
+   * spec 118 (FR-008, contracts/detail-panel-line-grouping.md): el `OrderItem.id`
+   * a anular -- para una card agrupada (varias adiciones sucesivas de la misma
+   * presentación), el caller pasa **una** de sus filas (`itemIds[0]`, ver
+   * `pos-order-panel.component.ts`), nunca un id sintético del grupo. Anular
+   * siempre afecta una fila completa, no una cantidad parcial de una fila;
+   * las demás filas del grupo siguen intactas, con su propio historial de
+   * cocina.
+   */
   async voidPersistedItem(itemId: string): Promise<void> {
     const ok = await this.confirm.ask({
       title: 'Anular ítem',
