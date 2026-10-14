@@ -70,7 +70,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
     IconMiComponent,
   ],
   template: `
-    <div class="flex flex-col -m-4 md:-m-6 bg-[#f9fafb] ">
+    <div class="flex flex-col -m-4 md:-m-6 bg-gray-50 ">
       <!-- Encabezado: estado de terminal, turno, reloj y acciones de sesión
            (extraído a un componente compartido con manual-order-page.component.ts). -->
       <app-pos-terminal-header />
@@ -87,11 +87,11 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
            (selectedTableId() nulo) conserva el comportamiento previo. -->
       @if (!showingDetail() || store.selectedTableId()) {
         <div
-          class="bg-white border-b border-[#e5e7eb] px-3 sm:px-4 py-2 sm:py-0 sm:h-14 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0"
+          class="bg-white border-b border-gray-200 px-3 sm:px-4 py-2 sm:py-0 sm:h-14 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0"
         >
           <div class="flex items-center gap-3">
             <nav
-              class="flex items-center gap-1 bg-[#f3f4f6] p-1 rounded-[6px] overflow-x-auto sm:overflow-visible"
+              class="flex items-center gap-1 bg-gray-100 p-1 rounded-[6px] overflow-x-auto sm:overflow-visible"
             >
               @for (t of orderTypeTabs; track t.key) {
                 <button
@@ -99,8 +99,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                   class="shrink-0 h-9 px-3.5 rounded-[6px] text-[13px] flex items-center gap-2 transition-colors whitespace-nowrap"
                   [class]="
                     store.orderTypeTab() === t.key
-                      ? 'bg-white border border-[#e5e7eb] text-[#111827] font-semibold'
-                      : 'text-[#4b5563] hover:text-[#111827] font-medium'
+                      ? 'bg-white border border-gray-200 text-gray-900 font-semibold'
+                      : 'text-gray-600 hover:text-gray-900 font-medium'
                   "
                 >
                   {{ t.label }}
@@ -125,7 +125,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                   ? 'No hay ninguna mesa libre disponible'
                   : ''
               "
-              class="h-9 sm:h-10 px-3 sm:px-3.5 rounded-[6px] bg-[#4f46e5] hover:bg-[#4338ca] text-white text-[12px] sm:text-[13px] font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              class="h-9 sm:h-10 px-3 sm:px-3.5 rounded-[6px] bg-indigo-600 hover:bg-indigo-700 text-white text-[12px] sm:text-[13px] font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <app-mi-icon name="add_circle" [size]="16" class="shrink-0" />
               <span>Crear pedido nuevo</span>
@@ -161,7 +161,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                ocupar toda la pantalla también en tablet/desktop. -->
           <div
             data-testid="mesas-column"
-            class="flex-col min-h-0 min-w-0 flex-1 bg-white rounded-[6px] border border-[#e5e7eb] overflow-hidden"
+            class="flex-col min-h-0 min-w-0 flex-1 bg-white rounded-[6px] border border-gray-200 overflow-hidden"
             [class]="showingDetail() ? 'hidden' : 'flex'"
           >
             <app-pos-tables-panel />
@@ -178,7 +178,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                flex-1) ocupa todo el ancho. -->
           <div
             data-testid="detail-column"
-            class="flex-col min-h-0 min-w-0 bg-white rounded-[6px] border border-[#e5e7eb] overflow-hidden"
+            class="flex-col min-h-0 min-w-0 bg-white rounded-[6px] border border-gray-200 overflow-hidden"
             [class]="showingDetail() ? 'flex flex-1' : 'hidden'"
           >
             @if (showingDetail()) {
@@ -214,16 +214,16 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 ítems y el resto del cobro (ver app-pos-checkout-panel).
               -->
               <div
-                class="flex items-center gap-3 px-4 py-3 border-b border-[#e5e7eb] shrink-0"
+                class="flex items-center gap-3 px-4 py-3 border-b border-gray-200 shrink-0"
               >
                 <button
                   data-testid="page-back-button"
                   (click)="store.cancelSelection()"
-                  class="px-3 py-1.5 text-[13px] font-medium rounded-[6px] border border-[#4f46e5] text-[#4f46e5] bg-white hover:bg-[#eef2ff] transition-colors shrink-0"
+                  class="px-3 py-1.5 text-[13px] font-medium rounded-[6px] border border-indigo-600 text-indigo-600 bg-white hover:bg-indigo-50 transition-colors shrink-0"
                 >
                   ← Volver a mesas
                 </button>
-                <span class="text-[18px] font-semibold text-[#111827]">Pedido de la mesa</span>
+                <span class="text-[18px] font-semibold text-gray-900">Pedido de la mesa</span>
               </div>
 
               <!-- Por debajo de lg: una única región de scroll para toda la

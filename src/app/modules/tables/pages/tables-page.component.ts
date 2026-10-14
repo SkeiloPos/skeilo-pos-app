@@ -79,7 +79,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                     <td class="px-5 py-4">
                       <div class="flex items-center gap-3">
                         <div class="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
-                          <app-mi-icon name="table_restaurant" [size]="20" />
+                          <app-mi-icon name="table_restaurant" [size]="20" class="text-indigo-600" />
                         </div>
                         <div>
                           <span class="text-sm font-medium" [class.text-gray-400]="!table.active" [class.text-gray-900]="table.active">

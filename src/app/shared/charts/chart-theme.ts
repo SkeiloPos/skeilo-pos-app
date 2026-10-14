@@ -39,6 +39,48 @@ const INK = '#374151'; // gray-700
 const MUTED = '#9ca3af'; // gray-400
 const GRID = '#f3f4f6'; // gray-100
 
+export type PanelTheme = 'light' | 'dark';
+
+/**
+ * Colores de ejes/rejilla/tooltip de Chart.js por tema (research.md R19): un
+ * `<canvas>` no tiene cascada CSS para lo que dibuja dentro, así que la
+ * técnica de variable de R16 no alcanza estos valores — tienen que pasar por
+ * aquí como JavaScript. Segundo juego de valores oscuros, verificado contra
+ * `--panel-color-surface-card` oscuro (#1E293B, el fondo real tras el que
+ * `app-chart-card` termina pintando la gráfica en dark — su `bg-white`
+ * se repinta con esa variable, research R16), no contra `--panel-color-canvas`
+ * a ojo:
+ *
+ *   ink (#F8FAFC)    13.98:1 — --panel-color-text-primary oscuro
+ *   muted (#94A3B8)   5.71:1 — --panel-color-text-muted oscuro
+ *
+ * `tooltipBg` no cambia con el tema: es una ficha flotante oscura con texto
+ * blanco por defecto de Chart.js (nunca gris-900-sobre-blanco), así que ya
+ * funciona igual de bien en ambos temas — no es una superficie del panel.
+ * `segmentBorder` (el hueco de 2px entre segmentos de `app-share-bar-chart`)
+ * sí cambia: debe fundirse con la tarjeta real tras la gráfica, blanco en
+ * claro, `--panel-color-surface-card` oscuro — si se dejara blanco se vería
+ * como una línea brillante en vez de un hueco.
+ */
+export function axisColors(theme: PanelTheme): {
+  ink: string;
+  muted: string;
+  grid: string;
+  tooltipBg: string;
+  segmentBorder: string;
+} {
+  if (theme === 'dark') {
+    return {
+      ink: '#f8fafc',
+      muted: '#94a3b8',
+      grid: '#334155',
+      tooltipBg: '#111827',
+      segmentBorder: '#1e293b',
+    };
+  }
+  return { ink: INK, muted: MUTED, grid: GRID, tooltipBg: '#111827', segmentBorder: '#ffffff' };
+}
+
 /** Formatea el valor de un punto según el tipo de dato de la gráfica. */
 export type ValueKind = 'money' | 'units';
 
@@ -50,14 +92,15 @@ export function formatValue(value: number, kind: ValueKind): string {
  * Opciones comunes: sin leyenda (las gráficas de serie única se nombran por el
  * título de su tarjeta), tooltip siempre presente y ejes discretos.
  */
-export function baseOptions(kind: ValueKind): ChartOptions<'bar'> {
+export function baseOptions(kind: ValueKind, theme: PanelTheme): ChartOptions<'bar'> {
+  const { muted, grid, tooltipBg } = axisColors(theme);
   return {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: '#111827', // gray-900
+        backgroundColor: tooltipBg,
         padding: 10,
         cornerRadius: 8,
         displayColors: false,
@@ -69,11 +112,11 @@ export function baseOptions(kind: ValueKind): ChartOptions<'bar'> {
       },
     },
     scales: {
-      x: { grid: { display: false }, border: { display: false }, ticks: { color: MUTED } },
+      x: { grid: { display: false }, border: { display: false }, ticks: { color: muted } },
       y: {
-        grid: { color: GRID },
+        grid: { color: grid },
         border: { display: false },
-        ticks: { color: MUTED, maxTicksLimit: 5 },
+        ticks: { color: muted, maxTicksLimit: 5 },
       },
     },
   };

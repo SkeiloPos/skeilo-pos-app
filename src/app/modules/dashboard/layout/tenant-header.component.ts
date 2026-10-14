@@ -44,20 +44,27 @@ const ROLE_LABELS: Record<UserRole, string> = {
              bg-[var(--panel-color-surface)] border-b border-[var(--panel-color-border)]"
     >
       <div class="flex items-center gap-2.5 flex-1 min-w-0">
-        <!-- SkeiloPOS App.dc.html: el botón de menú del navbar solo existe en
-             modo drawer (<1024px) -- en escritorio, el colapso vive dentro
-             del propio sidebar (tenant-sidebar.component.ts). -->
-        @if (viewMode() === 'drawer') {
-          <button
-            (click)="layoutService.toggle()"
-            class="w-11 h-11 rounded-lg shrink-0 flex items-center justify-center transition-colors
-                   border border-[var(--panel-color-border)] bg-[var(--panel-color-surface)]
-                   text-[var(--panel-color-text-secondary)] hover:bg-[var(--panel-color-surface-elevated)]"
-            aria-label="Abrir menú"
-          >
-            <span class="w-5 h-5 block"><app-icon name="menu" /></span>
-          </button>
-        }
+        <!-- Botón de menú/colapso -- research.md R15 (Layout base.dc.html,
+             fuente de verdad vigente): único control, siempre visible (antes
+             solo existía en modo drawer; en escritorio vivía dentro del
+             propio sidebar, tenant-sidebar.component.ts -- ya no). Un solo
+             efecto según el modo: abre/cierra el drawer en 'drawer', colapsa/
+             expande el sidebar de escritorio en 'desktop'. -->
+        <button
+          (click)="toggleMenu()"
+          class="w-11 h-11 rounded-lg shrink-0 flex items-center justify-center transition-colors
+                 border border-[var(--panel-color-border)] bg-[var(--panel-color-surface)]
+                 text-[var(--panel-color-text-secondary)] hover:bg-[var(--panel-color-surface-elevated)]"
+          [attr.title]="menuButtonLabel()"
+          [attr.aria-label]="menuButtonLabel()"
+        >
+          <span class="w-5 h-5 block">
+            <!-- Layout base.dc.html:52 usa el mismo ícono "menu" en todos los
+                 modos (research.md R22, Clarifications Session 2026-10-14) --
+                 no hay un ícono de colapso distinto en el diseño. -->
+            <app-icon name="menu" />
+          </span>
+        </button>
 
         <div class="min-w-0">
           @if (sectionTitle()) {
@@ -287,6 +294,22 @@ export class TenantHeaderComponent {
     this.isDesktop() ? 'desktop' : 'drawer',
   );
 
+  /** Botón único de menú/colapso (research.md R15, contracts/tenant-layout-contract.md
+   *  §3): un solo efecto según el modo -- abre/cierra el drawer en 'drawer',
+   *  colapsa/expande el sidebar de escritorio en 'desktop'. */
+  readonly menuButtonLabel = computed(() => {
+    if (this.viewMode() === 'drawer') return 'Abrir menú';
+    return this.layoutService.desktopCollapsed() ? 'Expandir menú' : 'Contraer menú';
+  });
+
+  toggleMenu(): void {
+    if (this.viewMode() === 'drawer') {
+      this.layoutService.toggle();
+    } else {
+      this.layoutService.toggleDesktopCollapsed();
+    }
+  }
+
   private readonly currentUrl = toSignal(
     this.router.events.pipe(
       filter((e) => e instanceof NavigationEnd),
@@ -297,10 +320,24 @@ export class TenantHeaderComponent {
 
   /** Título dinámico derivado de la ruta activa (contracts/tenant-layout-contract.md §3):
    *  sección = `frame.group`, título = `frame.label` -- mismo criterio con el
-   *  que `HeaderComponent` legado resolvía un título fijo. */
-  private readonly activeItem = computed(() =>
-    NAV_ITEMS.find((item) => item.route === this.currentUrl()),
-  );
+   *  que `HeaderComponent` legado resolvía un título fijo.
+   *  Coincidencia por prefijo de segmento (FR-004, spec.md Session
+   *  2026-10-14), no por igualdad exacta: una subvista sin ítem propio
+   *  (editar/crear/detalle) sigue resolviendo el título/sección de su
+   *  módulo padre. El límite de segmento (`${item.route}/`, no un simple
+   *  `startsWith(item.route)`) evita que rutas que comparten prefijo de
+   *  texto pero son módulos distintos se confundan (p. ej. `/dashboard/mesas`
+   *  nunca coincide con `/dashboard/mesas-sesiones`); si más de un ítem
+   *  calificara, gana el de ruta más larga (el más específico). */
+  private readonly activeItem = computed(() => {
+    const path = this.currentUrl().split(/[?#]/)[0];
+    let best: (typeof NAV_ITEMS)[number] | undefined;
+    for (const item of NAV_ITEMS) {
+      const isMatch = path === item.route || path.startsWith(`${item.route}/`);
+      if (isMatch && (!best || item.route.length > best.route.length)) best = item;
+    }
+    return best;
+  });
   readonly sectionTitle = computed(() => this.activeItem()?.frame?.group ?? '');
   readonly pageTitle = computed(() => this.activeItem()?.frame?.label ?? '');
 

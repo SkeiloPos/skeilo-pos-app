@@ -4,7 +4,9 @@ import { Router, provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { SwPush } from '@angular/service-worker';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { vi } from 'vitest';
+import { NavigationTransitionService } from './navigation-transition.service';
 import { DashboardLayoutComponent } from './dashboard-layout.component';
 import { LayoutService } from './layout.service';
 import { PanelThemeService } from './panel-theme.service';
@@ -380,5 +382,158 @@ describe('DashboardLayoutComponent — tema claro/oscuro (spec 116, T024)', () =
 
     expect(el.querySelector('.shell-root')!.classList.contains('panel-theme')).toBe(false);
     expect(el.querySelector('app-tenant-header')).toBeNull();
+  });
+});
+
+/**
+ * spec 116 (T050, research.md R18; contracts/panel-theme-contract.md §9): el
+ * `cdk-overlay-container` es compartido por toda la app (un nodo hijo de
+ * `<body>`, fuera del subárbol de `.panel-theme`) -- sin esta sincronización,
+ * el único `cdkConnectedOverlay` del panel de tenant (Promociones) quedaría
+ * congelado en paleta clara aunque el resto del panel esté en oscuro.
+ */
+describe('DashboardLayoutComponent — sincronización del cdk-overlay-container (spec 116, T050)', () => {
+  function render(isSuperAdmin: boolean) {
+    const currentUser = signal({
+      id: 'u1',
+      email: 'a@b.c',
+      role: isSuperAdmin ? UserRole.SUPER_ADMIN : UserRole.ADMIN,
+      tenantId: isSuperAdmin ? null : 1,
+      isSuperAdmin,
+      mustChangePassword: false,
+    });
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [DashboardLayoutComponent],
+      providers: [
+        provideRouter([]),
+        swPushStub,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: AuthService, useValue: { currentUser, logout: vi.fn() } },
+        { provide: TenantInfoService, useValue: { businessName: () => 'Heladería', logoUrl: () => null } },
+        { provide: PlanSummaryService, useValue: { summary: signal(null) } },
+        {
+          provide: CashService,
+          useValue: { shift: signal(null), isOpen: () => false, discoverOpenShift: vi.fn() },
+        },
+        {
+          provide: NotificationCenterService,
+          useValue: { pendingCount: signal(0), list: signal([]), attend: vi.fn() },
+        },
+        { provide: PushRegistrationService, useValue: { supported: false, register: vi.fn() } },
+      ],
+    });
+    const fixture = TestBed.createComponent(DashboardLayoutComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('un usuario de tenant repinta el contenedor compartido de CDK Overlay con el tema activo', () => {
+    const fixture = render(false);
+    const panelTheme = TestBed.inject(PanelThemeService);
+    const overlayEl = TestBed.inject(OverlayContainer).getContainerElement();
+
+    panelTheme.setTheme('light');
+    fixture.detectChanges();
+    expect(overlayEl.classList.contains('panel-theme')).toBe(true);
+    expect(overlayEl.getAttribute('data-theme')).toBe('light');
+
+    panelTheme.toggleTheme();
+    fixture.detectChanges();
+    expect(overlayEl.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('un super admin nunca repinta el contenedor compartido de CDK Overlay', () => {
+    render(true);
+    const overlayEl = TestBed.inject(OverlayContainer).getContainerElement();
+
+    expect(overlayEl.classList.contains('panel-theme')).toBe(false);
+    expect(overlayEl.getAttribute('data-theme')).toBeNull();
+  });
+});
+
+/**
+ * spec 116 (T065; contracts/navigation-transition-contract.md §1, §6): la
+ * barra/skeleton de transición de navegación se muestran y ocultan según
+ * `NavigationTransitionService.phase()`, y un super admin nunca monta el
+ * contenedor (`.nav-transition`) -- research.md R1/R20.
+ */
+describe('DashboardLayoutComponent — barra de carga y skeleton de navegación (spec 116, T065)', () => {
+  function render(isSuperAdmin: boolean, transitionServiceStub?: unknown) {
+    const currentUser = signal({
+      id: 'u1',
+      email: 'a@b.c',
+      role: isSuperAdmin ? UserRole.SUPER_ADMIN : UserRole.ADMIN,
+      tenantId: isSuperAdmin ? null : 1,
+      isSuperAdmin,
+      mustChangePassword: false,
+    });
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [DashboardLayoutComponent],
+      providers: [
+        provideRouter([]),
+        swPushStub,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: AuthService, useValue: { currentUser, logout: vi.fn() } },
+        { provide: TenantInfoService, useValue: { businessName: () => 'Heladería', logoUrl: () => null } },
+        { provide: PlanSummaryService, useValue: { summary: signal(null) } },
+        {
+          provide: CashService,
+          useValue: { shift: signal(null), isOpen: () => false, discoverOpenShift: vi.fn() },
+        },
+        {
+          provide: NotificationCenterService,
+          useValue: { pendingCount: signal(0), list: signal([]), attend: vi.fn() },
+        },
+        { provide: PushRegistrationService, useValue: { supported: false, register: vi.fn() } },
+        ...(transitionServiceStub
+          ? [{ provide: NavigationTransitionService, useValue: transitionServiceStub }]
+          : []),
+      ],
+    });
+    const fixture = TestBed.createComponent(DashboardLayoutComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('un super admin nunca monta el contenedor de transición de navegación', () => {
+    const fixture = render(true);
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelector('.nav-transition')).toBeNull();
+    expect(el.querySelector('.nav-transition-bar')).toBeNull();
+  });
+
+  it('un usuario de tenant monta el contenedor, y su data-phase refleja la fase del servicio', () => {
+    // Doble de escritura libre (el servicio real expone signals de solo
+    // lectura) -- aquí solo se verifica el enlace de la plantilla, no el
+    // cronómetro interno del servicio (ya cubierto en
+    // navigation-transition.service.spec.ts, T061).
+    const phase = signal<'idle' | 'out' | 'skeleton' | 'in'>('idle');
+    const barVisible = signal(false);
+    const barProgress = signal<0 | 75 | 100>(0);
+    const fixture = render(false, { phase, barVisible, barProgress });
+    const el = fixture.nativeElement as HTMLElement;
+    const container = el.querySelector('.nav-transition') as HTMLElement;
+    const bar = el.querySelector('.nav-transition-bar') as HTMLElement;
+    expect(container).not.toBeNull();
+    expect(bar).not.toBeNull();
+
+    phase.set('skeleton');
+    barVisible.set(true);
+    barProgress.set(75);
+    fixture.detectChanges();
+
+    expect(container.getAttribute('data-phase')).toBe('skeleton');
+    expect(bar.classList.contains('nav-transition-bar--visible')).toBe(true);
+    expect(bar.style.width).toBe('75%');
+    expect(el.querySelector('.nav-skeleton')).not.toBeNull();
+
+    phase.set('in');
+    fixture.detectChanges();
+    expect(container.getAttribute('data-phase')).toBe('in');
   });
 });

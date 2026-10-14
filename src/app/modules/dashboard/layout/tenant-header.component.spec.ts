@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { Router, provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 import { TenantHeaderComponent } from './tenant-header.component';
@@ -11,6 +12,7 @@ import { CashService } from '../../cash-register/services/cash.service';
 import { NotificationCenterService } from '../../../core/notifications/notification-center.service';
 import { PushRegistrationService } from '../../../core/notifications/push-registration.service';
 import { CashShift } from '../../cash-register/interfaces/cash.interface';
+import { IconComponent } from '../../../shared/icon/icon.component';
 
 const DESKTOP_BREAKPOINT_PX = 1024;
 
@@ -77,6 +79,10 @@ describe('TenantHeaderComponent (spec 116)', () => {
         provideRouter([
           { path: 'dashboard/caja', component: BlankComponent },
           { path: 'dashboard/orders', component: BlankComponent },
+          { path: 'dashboard/mesas', component: BlankComponent },
+          { path: 'dashboard/mesas-sesiones', component: BlankComponent },
+          { path: 'dashboard/products', component: BlankComponent },
+          { path: 'dashboard/products/editar/:id', component: BlankComponent },
           { path: 'login', component: BlankComponent },
         ]),
         { provide: AuthService, useValue: { currentUser, logout: vi.fn().mockResolvedValue(undefined) } },
@@ -117,6 +123,31 @@ describe('TenantHeaderComponent (spec 116)', () => {
 
     expect(fixture.componentInstance.sectionTitle()).toBe('Control');
     expect(fixture.componentInstance.pageTitle()).toBe('Cajas');
+  });
+
+  it('el título/sección sigue resolviendo al módulo padre en una subvista sin ítem propio (FR-004)', async () => {
+    const { fixture } = createComponent({ role: UserRole.ADMIN });
+    const router = TestBed.inject(Router);
+
+    await router.navigateByUrl('/dashboard/products/editar/5');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.sectionTitle()).toBe('Catálogo');
+    expect(fixture.componentInstance.pageTitle()).toBe('Carta del Menú');
+  });
+
+  it('no confunde módulos cuyas rutas comparten prefijo de texto (FR-004)', async () => {
+    // "/dashboard/mesas-sesiones" NO es una subvista de "/dashboard/mesas" --
+    // son dos módulos distintos que solo comparten texto en el prefijo. La
+    // coincidencia por segmento (no por substring) debe seguir resolviendo
+    // "Terminal de Mesas", nunca "Mesas".
+    const { fixture } = createComponent({ role: UserRole.ADMIN });
+    const router = TestBed.inject(Router);
+
+    await router.navigateByUrl('/dashboard/mesas-sesiones');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.pageTitle()).toBe('Terminal de Mesas');
   });
 
   it('la campana reutiliza el doble de NotificationCenterService (mismo conteo)', () => {
@@ -195,14 +226,14 @@ describe('TenantHeaderComponent (spec 116)', () => {
     expect(el.textContent).not.toContain('Sin turno');
   });
 
-  // ── Botón de menú (SkeiloPOS App.dc.html: solo existe en modo drawer; el
-  //    colapso de escritorio vive en tenant-sidebar.component.ts) ──────────
+  // ── Botón de menú/colapso (research.md R15, T057-T059): único control,
+  //    siempre visible en ambos modos -- ya no vive en tenant-sidebar.component.ts.
 
-  it('en modo drawer (<1024px), el botón de menú existe y abre/cierra el sidebar', () => {
+  it('en modo drawer (<1024px), el botón abre/cierra el sidebar (layoutService.toggle())', () => {
     const { fixture } = createComponent({ role: UserRole.ADMIN, width: 900 });
     const layoutService = TestBed.inject(LayoutService);
     const el = fixture.nativeElement as HTMLElement;
-    const button = el.querySelector('button[aria-label="Abrir menú"]') as HTMLButtonElement;
+    const button = el.querySelector('button[title="Abrir menú"]') as HTMLButtonElement;
 
     expect(button).not.toBeNull();
     button.click();
@@ -210,11 +241,30 @@ describe('TenantHeaderComponent (spec 116)', () => {
     expect(layoutService.sidebarOpen()).toBe(true);
   });
 
-  it('en modo desktop (≥1024px), el navbar no muestra el botón de menú', () => {
+  it('en modo desktop (≥1024px), el mismo botón colapsa/expande (layoutService.toggleDesktopCollapsed())', () => {
     const { fixture } = createComponent({ role: UserRole.ADMIN, width: 1280 });
+    const layoutService = TestBed.inject(LayoutService);
     const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelector('button[aria-label="Abrir menú"]')).toBeNull();
+    expect(el.querySelector('button[title="Abrir menú"]')).toBeNull();
+    const button = el.querySelector('button[title="Contraer menú"]') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+
+    button.click();
+    fixture.detectChanges();
+
+    expect(layoutService.desktopCollapsed()).toBe(true);
+    expect(el.querySelector('button[title="Expandir menú"]')).not.toBeNull();
+  });
+
+  it('el ícono del botón de menú/colapso es siempre "menu", en ambos modos (Layout base.dc.html:52)', () => {
+    const drawer = createComponent({ role: UserRole.ADMIN, width: 900 });
+    const drawerIcon = drawer.fixture.debugElement.query(By.directive(IconComponent));
+    expect((drawerIcon.componentInstance as IconComponent).name).toBe('menu');
+
+    const desktop = createComponent({ role: UserRole.ADMIN, width: 1280 });
+    const desktopIcon = desktop.fixture.debugElement.query(By.directive(IconComponent));
+    expect((desktopIcon.componentInstance as IconComponent).name).toBe('menu');
   });
 
   // ── Interruptor de tema (contracts/panel-theme-contract.md §3, T023/T024) ─
