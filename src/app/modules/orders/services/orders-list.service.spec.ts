@@ -112,6 +112,76 @@ describe('OrdersListService', () => {
     await tick();
   });
 
+  it('setSearch manda q y vuelve a la página 1; vacío no manda el parámetro (spec 120, FR-004)', async () => {
+    service.list(3);
+    await tick();
+    http.expectOne((r) => r.url === base).flush(page([], { page: 3 }));
+    await tick();
+
+    service.setSearch('Deimer');
+    await tick();
+    let req = http.expectOne((r) => r.url === base);
+    expect(req.request.params.get('q')).toBe('Deimer');
+    expect(req.request.params.get('page')).toBe('1');
+    req.flush(page([]));
+    await tick();
+
+    service.setSearch('');
+    await tick();
+    req = http.expectOne((r) => r.url === base);
+    expect(req.request.params.has('q')).toBe(false);
+    req.flush(page([]));
+    await tick();
+  });
+
+  it('setDateFrom/setDateTo mandan date_from/date_to y vuelven a la página 1, combinados con status/orderType/search (spec 120, FR-005)', async () => {
+    service.list();
+    await tick();
+    http.expectOne((r) => r.url === base).flush(page([]));
+    await tick();
+
+    service.setDateFrom('2026-10-14');
+    await tick();
+    let req = http.expectOne((r) => r.url === base);
+    expect(req.request.params.get('date_from')).toBe('2026-10-14');
+    expect(req.request.params.get('page')).toBe('1');
+    req.flush(page([]));
+    await tick();
+
+    service.setDateTo('2026-10-15');
+    await tick();
+    req = http.expectOne((r) => r.url === base);
+    expect(req.request.params.get('date_from')).toBe('2026-10-14');
+    expect(req.request.params.get('date_to')).toBe('2026-10-15');
+    req.flush(page([]));
+    await tick();
+
+    service.setStatus('pagada');
+    await tick();
+    req = http.expectOne((r) => r.url === base);
+    expect(req.request.params.get('date_from')).toBe('2026-10-14');
+    expect(req.request.params.get('date_to')).toBe('2026-10-15');
+    expect(req.request.params.get('status')).toBe('pagada');
+    req.flush(page([]));
+    await tick();
+  });
+
+  it('setDate fija dateFrom y dateTo al mismo valor en una sola petición (spec 120, FR-005)', async () => {
+    service.list();
+    await tick();
+    http.expectOne((r) => r.url === base).flush(page([]));
+    await tick();
+
+    service.setDate('2026-10-14');
+    await tick();
+    const req = http.expectOne((r) => r.url === base);
+    expect(req.request.params.get('date_from')).toBe('2026-10-14');
+    expect(req.request.params.get('date_to')).toBe('2026-10-14');
+    expect(req.request.params.get('page')).toBe('1');
+    req.flush(page([]));
+    await tick();
+  });
+
   it('un fallo de red se refleja en error()', async () => {
     service.list();
     await tick();

@@ -473,6 +473,21 @@ html, body {
   scrollbar-width: thin;
 }
 
+/* Fondo de página del panel de tenant (spec 120, corrección): `dashboard-
+   layout.component.ts` pinta `.shell-root` con la utilidad `bg-gray-50`, que
+   arriba se alía a `--panel-color-surface-elevated` (igual que cualquier otro
+   "fondo suave" del panel, por diseño -- research.md R16). En oscuro esa
+   superficie (#263449) queda MÁS CLARA que la propia tarjeta blanca de las
+   pantallas (`bg-white` → `--panel-color-surface-card`, #1e293b), invirtiendo
+   el contraste que pide el diseño: el lienzo de la página debe ser el más
+   oscuro de los dos, con las tarjetas destacando un poco más claras encima.
+   Se fija aquí, por selector de la propia página, en vez de tocar el alias
+   genérico de `--color-gray-50` (lo usan ~65 superficies "suaves" del panel
+   que sí deben seguir siendo más claras que la tarjeta, no más oscuras). */
+.shell-root.panel-theme {
+  background-color: var(--panel-color-canvas);
+}
+
 .panel-theme[data-theme='dark'] {
   --panel-color-primary: #7c3aed;
   --panel-color-primary-active: #6d28d9;

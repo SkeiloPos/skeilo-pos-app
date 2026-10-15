@@ -13,6 +13,7 @@ import {
   displayOrderStatus,
   kitchenStatusClass,
   kitchenStatusLabel,
+  orderDisplayCode,
   orderStatusClass,
   orderStatusLabel,
   orderTypeLabel,
@@ -20,8 +21,8 @@ import {
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { MoneyPipe } from '../../../shared/money.pipe';
-import { BillSummaryComponent } from '../../tables/components/bill-summary.component';
 import { ToastService } from '../../../shared/feedback/toast.service';
+import { To12HourTimePipe } from '../pipes/to-12-hour-time.pipe';
 
 /**
  * spec 094 — los tres avisos de la pantalla, como constantes del archivo.
@@ -43,12 +44,13 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
 @Component({
   selector: 'app-order-detail',
   standalone: true,
-  imports: [RouterLink, TenantDatePipe, IconMiComponent, MoneyPipe, BillSummaryComponent],
+  imports: [RouterLink, TenantDatePipe, IconMiComponent, MoneyPipe, To12HourTimePipe],
   template: `
     <div class="space-y-6">
       <div class="flex items-center gap-3">
         <a
           routerLink="/dashboard/orders"
+          [queryParams]="backQueryParams()"
           aria-label="Volver a la lista"
           class="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:border-indigo-300 hover:text-indigo-700 shadow-sm transition-all"
         >
@@ -70,7 +72,7 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
         <div class="bg-white rounded-2xl p-10 shadow-sm border border-gray-100 text-center text-gray-400">
           <app-mi-icon name="search" [size]="40" class="mb-3" />
           <p class="font-medium text-gray-600">Orden no encontrada</p>
-          <a routerLink="/dashboard/orders" class="mt-3 inline-block text-sm text-indigo-600 hover:underline">
+          <a routerLink="/dashboard/orders" [queryParams]="backQueryParams()" class="mt-3 inline-block text-sm text-indigo-600 hover:underline">
             Volver a la lista
           </a>
         </div>
@@ -78,8 +80,8 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
             <div class="min-w-0">
-              <p class="text-xs text-gray-400 uppercase tracking-wide font-medium">{{ rotuloEncabezado() }}</p>
-              <p class="text-base font-bold text-gray-900 truncate">{{ encabezado() }}</p>
+              <p class="text-xs font-bold text-indigo-600 uppercase tracking-wide">Detalle de orden</p>
+              <p class="text-base font-bold text-gray-900 truncate">Orden {{ code() }}</p>
               <p class="text-xs text-gray-400 mt-0.5">Canal: {{ order()!.channel }}</p>
             </div>
             <span class="text-sm px-3 py-1.5 rounded-full font-semibold shrink-0" [class]="statusClass(displayStatus(order()!))">
@@ -87,19 +89,73 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
             </span>
           </div>
 
-          <div class="px-5 py-3 grid grid-cols-2 gap-4 border-b border-gray-100 text-sm">
+          <!-- Spec 120 (FR-012): información agrupada por bloques. El bloque
+               "Información de la orden" reutiliza el rótulo/valor de spec 094
+               (Mesa | Tipo de pedido) tal cual -- no reintroduce "Mostrador",
+               que esa misma spec retiró por confuso (research.md D13). -->
+          <div class="px-5 py-4 grid gap-5 border-b border-gray-100 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
             <div>
-              <!-- spec 094 (FR-013, US4): "Comensal" solo era correcto en mesa; el
-                   mismo nombre aparece en pedidos para llevar y a domicilio. -->
-              <p class="text-xs text-gray-400">Cliente</p>
-              <!-- spec 087 (FR-004, A-88): destacado -- "Cliente sin nombre"
-                   solo para pedidos históricos anteriores a esta spec
-                   (customer_name nulo/vacío), nunca migrados. -->
-              <p class="font-bold text-[15px] text-gray-900">{{ order()!.customer_name?.trim() || 'Cliente sin nombre' }}</p>
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Información de la orden</p>
+              <div class="space-y-1.5">
+                <div>
+                  <p class="text-xs text-gray-400">{{ rotuloEncabezado() }}</p>
+                  <p class="font-medium text-gray-800">{{ encabezado() }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-gray-400">Hora</p>
+                  <p class="font-medium text-gray-800">{{ order()!.created_at | tenantDate: 'HH:mm' | to12HourTime }}</p>
+                </div>
+              </div>
             </div>
+
             <div>
-              <p class="text-xs text-gray-400">Creada</p>
-              <p class="font-medium text-gray-700">{{ order()!.created_at | tenantDate: 'dd/MM/yyyy HH:mm' }}</p>
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Información del cliente</p>
+              <div class="space-y-1.5">
+                <div>
+                  <!-- spec 094 (FR-013, US4): "Comensal" solo era correcto en mesa; el
+                       mismo nombre aparece en pedidos para llevar y a domicilio. -->
+                  <p class="text-xs text-gray-400">Cliente</p>
+                  <!-- spec 087 (FR-004, A-88): destacado -- "Cliente sin nombre"
+                       solo para pedidos históricos anteriores a esta spec
+                       (customer_name nulo/vacío), nunca migrados. -->
+                  <p class="font-bold text-[15px] text-gray-900">{{ order()!.customer_name?.trim() || 'Cliente sin nombre' }}</p>
+                </div>
+                @if (clientIdentification(); as id) {
+                  <div>
+                    <p class="text-xs text-gray-400">Identificación</p>
+                    <p class="font-medium text-gray-800">{{ id }}</p>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div>
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Información de factura</p>
+              <div class="space-y-1.5">
+                <div>
+                  <p class="text-xs text-gray-400">Referencia</p>
+                  <p class="font-medium text-indigo-600">{{ invoiceReference() }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-gray-400">Fecha</p>
+                  <p class="font-medium text-gray-800">
+                    {{ order()!.created_at | tenantDate: 'dd/MM/yyyy' }} · {{ order()!.created_at | tenantDate: 'HH:mm' | to12HourTime }}
+                  </p>
+                </div>
+                @if (paymentMethod(); as metodo) {
+                  <div>
+                    <p class="text-xs text-gray-400">Método de pago</p>
+                    <p class="font-medium text-gray-800">{{ metodo }}</p>
+                  </div>
+                }
+                <div>
+                  <p class="text-xs text-gray-400">Estado de pago</p>
+                  <span
+                    class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold"
+                    [class]="order()!.paid ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'"
+                  >{{ paymentStatusLabel() }}</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -111,51 +167,69 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
           }
 
           <div class="px-5 py-4">
-            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Ítems del pedido</p>
-            <div class="space-y-2">
-              @for (item of order()!.items ?? []; track item.id) {
-                <div
-                  data-testid="item-row"
-                  class="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0"
-                >
-                  <span class="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0">
-                    {{ item.quantity }}
-                  </span>
-                  <div class="min-w-0 flex-1">
-                    <p class="text-sm font-medium text-gray-800">{{ variantLabel(item.product_variant_id) }}</p>
-                    @if (optionLabels(item)) {
-                      <p class="text-xs text-gray-400">{{ optionLabels(item) }}</p>
-                    }
-                    @if (item.notes) {
-                      <p class="text-xs text-amber-600 italic">“{{ item.notes }}”</p>
-                    }
-                    <!-- FR-004: con adicionales por línea, el monto se muestra para que
-                         "unitario × cantidad" no parezca contradecir el importe. -->
-                    @if (muestraImportes() && item.estado_cocina !== 'anulado' && tieneAdicionales(item)) {
-                      <p class="text-xs text-gray-400">Adicionales: {{ item.addons_total | money }}</p>
-                    }
-                  </div>
-                  <!-- FR-019a (research.md D9): el ítem anulado conserva su línea visible y
-                       lleva el distintivo EN LUGAR del importe. No se pinta un importe
-                       tachado: un número tachado sigue leyéndose como dinero al ojear la
-                       columna, y ensucia la suma a mano que SC-007 pide verificar. -->
-                  <div class="text-right shrink-0">
-                    @if (item.estado_cocina === 'anulado') {
-                      <span
-                        class="text-[11px] px-2 py-0.5 rounded-full font-semibold"
-                        [class]="kitchenClass('anulado')"
-                      >{{ kitchenLabel('anulado') }}</span>
-                    } @else if (muestraImportes()) {
-                      <p class="text-xs text-gray-400">{{ item.unit_price | money }} c/u</p>
-                      <p class="text-sm font-semibold text-gray-900 tabular-nums">
-                        {{ importeDeLinea(item) | money }}
-                      </p>
-                    }
-                  </div>
-                </div>
-              } @empty {
-                <p class="text-sm text-gray-400">Sin ítems</p>
-              }
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Resumen de la orden</p>
+            <!-- spec 120 (FR-014, diseño original "RESUMEN DE LA ORDEN" en
+                 SkeiloPOS App.dc.html): tabla real de 4 columnas (Producto,
+                 Cantidad, Precio unit., Subtotal), fiel al diseño -- la
+                 cantidad es su propia columna, no un sello junto al nombre. -->
+            <div class="border border-gray-100 rounded-xl overflow-x-auto">
+              <table class="w-full border-collapse" style="min-width:480px">
+                <thead>
+                  <tr>
+                    <th scope="col" class="text-left px-4 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Producto</th>
+                    <th scope="col" class="text-right px-4 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Cantidad</th>
+                    <th scope="col" class="text-right px-4 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Precio unit.</th>
+                    <th scope="col" class="text-right px-4 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (item of order()!.items ?? []; track item.id) {
+                    <tr data-testid="item-row" class="border-t border-gray-100">
+                      <td class="px-4 py-3">
+                        <div class="flex items-center gap-3">
+                          <span class="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-gray-400 shrink-0">
+                            <app-mi-icon name="restaurant" [size]="18" />
+                          </span>
+                          <div class="min-w-0">
+                            <p class="text-sm font-semibold text-gray-900">{{ variantLabel(item.product_variant_id) }}</p>
+                            @if (optionLabels(item)) {
+                              <p class="text-xs text-gray-400">{{ optionLabels(item) }}</p>
+                            }
+                            @if (item.notes) {
+                              <p class="text-xs text-amber-600 italic">“{{ item.notes }}”</p>
+                            }
+                            <!-- FR-004: con adicionales por línea, el monto se muestra para que
+                                 "unitario × cantidad" no parezca contradecir el importe. -->
+                            @if (muestraImportes() && item.estado_cocina !== 'anulado' && tieneAdicionales(item)) {
+                              <p class="text-xs text-gray-400">Adicionales: {{ item.addons_total | money }}</p>
+                            }
+                          </div>
+                        </div>
+                      </td>
+                      <td class="px-4 py-3 text-right tabular-nums text-sm text-gray-700">{{ item.quantity }}</td>
+                      <!-- FR-019a (research.md D9): el ítem anulado conserva su línea visible y
+                           lleva el distintivo EN LUGAR del importe. No se pinta un importe
+                           tachado: un número tachado sigue leyéndose como dinero al ojear la
+                           columna, y ensucia la suma a mano que SC-007 pide verificar. -->
+                      @if (item.estado_cocina === 'anulado') {
+                        <td class="px-4 py-3 text-right" colspan="2">
+                          <span
+                            class="text-[11px] px-2 py-0.5 rounded-full font-semibold"
+                            [class]="kitchenClass('anulado')"
+                          >{{ kitchenLabel('anulado') }}</span>
+                        </td>
+                      } @else if (muestraImportes()) {
+                        <td class="px-4 py-3 text-right tabular-nums text-sm text-gray-600">{{ item.unit_price | money }}</td>
+                        <td class="px-4 py-3 text-right tabular-nums text-sm font-semibold text-gray-900">{{ importeDeLinea(item) | money }}</td>
+                      } @else {
+                        <td class="px-4 py-3" colspan="2"></td>
+                      }
+                    </tr>
+                  } @empty {
+                    <tr><td colspan="4" class="px-4 py-6 text-sm text-gray-400 text-center">Sin ítems</td></tr>
+                  }
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -164,15 +238,51 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
                y tampoco los importes por línea: la ausencia de dato es
                "no mostrar", nunca cero (research.md D15). -->
           @if (order()!.billing; as billing) {
-            <div class="px-5 py-4 border-t border-gray-100 space-y-2">
-              <app-bill-summary
-                [subtotal]="numero(billing.subtotal)"
-                [discount]="numero(billing.discount)"
-                [discountLabel]="billing.discount_label ?? 'Descuento'"
-                [deliveryFee]="numero(billing.delivery_fee)"
-                [total]="numero(billing.total)"
-                size="md"
-              />
+            <div class="px-5 py-4 border-t border-gray-100 space-y-3">
+              <!-- spec 120 (FR-015, corrección post-captura): caja propia del
+                   diseño original ("det.sums" en SkeiloPOS App.dc.html) --
+                   filas del mismo tamaño con separadores, fila Total resaltada
+                   y fila Pagado, que app-bill-summary (pensado para las
+                   pantallas de cobro, con un Total en letra gigante y sin fila
+                   de pagado) no reproduce. RN-004 se conserva tal cual: Domicilio
+                   y Descuento solo aparecen si son mayores a $0. -->
+              <div class="flex justify-end">
+                <div data-testid="totales" class="w-full sm:w-[340px] border border-gray-100 rounded-xl overflow-hidden">
+                  <div class="flex justify-between items-center gap-3 px-4 py-3 text-sm text-gray-500">
+                    <span>Subtotal</span>
+                    <span class="font-semibold text-gray-900 tabular-nums">{{ numero(billing.subtotal) | money }}</span>
+                  </div>
+                  @if (numero(billing.delivery_fee) > 0) {
+                    <div class="flex justify-between items-center gap-3 px-4 py-3 border-t border-gray-100 text-sm text-gray-500">
+                      <span>Domicilio</span>
+                      <span class="font-semibold text-gray-900 tabular-nums">{{ numero(billing.delivery_fee) | money }}</span>
+                    </div>
+                  }
+                  @if (numero(billing.discount) > 0) {
+                    <div class="flex justify-between items-center gap-3 px-4 py-3 border-t border-gray-100 text-sm text-gray-500">
+                      <span>{{ billing.discount_label ?? 'Descuento' }}</span>
+                      <span class="font-semibold text-gray-900 tabular-nums">− {{ numero(billing.discount) | money }}</span>
+                    </div>
+                  }
+                  <!-- Corrección: el diseño original (support.js de SkeiloPOS
+                       App.dc.html, función row()) resalta "Total" con
+                       var(--color-surface-soft) y peso 700 -- un fondo suave
+                       del propio tema, no una banda negra fija. bg-gray-50
+                       ya es el alias de ese mismo "surface-soft" en este panel
+                       (claro y oscuro), así que el texto sigue el color normal
+                       de la fila, nunca blanco fijo. -->
+                  <div class="flex justify-between items-center gap-3 px-4 py-3 border-t border-gray-100 bg-gray-50 font-bold text-gray-900">
+                    <span>Total</span>
+                    <span class="tabular-nums">{{ numero(billing.total) | money }}</span>
+                  </div>
+                  @if (montoPagado(); as pagado) {
+                    <div class="flex justify-between items-center gap-3 px-4 py-3 border-t border-gray-100 text-sm text-gray-500">
+                      <span>Pagado</span>
+                      <span class="font-semibold text-gray-900 tabular-nums">{{ pagado | money }}</span>
+                    </div>
+                  }
+                </div>
+              </div>
 
               @if (billing.state === 'factura_agrupada') {
                 <p class="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">{{ avisoCuentaUnificada }}</p>
@@ -283,6 +393,53 @@ export class OrderDetailComponent implements OnInit {
     return this.order()?.dining_table_id ? 'Mesa' : 'Tipo de pedido';
   }
 
+  /** spec 120, data-model.md "Código corto de orden": identificador interno,
+   *  usado como título del encabezado y como respaldo de "Referencia" de
+   *  factura mientras la orden no tenga una factura real todavía. */
+  code(): string {
+    const o = this.order();
+    return o ? orderDisplayCode(o) : '';
+  }
+
+  /** spec 120 (corrección FR-012): la factura real (`invoice_reference`,
+   *  resuelta en `GET /orders/{id}` contra la `Sale`/`Invoice` de la orden —
+   *  ver `service.invoice_and_payment_info` en pos-backend) cuando ya existe;
+   *  si la orden aún no se ha cobrado, usa el código interno como respaldo en
+   *  vez de dejar la fila vacía. Reportado por el negocio: mostrar siempre el
+   *  código interno aquí no coincidía con la factura registrada en el sistema. */
+  invoiceReference(): string {
+    return this.order()?.invoice_reference || this.code();
+  }
+
+  /** spec 120 (FR-012): el modelo de pedido no captura todavía una identificación
+   *  de cliente (NIT/cédula) — la fila se omite siempre (FR-016) hasta que un
+   *  spec futuro agregue ese dato (Principio VIII: sin cambios de esquema aquí). */
+  clientIdentification(): string | null {
+    return null;
+  }
+
+  /** spec 120 (corrección FR-012, FR-016): `payment_method_name` viene resuelto
+   *  del pago real de la venta (`Sale.payments`), no de `current_payment_attempt`
+   *  -- los pedidos cobrados por mostrador nunca crean un intento de pago, así
+   *  que esa fuente quedaba permanentemente vacía aunque la orden sí tuviera un
+   *  método de pago real. Se conserva `current_payment_attempt` como respaldo
+   *  por si un backend más antiguo todavía no publica el campo nuevo. */
+  paymentMethod(): string | null {
+    const o = this.order();
+    if (!o?.paid) return null;
+    return o.payment_method_name ?? o.current_payment_attempt?.payment_method_name ?? null;
+  }
+
+  paymentStatusLabel(): string {
+    return this.order()?.paid ? 'Pagado' : 'Pendiente';
+  }
+
+  /** spec 120 (FR-011): "Volver a órdenes" conserva los filtros con los que se
+   *  navegó hasta aquí -- los mismos query params que trajo la ruta. */
+  backQueryParams(): Record<string, unknown> {
+    return this.route.snapshot.queryParams ?? {};
+  }
+
   /**
    * ¿Se pintan los importes por línea? Solo cuando el servidor mandó el
    * desglose (research.md D15): sin `billing` no se calcula nada en su lugar
@@ -316,14 +473,28 @@ export class OrderDetailComponent implements OnInit {
   }
 
   /**
-   * Convierte el importe que el servidor publica como `string` al `number` que
-   * espera `BillSummaryComponent` — la convención ya establecida en el resto de
-   * las superficies de cobro. No es aritmética: el componente **no calcula
-   * nada**, los cuatro importes llegan resueltos y el condicionado de las filas
-   * de descuento y envío ya lo hace él (FR-006, FR-007, FR-024b, D10).
+   * Convierte el importe que el servidor publica como `string` al `number`
+   * que pide la plantilla — la convención ya establecida en el resto de las
+   * superficies de cobro. No es aritmética: los importes llegan ya resueltos
+   * del servidor (FR-006, FR-007, FR-024b, D10).
    */
   numero(valor: string): number {
     return Number(valor);
+  }
+
+  /**
+   * spec 120 (FR-015, corrección post-captura): "monto pagado" de la fila
+   * Pagado del desglose, del diseño original. `OrderBilling` no trae un campo
+   * de abono/pago parcial -- cuando la orden ya está pagada (`paid`, misma
+   * señal que ya usa el badge de estado de pago), lo pagado es exactamente su
+   * total (el mismo importe que ya pinta la fila Total, no uno calculado
+   * aparte). Si no se ha cobrado todavía, la fila se omite (FR-016) en vez de
+   * inventar un $0.
+   */
+  montoPagado(): number | null {
+    const o = this.order();
+    if (!o?.paid || !o.billing) return null;
+    return this.numero(o.billing.total);
   }
 
   /**
