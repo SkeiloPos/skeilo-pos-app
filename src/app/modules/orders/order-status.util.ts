@@ -73,6 +73,36 @@ export function orderTypeClass(orderType: string | null | undefined): string {
   return ORDER_TYPE[orderType as keyof typeof ORDER_TYPE]?.classes ?? 'bg-gray-100 text-gray-500';
 }
 
+/**
+ * Código corto de presentación para una orden (spec 120, research.md §3 /
+ * data-model.md "Código corto de orden"). El sistema no tiene un número de
+ * orden universal: `table_order_number` (spec 087) solo existe para pedidos
+ * en mesa, así que este código se deriva del propio `id` (UUID), igual para
+ * los 3 tipos de orden. Debe coincidir con el criterio de búsqueda `q` del
+ * backend (contracts/orders-list-api.md): buscar el código mostrado debe
+ * encontrar la orden.
+ */
+export function orderDisplayCode(order: Pick<DiningOrder, 'id'>): string {
+  return '#' + order.id.replaceAll('-', '').slice(-6).toUpperCase();
+}
+
+/**
+ * Ubicación a mostrar para una orden (spec 120, data-model.md "Ubicación
+ * mostrada"), consistente entre la tarjeta de la lista y el detalle: la mesa
+ * cuando existe, `"Mostrador"` para pedidos sin mesa que no son domicilio, y
+ * cadena vacía para domicilio (donde el bloque de datos de domicilio ocupa su
+ * lugar — FR-013). `tableLabel` ya resuelto por quien llama (p. ej.
+ * `TableService`), igual que hoy hace `orders-page.component.ts`.
+ */
+export function orderLocationLabel(
+  order: Pick<DiningOrder, 'dining_table_id' | 'order_type'>,
+  tableLabel: string | null,
+): string {
+  if (order.dining_table_id && tableLabel) return tableLabel;
+  if (order.order_type === 'DELIVERY') return '';
+  return 'Mostrador';
+}
+
 /** Estados en los que el pedido ya no admite cambios. */
 export const TERMINAL_ORDER_STATUSES: readonly DiningOrderStatus[] = ['pagada', 'cancelada'];
 

@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
+import { ActivatedRoute, provideRouter } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { OrdersPageComponent } from './orders-page.component';
@@ -28,8 +28,8 @@ function order(id: string, over: Partial<DiningOrder> = {}): DiningOrder {
  * `OrdersListService` real depende de TanStack Query + HTTP — se reemplaza por
  * un fake liviano (mismo patrón que `categories-page.component.spec.ts`) para
  * verificar la vista sin sincronizar sus queries. El contrato de red (los
- * parámetros `page`/`size`/`status`/`order_type` que emite el primer `list()` y
- * los setters) lo cubre `orders-list.service.spec.ts`.
+ * parámetros `page`/`size`/`status`/`order_type`/`q`/`date_from`/`date_to` que
+ * emite el primer `list()` y los setters) lo cubre `orders-list.service.spec.ts`.
  */
 class FakeOrdersListService {
   orders = signal<DiningOrder[]>([]);
@@ -41,10 +41,18 @@ class FakeOrdersListService {
   error = signal<string | null>(null);
   status = signal<'' | 'recibida' | 'abierta' | 'bloqueada' | 'pagada' | 'cancelada'>('');
   orderType = signal<'' | 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY'>('');
+  search = signal('');
+  dateFrom = signal('');
+  dateTo = signal('');
 
   list = vi.fn();
   setStatus = vi.fn((v: string) => this.status.set(v as never));
   setOrderType = vi.fn((v: string) => this.orderType.set(v as never));
+  setSearch = vi.fn((v: string) => this.search.set(v));
+  setDate = vi.fn((v: string) => {
+    this.dateFrom.set(v);
+    this.dateTo.set(v);
+  });
 }
 
 describe('OrdersPageComponent', () => {
@@ -76,43 +84,57 @@ describe('OrdersPageComponent', () => {
     http.verify();
   });
 
-  it('al montar carga la primera página (svc.list()) y las mesas para la etiqueta', () => {
+  it('al montar carga la primera página (svc.list()) fijando dateFrom/dateTo de hoy, y las mesas para la etiqueta', () => {
     fixture.detectChanges();
     expect(svc.list).toHaveBeenCalled();
+    expect(svc.dateFrom()).toBeTruthy();
+    expect(svc.dateTo()).toBe(svc.dateFrom());
     http.expectOne((r) => r.url.endsWith('/orders/tables'));
   });
 
-  it('pinta una fila por orden de la página', () => {
+  it('pinta una tarjeta por orden de la página', () => {
     svc.orders.set([order('o1'), order('o2'), order('o3')]);
     fixture.detectChanges();
-    const rows = fixture.nativeElement.querySelectorAll('a[href^="/dashboard/orders/"]');
-    expect(rows.length).toBe(3);
+    const cards = fixture.nativeElement.querySelectorAll('a[href^="/dashboard/orders/"]');
+    expect(cards.length).toBe(3);
+  });
+
+  it('la tarjeta muestra cliente (o "Cliente sin nombre"), código de orden, hora, ítems, ubicación y los dos badges', () => {
+    svc.orders.set([
+      order('11111111-2222-3333-4444-555555abcdef', { customer_name: 'María Restrepo', paid: true, items: [{ quantity: 2 } as never] }),
+      order('22222222-2222-3333-4444-555555abcdef', { customer_name: null, paid: false }),
+    ]);
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('María Restrepo');
+    expect(text).toContain('Cliente sin nombre');
+    expect(text).toContain('#ABCDEF');
+    expect(text).toContain('2 ítem(s)');
+    expect(text).toContain('Pagado');
+    expect(text).toContain('Pendiente');
   });
 
   it('el badge de estado usa displayOrderStatus: "Pagada" para paid, "Abierta" para el resto', () => {
     svc.orders.set([order('o1', { paid: true }), order('o2', { paid: false })]);
     fixture.detectChanges();
-    const badges = Array.from(fixture.nativeElement.querySelectorAll('a span')).map((b) =>
-      (b as HTMLElement).textContent?.trim(),
-    );
-    expect(badges).toContain('Pagada');
-    expect(badges).toContain('Abierta');
-  });
-
-  it('ya no renderiza ningún botón de acceso rápido de estado; sí hay <select> de estado y tipo', () => {
-    fixture.detectChanges();
-    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')).map((b) =>
-      (b as HTMLElement).textContent?.trim(),
-    );
-    for (const dead of ['Todas', 'Abiertas', 'Bloqueadas', 'Pagadas', 'Canceladas']) {
-      expect(buttons).not.toContain(dead);
-    }
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Estado');
-    expect(text).toContain('Tipo');
+    expect(text).toContain('Pagada');
+    expect(text).toContain('Abierta');
   });
 
-  it('app-pagination-bar muestra "Página X de Y" y el total del Page recibido (FR-002)', () => {
+  it('hay <select> de estado, botones segmentados de tipo (ya no <select> de tipo), buscador y filtro de fecha', () => {
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelectorAll('select').length).toBe(1); // solo Estado
+    const text = el.textContent as string;
+    for (const tipo of ['Todos', 'En mesa', 'Para llevar', 'Domicilio']) {
+      expect(text).toContain(tipo);
+    }
+    expect(el.querySelector('input[type="search"]')).toBeTruthy();
+    expect(el.querySelector('app-order-date-filter')).toBeTruthy();
+  });
+
+  it('app-pagination-bar muestra "Página X de Y" y el total del Page recibido', () => {
     svc.orders.set([order('o1'), order('o2')]);
     svc.total.set(130);
     svc.totalPages.set(7);
@@ -137,40 +159,67 @@ describe('OrdersPageComponent', () => {
     expect(svc.list).toHaveBeenLastCalledWith(1, 50);
   });
 
-  // ── US2: filtros server-side de estado y tipo, tipo visible ────────────────
+  // ── Filtros: estado, tipo, búsqueda, fecha (spec 120) ──────────────────────
 
   it('cambiar el <select> de estado llama svc.setStatus (que vuelve a la página 1)', () => {
     fixture.detectChanges();
-    const estado = fixture.nativeElement.querySelectorAll('select')[0] as HTMLSelectElement;
+    const estado = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
     estado.value = 'bloqueada';
     estado.dispatchEvent(new Event('change'));
     expect(svc.setStatus).toHaveBeenCalledWith('bloqueada');
   });
 
-  it('cambiar el <select> de tipo llama svc.setOrderType', () => {
+  it('presionar un botón del segmentado de tipo llama svc.setOrderType', () => {
     fixture.detectChanges();
-    const tipo = fixture.nativeElement.querySelectorAll('select')[1] as HTMLSelectElement;
-    tipo.value = 'DELIVERY';
-    tipo.dispatchEvent(new Event('change'));
+    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
+    const domicilio = buttons.find((b) => b.textContent?.trim() === 'Domicilio')!;
+    domicilio.click();
     expect(svc.setOrderType).toHaveBeenCalledWith('DELIVERY');
   });
 
-  it('cada fila muestra la etiqueta de tipo; order_type null → "Sin especificar" (FR-017/FR-018)', () => {
-    svc.orders.set([order('o1', { order_type: 'TAKEAWAY' }), order('o2', { order_type: null })]);
+  it('escribir en el buscador llama svc.setSearch con el texto ingresado (FR-004)', () => {
     fixture.detectChanges();
-    const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Para llevar');
-    expect(text).toContain('Sin especificar');
+    const input = fixture.nativeElement.querySelector('input[type="search"]') as HTMLInputElement;
+    input.value = 'Deimer';
+    input.dispatchEvent(new Event('input'));
+    expect(svc.setSearch).toHaveBeenCalledWith('Deimer');
   });
 
-  it('sin filtros y 0 órdenes: "No hay órdenes"', () => {
+  it('(valueChange) de app-order-date-filter llama svc.setDate (FR-005)', () => {
+    fixture.detectChanges();
+    const dateFilter = fixture.debugElement.query(By.css('app-order-date-filter'));
+    dateFilter.componentInstance.valueChange.emit('2026-10-14');
+    expect(svc.setDate).toHaveBeenCalledWith('2026-10-14');
+  });
+
+  it('cada tarjeta sin mesa muestra "Mostrador" como ubicación, también para order_type null (FR-017/FR-018, data-model.md)', () => {
+    svc.orders.set([order('o1', { order_type: 'TAKEAWAY' }), order('o2', { order_type: null })]);
+    fixture.detectChanges();
+    const cards = fixture.nativeElement.querySelectorAll('a[href^="/dashboard/orders/"]');
+    expect(cards.length).toBe(2);
+    for (const card of Array.from(cards)) {
+      expect((card as HTMLElement).textContent).toContain('Mostrador');
+    }
+  });
+
+  it('una orden a domicilio muestra "Domicilio" (el tipo) donde iría la ubicación, no "Mostrador"', () => {
+    svc.orders.set([order('o1', { order_type: 'DELIVERY' })]);
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Domicilio');
+    expect(text).not.toContain('Mostrador');
+  });
+
+  it('sin filtros y 0 órdenes (con la fecha por defecto de hoy): "No hay órdenes"', () => {
+    fixture.detectChanges(); // ngOnInit fija dateFrom/dateTo = hoy
     svc.orders.set([]);
     fixture.detectChanges();
     expect((fixture.nativeElement.textContent as string)).toContain('No hay órdenes');
     expect((fixture.nativeElement.textContent as string)).not.toContain('con estos filtros');
   });
 
-  it('con un filtro activo y 0 resultados: "No hay órdenes con estos filtros" y pager 0/0', () => {
+  it('con un filtro activo y 0 resultados: "No hay órdenes con estos filtros"', () => {
+    fixture.detectChanges();
     svc.status.set('cancelada');
     svc.orders.set([]);
     svc.total.set(0);
@@ -178,6 +227,63 @@ describe('OrdersPageComponent', () => {
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('No hay órdenes con estos filtros');
+  });
+
+  it('con una fecha distinta a hoy y 0 resultados: también "con estos filtros"', () => {
+    fixture.detectChanges();
+    svc.dateFrom.set('2020-01-01');
+    svc.orders.set([]);
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('No hay órdenes con estos filtros');
+  });
+
+  it('"Nueva orden" enlaza al flujo existente de creación de pedido manual (FR-010)', () => {
+    fixture.detectChanges();
+    const link = fixture.nativeElement.querySelector('a[href="/dashboard/mesas-sesiones/orden-manual"]');
+    expect(link).toBeTruthy();
+    expect((link as HTMLElement).textContent).toContain('Nueva orden');
+  });
+
+  it('cada tarjeta lleva los filtros vigentes como query params (FR-011)', () => {
+    fixture.detectChanges();
+    svc.orders.set([order('o1')]);
+    svc.status.set('pagada');
+    svc.search.set('Deimer');
+    fixture.detectChanges();
+    const card = fixture.nativeElement.querySelector('a[href^="/dashboard/orders/"]') as HTMLAnchorElement;
+    expect(card.getAttribute('href')).toContain('status=pagada');
+    expect(card.getAttribute('href')).toContain('search=Deimer');
+  });
+
+  it('al montar con filtros en la URL, los restaura en vez de usar los valores por defecto (FR-011)', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [OrdersPageComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+        { provide: OrdersListService, useClass: FakeOrdersListService },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParams: { status: 'cancelada', search: 'Ana', page: '3' } } },
+        },
+      ],
+    });
+    const fx2 = TestBed.createComponent(OrdersPageComponent);
+    const svc2 = TestBed.inject(OrdersListService) as unknown as FakeOrdersListService;
+    const http2 = TestBed.inject(HttpTestingController);
+    fx2.detectChanges();
+
+    expect(svc2.status()).toBe('cancelada');
+    expect(svc2.search()).toBe('Ana');
+    expect(svc2.list).toHaveBeenCalledWith(3);
+    http2.match(() => true);
+    http2.verify();
   });
 
   it('ningún ícono se renderiza ya como emoji ni con glifos sueltos (spec 082)', () => {
@@ -191,6 +297,6 @@ describe('OrdersPageComponent', () => {
     const ligaduras = Array.from(el.querySelectorAll('app-mi-icon .material-icons-outlined')).map(
       (n) => n.textContent?.trim(),
     );
-    expect(ligaduras).toEqual(expect.arrayContaining(['autorenew', 'restaurant', 'person']));
+    expect(ligaduras).toEqual(expect.arrayContaining(['autorenew', 'add', 'schedule', 'restaurant']));
   });
 });

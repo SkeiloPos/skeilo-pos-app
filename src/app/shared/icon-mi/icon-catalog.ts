@@ -92,6 +92,10 @@ export const ICON_CATALOG: Record<string, string> = {
   block: 'block',
   category: 'category',
   point_of_sale: 'point_of_sale',
+
+  // spec 120: navegación del calendario del filtro de fecha de Órdenes.
+  chevron_left: 'chevron_left',
+  chevron_right: 'chevron_right',
   tune: 'tune',
 
   // spec 106: estrella de proveedor preferido (un solo glifo; el estado
