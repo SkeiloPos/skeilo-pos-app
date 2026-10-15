@@ -292,7 +292,7 @@ describe('OrderDetailComponent — bloque de resumen (spec 094, US1)', () => {
   it('pasa los cuatro importes al resumen y rotula la fila con el nombre de la promoción', async () => {
     const { el } = await montar(pedido({ billing: conPromocion }));
 
-    const resumen = el.querySelector('app-bill-summary');
+    const resumen = el.querySelector('[data-testid="totales"]');
     expect(resumen).toBeTruthy();
     expect(resumen!.textContent).toContain('$ 28.000');
     expect(resumen!.textContent).toContain('2 x $12.000');
@@ -305,7 +305,7 @@ describe('OrderDetailComponent — bloque de resumen (spec 094, US1)', () => {
       pedido({ billing: { ...conPromocion, discount_label: null } }),
     );
 
-    const resumen = el.querySelector('app-bill-summary')!;
+    const resumen = el.querySelector('[data-testid="totales"]')!;
     expect(resumen.textContent).toContain('Descuento');
     expect(resumen.textContent).toContain('− $ 4.000');
   });
@@ -317,7 +317,7 @@ describe('OrderDetailComponent — bloque de resumen (spec 094, US1)', () => {
       }),
     );
 
-    const resumen = el.querySelector('app-bill-summary')!;
+    const resumen = el.querySelector('[data-testid="totales"]')!;
     expect(resumen.textContent).not.toContain('Descuento');
     expect(resumen.textContent).not.toContain('−');
   });
@@ -338,7 +338,7 @@ describe('OrderDetailComponent — bloque de resumen (spec 094, US1)', () => {
       }),
     );
 
-    const resumen = el.querySelector('app-bill-summary')!;
+    const resumen = el.querySelector('[data-testid="totales"]')!;
     expect(resumen.textContent).toContain('Domicilio');
     expect(resumen.textContent).toContain('$ 3.000');
   });
@@ -346,7 +346,7 @@ describe('OrderDetailComponent — bloque de resumen (spec 094, US1)', () => {
   it('con envío en 0, no hay fila de envío (FR-007, RN-004)', async () => {
     const { el } = await montar(pedido({ billing: conPromocion }));
 
-    const resumen = el.querySelector('app-bill-summary')!;
+    const resumen = el.querySelector('[data-testid="totales"]')!;
     expect(resumen.textContent).not.toContain('Domicilio');
   });
 
@@ -361,7 +361,7 @@ describe('OrderDetailComponent — bloque de resumen (spec 094, US1)', () => {
       }),
     );
 
-    expect(el.querySelector('app-bill-summary')).toBeNull();
+    expect(el.querySelector('[data-testid="totales"]')).toBeNull();
     expect(el.textContent).not.toContain('$ 16.000');
     expect(el.textContent).not.toContain('$ 0');
     expect(el.textContent).not.toContain('undefined');
@@ -411,7 +411,7 @@ describe('OrderDetailComponent — los tres avisos (spec 094, US1)', () => {
     expect(el.textContent).not.toContain(AVISO_SIN_COBRAR);
     expect(el.textContent).not.toContain(AVISO_AGRUPADA);
     expect(el.textContent).toContain('Cancelada');
-    expect(el.querySelector('app-bill-summary')).toBeTruthy();
+    expect(el.querySelector('[data-testid="totales"]')).toBeTruthy();
   });
 
   it('un cancelado de una mesa cobrada llega como sin_factura y tampoco muestra el aviso de agrupada', async () => {
@@ -684,7 +684,7 @@ describe('OrderDetailComponent — huecos de datos (spec 094, US3)', () => {
 
     expect(el.textContent).toContain(AVISO_SIN_DETALLE);
     // El Total sí se muestra, con su valor real.
-    expect(el.querySelector('app-bill-summary')!.textContent).toContain('$ 0');
+    expect(el.querySelector('[data-testid="totales"]')!.textContent).toContain('$ 0');
     // Las líneas siguen visibles, pero sin ningún importe.
     expect(filas(el).length).toBe(2);
     expect(textoDeLasFilas(el)).not.toContain('$');
@@ -719,7 +719,7 @@ describe('OrderDetailComponent — huecos de datos (spec 094, US3)', () => {
     expect(filas(el).length).toBe(2);
     expect(textoDeLasFilas(el)).toContain('Anulado');
     expect(el.textContent).not.toContain(AVISO_SIN_DETALLE);
-    expect(el.querySelector('app-bill-summary')!.textContent).toContain('$ 0');
+    expect(el.querySelector('[data-testid="totales"]')!.textContent).toContain('$ 0');
     expect(el.textContent).not.toContain('Sin ítems');
   });
 
@@ -774,4 +774,144 @@ describe('OrderDetailComponent — la etiqueta "Cliente" (spec 094, US4)', () =>
       expect(el.textContent).not.toContain('Comensal');
     });
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// spec 120 — bloques agrupados del nuevo diseño (US2, FR-011 a FR-016)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('OrderDetailComponent — bloques agrupados del nuevo diseño (spec 120, US2)', () => {
+  it('el encabezado muestra el código corto de la orden, derivado del id (FR-011)', async () => {
+    const { el } = await montar(pedido({ id: '11111111-2222-3333-4444-555555abcdef' }));
+
+    expect(el.textContent).toContain('#ABCDEF');
+  });
+
+  it('"Información de la orden" muestra el rótulo/valor ya existentes y la hora en formato de 12 horas (FR-012)', async () => {
+    const { el } = await montar(pedido({ dining_table_id: 't4' }), { tables: [MESA_4] });
+
+    expect(el.textContent).toContain('Información de la orden');
+    expect(el.textContent).toContain('Mesa 4');
+    expect(el.textContent).toContain('Hora');
+    expect(el.textContent).toContain('6:27 p. m.');
+    expect(el.textContent).not.toContain('18:27');
+  });
+
+  it('"Información de factura" muestra Referencia, Fecha, y Estado de pago "Pendiente" sin orden pagada (FR-012)', async () => {
+    const { el } = await montar(pedido({ id: '11111111-2222-3333-4444-555555abcdef', paid: false }));
+
+    expect(el.textContent).toContain('Información de factura');
+    expect(el.textContent).toContain('Referencia');
+    expect(el.textContent).toContain('#ABCDEF');
+    expect(el.textContent).toContain('Estado de pago');
+    expect(el.textContent).toContain('Pendiente');
+    expect(el.textContent).not.toContain('Método de pago');
+  });
+
+  it('con la orden pagada y un intento de pago confirmado, muestra "Método de pago" y "Pagado" (FR-012, FR-016)', async () => {
+    const { el } = await montar(
+      pedido({
+        paid: true,
+        current_payment_attempt: {
+          id: 'pa1', status: 'confirmado', payment_method_name: 'Nequi', is_cash: false, receipt_file_url: null,
+        },
+      }),
+    );
+
+    expect(el.textContent).toContain('Método de pago');
+    expect(el.textContent).toContain('Nequi');
+    expect(el.textContent).toContain('Pagado');
+  });
+
+  it('con la orden pagada pero sin intento de pago conocido, omite la fila de método de pago (FR-016)', async () => {
+    const { el } = await montar(pedido({ paid: true, current_payment_attempt: null }));
+
+    expect(el.textContent).toContain('Pagado');
+    expect(el.textContent).not.toContain('Método de pago');
+  });
+
+  it('con invoice_reference, "Referencia" muestra la factura real, no el código interno (corrección reportada por el negocio)', async () => {
+    const { el } = await montar(
+      pedido({ id: '11111111-2222-3333-4444-555555abcdef', paid: true, invoice_reference: 'A-000004' }),
+    );
+
+    // El encabezado sigue usando el código interno (es el identificador
+    // estable de la orden, distinto de "Referencia" de factura) -- solo la
+    // fila "Referencia" del bloque de factura debe mostrar la real.
+    const referencia = Array.from(el.querySelectorAll('p')).find((p) => p.textContent === 'Referencia')
+      ?.nextElementSibling as HTMLElement;
+    expect(referencia.textContent).toBe('A-000004');
+  });
+
+  it('sin invoice_reference todavía (no cobrada), "Referencia" respalda con el código interno', async () => {
+    const { el } = await montar(
+      pedido({ id: '11111111-2222-3333-4444-555555abcdef', paid: false, invoice_reference: null }),
+    );
+
+    expect(el.textContent).toContain('#ABCDEF');
+  });
+
+  it('con payment_method_name del pago real (sin intento de pago QR), muestra "Método de pago" -- caso de pedidos cobrados por mostrador (corrección reportada por el negocio)', async () => {
+    const { el } = await montar(
+      pedido({ paid: true, current_payment_attempt: null, payment_method_name: 'Efectivo' }),
+    );
+
+    expect(el.textContent).toContain('Método de pago');
+    expect(el.textContent).toContain('Efectivo');
+  });
+
+  it('payment_method_name tiene prioridad sobre current_payment_attempt cuando ambos existen', async () => {
+    const { el } = await montar(
+      pedido({
+        paid: true,
+        payment_method_name: 'Efectivo',
+        current_payment_attempt: {
+          id: 'pa1', status: 'confirmado', payment_method_name: 'Nequi', is_cash: false, receipt_file_url: null,
+        },
+      }),
+    );
+
+    expect(el.textContent).toContain('Efectivo');
+    expect(el.textContent).not.toContain('Nequi');
+  });
+
+  it('"Información del cliente" nunca muestra una fila de Identificación (el modelo aún no la captura, FR-016)', async () => {
+    const { el } = await montar(pedido({ customer_name: 'Ana' }));
+
+    expect(el.textContent).not.toContain('Identificación');
+  });
+
+  it('"Volver a órdenes" conserva los filtros con los que se navegó al detalle (FR-011)', async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [OrderDetailComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ id: 'o1' }),
+              queryParams: { status: 'pagada', search: 'Deimer' },
+            },
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(OrderDetailComponent);
+    const http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+    http.expectOne(`${API}/menu`).flush([]);
+    http.expectOne(`${API}/orders/tables`).flush([]);
+    http.expectOne(`${API}/orders/o1`).flush(pedido());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+
+    const back = fixture.nativeElement.querySelector('a[aria-label="Volver a la lista"]') as HTMLAnchorElement;
+    expect(back.getAttribute('href')).toContain('status=pagada');
+    expect(back.getAttribute('href')).toContain('search=Deimer');
+    http.verify();
+  });
 });

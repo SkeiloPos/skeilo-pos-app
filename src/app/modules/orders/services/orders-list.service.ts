@@ -30,6 +30,11 @@ export class OrdersListService {
   readonly size = signal(20);
   readonly status = signal<OrdersStatusFilter>('');
   readonly orderType = signal<OrdersTypeFilter>('');
+  /** Búsqueda por nombre de cliente o código de orden (spec 120, FR-004). */
+  readonly search = signal('');
+  /** Filtro de fecha (spec 120, FR-005), inclusive en ambos extremos — mismo patrón que `SalesService`. */
+  readonly dateFrom = signal('');
+  readonly dateTo = signal('');
   private readonly wantsPage = signal(false);
 
   private readonly ordersQuery = injectPagedQuery<DiningOrder>({
@@ -41,10 +46,16 @@ export class OrdersListService {
         size: this.size(),
         status: this.status(),
         orderType: this.orderType(),
+        search: this.search().trim(),
+        dateFrom: this.dateFrom(),
+        dateTo: this.dateTo(),
       },
     ],
     queryFn: () =>
-      this.fetchOrdersPage(this.page(), this.size(), this.status(), this.orderType()),
+      this.fetchOrdersPage(
+        this.page(), this.size(), this.status(), this.orderType(),
+        this.search().trim(), this.dateFrom(), this.dateTo(),
+      ),
     enabled: () => this.wantsPage(),
   });
 
@@ -63,10 +74,16 @@ export class OrdersListService {
     size: number,
     status: OrdersStatusFilter,
     orderType: OrdersTypeFilter,
+    search: string,
+    dateFrom: string,
+    dateTo: string,
   ): Promise<Page<DiningOrder>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (status) params = params.set('status', status);
     if (orderType) params = params.set('order_type', orderType);
+    if (search) params = params.set('q', search);
+    if (dateFrom) params = params.set('date_from', dateFrom);
+    if (dateTo) params = params.set('date_to', dateTo);
     return firstValueFrom(this.http.get<Page<DiningOrder>>(this.baseUrl, { params }));
   }
 
@@ -85,6 +102,29 @@ export class OrdersListService {
 
   setOrderType(value: OrdersTypeFilter): void {
     this.orderType.set(value);
+    this.list(1);
+  }
+
+  setSearch(value: string): void {
+    this.search.set(value);
+    this.list(1);
+  }
+
+  setDateFrom(value: string): void {
+    this.dateFrom.set(value);
+    this.list(1);
+  }
+
+  setDateTo(value: string): void {
+    this.dateTo.set(value);
+    this.list(1);
+  }
+
+  /** Filtro de un solo día (spec 120, FR-005): fija `dateFrom`/`dateTo` al mismo
+   *  valor en una sola petición, en vez de dos `list()` seguidos. */
+  setDate(value: string): void {
+    this.dateFrom.set(value);
+    this.dateTo.set(value);
     this.list(1);
   }
 

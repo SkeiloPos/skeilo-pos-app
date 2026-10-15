@@ -350,6 +350,21 @@ export interface DiningOrder {
    * nada más — es su única fuente, para no crear dos fuentes de verdad (D16).
    */
   billing?: OrderBilling | null;
+  /**
+   * spec 120 (corrección FR-012): referencia real de la factura emitida para
+   * esta orden ("A-000004"), o `null`/ausente si todavía no tiene `Sale`.
+   * **Solo lo rellena `GET /orders/{id}`** -- mismo criterio que `billing`
+   * (D3/D15): no se calcula por fila en el listado, y su ausencia nunca se
+   * reemplaza por un valor inventado.
+   */
+  invoice_reference?: string | null;
+  /**
+   * spec 120 (corrección FR-012): nombre real del método de pago usado, leído
+   * de la venta (`Sale.payments`) -- a diferencia de `current_payment_attempt`,
+   * que queda vacío para los pedidos cobrados por mostrador (nunca crean un
+   * intento de pago). **Solo lo rellena `GET /orders/{id}`**.
+   */
+  payment_method_name?: string | null;
 }
 
 // ── Terminal híbrida por origen (feature 028) ──────────────────────────────
