@@ -1,6 +1,10 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { CashSessionStore } from '../services/cash-session.store';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { ActiveOrderSummary } from '../../dashboard/interfaces/shift-reports.interface';
+import { orderTypeLabel } from '../../orders/order-status.util';
+import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 
 /**
  * Modal de arqueo: conteo de efectivo por denominación, diferencia en vivo
@@ -11,7 +15,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   selector: 'app-cash-arqueo-modal',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconMiComponent],
+  imports: [IconMiComponent, RouterLink, TenantDatePipe],
   template: `
     <div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div class="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-[90vh]">
@@ -23,6 +27,36 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
         </div>
 
         <div class="p-6 space-y-3 overflow-y-auto">
+          @if (store.activeOrdersBlocking().length > 0) {
+            <!-- spec 119 (FR-007/FR-008): el cierre queda bloqueado mientras
+                 existan pedidos activos sin cobrar -- cobrar o anular cada
+                 uno (pantallas ya existentes) es la única salida. -->
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+              <p class="text-sm font-semibold text-amber-800">
+                No se puede cerrar: hay {{ store.activeOrdersBlocking().length }} pedido(s) activo(s)
+              </p>
+              <ul class="space-y-1.5">
+                @for (o of store.activeOrdersBlocking(); track o.id) {
+                  <li class="flex items-center justify-between gap-2 bg-white rounded-lg px-3 py-2 text-sm">
+                    <span class="text-gray-700 truncate">
+                      {{ channelLabel(o) }} · {{ subjectLabel(o) }} ·
+                      {{ o.created_at | tenantDate: 'HH:mm' }}
+                    </span>
+                    <a
+                      [routerLink]="['/dashboard/orders', o.id]"
+                      class="text-xs font-semibold text-indigo-600 hover:underline flex-none"
+                    >
+                      Ver pedido →
+                    </a>
+                  </li>
+                }
+              </ul>
+              <p class="text-xs text-amber-700">
+                Cóbralo o anúlalo desde Mesas, Para llevar o Domicilios y vuelve a intentar el cierre.
+              </p>
+            </div>
+          }
+
           <p class="text-sm text-gray-500">
             Cuenta el efectivo físico e indica cuántos billetes/monedas hay de cada denominación.
             El sistema suma el total y calcula la diferencia frente al efectivo esperado
@@ -103,4 +137,14 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 })
 export class CashArqueoModalComponent {
   readonly store = inject(CashSessionStore);
+
+  channelLabel(o: ActiveOrderSummary): string {
+    return orderTypeLabel(o.order_type);
+  }
+
+  /** Mesa (si aplica) o nombre del cliente -- lo que distingue al pedido. */
+  subjectLabel(o: ActiveOrderSummary): string {
+    if (o.table_number != null) return `Mesa ${o.table_number}`;
+    return o.customer_name || 'Sin cliente';
+  }
 }

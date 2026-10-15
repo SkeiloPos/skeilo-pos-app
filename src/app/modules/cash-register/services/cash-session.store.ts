@@ -1,6 +1,8 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { AuthService } from '../../../core/services/auth.service';
 import { UserRole } from '../../../core/interfaces/user.interface';
+import { ActiveOrderSummary } from '../../dashboard/interfaces/shift-reports.interface';
 import {
   CashMovement,
   CashRegister,
@@ -122,6 +124,9 @@ export class CashSessionStore {
   // Arqueo
   readonly denomCounts = signal<Record<number, string>>({});
   readonly arqueoObservacion = signal('');
+  /** spec 119 (FR-007/FR-008): pedidos activos que bloquean el cierre, del
+   * cuerpo del 409 de `POST /cash/shifts/{id}/close`. Vacío = sin bloqueo. */
+  readonly activeOrdersBlocking = signal<ActiveOrderSummary[]>([]);
 
   readonly loading = signal(false);
   readonly isSubmitting = signal(false);
@@ -496,6 +501,7 @@ export class CashSessionStore {
     this.error.set(null);
     this.denomCounts.set({});
     this.arqueoObservacion.set('');
+    this.activeOrdersBlocking.set([]);
     this.modal.set('arqueo');
   }
 
@@ -519,6 +525,7 @@ export class CashSessionStore {
     })).filter((d) => d.quantity > 0);
     this.isSubmitting.set(true);
     this.error.set(null);
+    this.activeOrdersBlocking.set([]);
     try {
       await this.api.closeShift(shift.id, {
         counted_amount: this.totalContado(),
@@ -534,10 +541,27 @@ export class CashSessionStore {
       this.modal.set(null);
       this.screen.set('report');
     } catch (err) {
-      this.error.set(this.api.extractError(err, 'No se pudo cerrar el turno.'));
+      // spec 119 (FR-007/FR-008, contracts/active-orders-close-gate-api.md):
+      // el 409 de pedidos activos trae `active_orders` plano en el cuerpo
+      // (no envuelto en otro "detail") -- se muestra la lista bloqueante en
+      // vez del mensaje genérico de error.
+      const activeOrders = this.extractActiveOrdersBlocking(err);
+      if (activeOrders) {
+        this.activeOrdersBlocking.set(activeOrders);
+        this.error.set(this.api.extractError(err, 'No se puede cerrar el turno.'));
+      } else {
+        this.error.set(this.api.extractError(err, 'No se pudo cerrar el turno.'));
+      }
     } finally {
       this.isSubmitting.set(false);
     }
+  }
+
+  /** `null` si `err` no es el 409 de pedidos activos de `close_shift`. */
+  private extractActiveOrdersBlocking(err: unknown): ActiveOrderSummary[] | null {
+    if (!(err instanceof HttpErrorResponse) || err.status !== 409) return null;
+    const body = err.error as { active_orders?: unknown } | null;
+    return Array.isArray(body?.active_orders) ? (body.active_orders as ActiveOrderSummary[]) : null;
   }
 
   /**
@@ -591,6 +615,7 @@ export class CashSessionStore {
 
   closeModal(): void {
     this.modal.set(null);
+    this.activeOrdersBlocking.set([]);
   }
 
   setVista(v: MovementView): void {
