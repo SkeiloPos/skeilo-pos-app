@@ -96,6 +96,44 @@ describe('AuthService.login', () => {
     expect(user!.role).toBe(UserRole.ADMIN);
   });
 
+  it('uses the real name from the backend when present (spec 122, FR-010)', async () => {
+    authApi.login.mockReturnValue(
+      of(
+        loginResponse({
+          email: 'maria.perez@tienda.com',
+          name: 'María Pérez',
+          uid: '8a4fde0a-222b-40c6-bd80-7384cfb26e07',
+          tenant_id: 3,
+          is_super_admin: false,
+          role: 'admin',
+        }),
+      ),
+    );
+
+    await service.login('maria.perez@tienda.com', 'secret');
+
+    expect(service.currentUser()!.name).toBe('María Pérez');
+  });
+
+  it('falls back to a name derived from the email when `name` is absent (old session) or blank', async () => {
+    authApi.login.mockReturnValue(
+      of(
+        loginResponse({
+          email: 'maria.perez@tienda.com',
+          uid: '8a4fde0a-222b-40c6-bd80-7384cfb26e07',
+          tenant_id: 3,
+          is_super_admin: false,
+          role: 'admin',
+          // `name` omitido a propósito: simula un JWT emitido antes de spec 122.
+        }),
+      ),
+    );
+
+    await service.login('maria.perez@tienda.com', 'secret');
+
+    expect(service.currentUser()!.name).toBe('maria.perez');
+  });
+
   it('maps a normal tenant role correctly', async () => {
     authApi.login.mockReturnValue(
       of(

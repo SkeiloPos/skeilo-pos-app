@@ -7,7 +7,8 @@ export enum UserRole {
 
 export interface User {
   id: string;
-  /** Optional: the backend does not return a name; falls back to the email. */
+  /** Real name when the backend provides it (spec 122); falls back to a
+   *  name derived from the email for sessions issued before that change. */
   name?: string;
   email: string;
   role: UserRole;
