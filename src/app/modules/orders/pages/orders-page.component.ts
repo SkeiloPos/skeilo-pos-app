@@ -11,11 +11,12 @@ import {
   orderStatusLabel,
   orderTypeLabel,
 } from '../order-status.util';
-import { PaginationBarComponent } from '../../../shared/pagination/pagination-bar.component';
+import { OrdersPaginationComponent } from '../components/orders-pagination.component';
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { OrderDateFilterComponent } from '../components/order-date-filter.component';
 import { To12HourTimePipe } from '../pipes/to-12-hour-time.pipe';
+import { MoneyPipe } from '../../../shared/money.pipe';
 
 /** Opciones del selector de estado (spec 120, FR-002) — mismos 5 valores reales ya existentes. */
 const ESTADOS: { value: OrdersStatusFilter; label: string }[] = [
@@ -44,7 +45,7 @@ const TYPE_ICON: Record<string, string> = {
 @Component({
   selector: 'app-orders-page',
   standalone: true,
-  imports: [RouterLink, TenantDatePipe, PaginationBarComponent, IconMiComponent, OrderDateFilterComponent, To12HourTimePipe],
+  imports: [RouterLink, TenantDatePipe, OrdersPaginationComponent, IconMiComponent, OrderDateFilterComponent, To12HourTimePipe, MoneyPipe],
   providers: [TenantDatePipe],
   template: `
     <div class="space-y-6">
@@ -171,22 +172,25 @@ const TYPE_ICON: Record<string, string> = {
                     <app-mi-icon [name]="typeIcon(order)" [size]="14" />
                     <span class="truncate">{{ cardLocation(order) }}</span>
                     <span
-                      class="ml-auto shrink-0 px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                      class="ml-auto shrink-0 px-2 py-0.5 rounded-[9999px] text-[11px] font-semibold"
                       [class]="order.paid ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'"
                     >{{ order.paid ? 'Pagado' : 'Pendiente' }}</span>
                   </div>
                 </div>
 
-                <div class="mt-auto pt-2 border-t border-gray-50">
-                  <span class="text-xs px-2.5 py-1 rounded-full font-semibold" [class]="statusClass(displayStatus(order))">
+                <div class="mt-auto pt-2 border-t border-gray-50 flex items-center justify-between gap-2">
+                  <span class="text-xs px-2.5 py-1 rounded-[9999px] font-semibold" [class]="statusClass(displayStatus(order))">
                     {{ statusLabel(displayStatus(order)) }}
                   </span>
+                  @if (order.total != null) {
+                    <span class="text-sm font-bold text-gray-900 shrink-0">{{ order.total | money }}</span>
+                  }
                 </div>
               </a>
             }
           </div>
 
-          <app-pagination-bar
+          <app-orders-pagination
             [page]="svc.page()"
             [size]="svc.size()"
             [total]="svc.total()"
