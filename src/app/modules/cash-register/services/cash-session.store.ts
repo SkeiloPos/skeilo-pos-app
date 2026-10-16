@@ -36,6 +36,13 @@ import { slugify } from '../../../shared/slug.util';
 const REGISTER_STORAGE_KEY = 'cash.register';
 
 /**
+ * Fechas y horas del módulo de caja en formato de 12 horas (`05:49 PM`), siempre en la
+ * zona horaria del negocio: `TenantDatePipe` aplica la del tenant (no la del navegador).
+ */
+const FORMATO_FECHA_HORA = 'dd/MM/yyyy hh:mm a';
+const FORMATO_HORA = 'hh:mm a';
+
+/**
  * Ventas del turno por método de pago, tal cual las manda el arqueo.
  *
  * El backend ya devuelve una fila por cada método activo del negocio —incluidos
@@ -726,19 +733,19 @@ export class CashSessionStore {
     return v == null ? 0 : Number(v) || 0;
   }
 
-  /** Fecha/hora legible (para la vista de gestión). */
+  /** Fecha/hora legible en 12 horas y hora del negocio (historial de cierres y gestión de cajas). */
   formatDate(iso: string | null | undefined): string {
     return this.fmtDate(iso ?? null);
   }
 
   private fmtTime(iso: string | null): string {
     if (!iso) return '—';
-    return this.tenantDate.transform(iso, 'HH:mm') ?? '—';
+    return this.tenantDate.transform(iso, FORMATO_HORA) ?? '—';
   }
 
   private fmtDate(iso: string | null): string {
     if (!iso) return '—';
-    return this.tenantDate.transform(iso, 'dd/MM/yyyy HH:mm') ?? '—';
+    return this.tenantDate.transform(iso, FORMATO_FECHA_HORA) ?? '—';
   }
 
   private fmtDuration(iso: string | null): string {

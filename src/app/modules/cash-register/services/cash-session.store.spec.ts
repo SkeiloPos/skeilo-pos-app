@@ -8,6 +8,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import {
+  CashMovement,
   CashShift,
   CatalogDenomination,
   Reconciliation,
@@ -624,5 +625,89 @@ describe('CashSessionStore — «Desglose del conteo» del reporte (spec 121, FR
 
     api.shift.set({ id: 's3', user_name: 'Ana' } as CashShift);
     expect(store.contadoPor()).toBeNull();
+  });
+});
+
+describe('CashSessionStore — fechas y horas en 12 horas y zona horaria del negocio', () => {
+  /** Store con el `TenantDatePipe` REAL y la zona horaria del tenant configurable. */
+  function crear(timezone: string | null = 'America/Bogota') {
+    const api = {
+      registers: signal([]),
+      shift: signal(null as CashShift | null),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        CashSessionStore,
+        TenantDatePipe,
+        { provide: CashService, useValue: api },
+        { provide: AuthService, useValue: { currentUser: () => null } },
+        {
+          provide: TenantInfoService,
+          useValue: { businessName: () => '', info: () => (timezone ? { timezone } : null) },
+        },
+      ],
+    });
+    return { store: TestBed.inject(CashSessionStore), api };
+  }
+
+  // 22:49 UTC = 05:49 p. m. en Bogotá (UTC-5) y 06:49 p. m. en Nueva York (UTC-4, octubre).
+  const APERTURA_UTC = '2026-10-15T22:49:20+00:00';
+  // 01:05 UTC del 16/10 = 08:05 p. m. del 15/10 en Bogotá: cruza el día respecto de UTC.
+  const CIERRE_UTC = '2026-10-16T01:05:00+00:00';
+
+  it('formatDate (historial de cierres) usa 12 horas con AM/PM y la fecha del negocio', () => {
+    const { store } = crear();
+
+    expect(store.formatDate(CIERRE_UTC)).toBe('15/10/2026 08:05 PM');
+    expect(store.formatDate(APERTURA_UTC)).toBe('15/10/2026 05:49 PM');
+  });
+
+  it('el reporte del cierre: aperturaFmt y cierreFmt en 12 horas', () => {
+    const { store, api } = crear();
+    api.shift.set({ id: 's1', opened_at: APERTURA_UTC, closed_at: CIERRE_UTC } as CashShift);
+
+    expect(store.aperturaFmt()).toBe('15/10/2026 05:49 PM');
+    expect(store.cierreFmt()).toBe('15/10/2026 08:05 PM');
+  });
+
+  it('la hora de los movimientos del reporte va en 12 horas (mañana = AM, tarde = PM)', () => {
+    const { store } = crear();
+    const mov = (id: string, occurred_at: string) =>
+      ({ id, cash_shift_id: 's1', kind: 'ingreso', amount: '1000', occurred_at }) as CashMovement;
+    store.movements.set([
+      mov('m1', '2026-10-15T14:05:00+00:00'), // 09:05 a. m. Bogotá
+      mov('m2', '2026-10-15T17:30:00+00:00'), // 12:30 p. m. Bogotá
+      mov('m3', '2026-10-15T05:00:00+00:00'), // 12:00 a. m. Bogotá (medianoche)
+    ]);
+
+    expect(store.movimientosView().map((m) => m.hora)).toEqual(['09:05 AM', '12:30 PM', '12:00 AM']);
+  });
+
+  it('respeta la zona horaria del tenant, no la del navegador ni UTC', () => {
+    const bogota = crear('America/Bogota');
+    expect(bogota.store.formatDate(APERTURA_UTC)).toBe('15/10/2026 05:49 PM');
+    TestBed.resetTestingModule();
+
+    const nuevaYork = crear('America/New_York');
+    expect(nuevaYork.store.formatDate(APERTURA_UTC)).toBe('15/10/2026 06:49 PM');
+    TestBed.resetTestingModule();
+
+    const utc = crear('UTC');
+    expect(utc.store.formatDate(CIERRE_UTC)).toBe('16/10/2026 01:05 AM');
+  });
+
+  it('sin la información del tenant cargada usa la zona de respaldo (Bogotá)', () => {
+    const { store } = crear(null);
+
+    expect(store.formatDate(APERTURA_UTC)).toBe('15/10/2026 05:49 PM');
+  });
+
+  it('un valor ausente se muestra como «—»', () => {
+    const { store } = crear();
+
+    expect(store.formatDate(null)).toBe('—');
+    expect(store.formatDate(undefined)).toBe('—');
+    expect(store.aperturaFmt()).toBe('—');
+    expect(store.cierreFmt()).toBe('—');
   });
 });
