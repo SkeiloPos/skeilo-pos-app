@@ -3,11 +3,11 @@ import {
   Component,
   EventEmitter,
   HostListener,
-  Input,
-  OnChanges,
   Output,
   computed,
+  effect,
   inject,
+  input,
   signal,
 } from '@angular/core';
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
@@ -141,19 +141,26 @@ function addDays(iso: string, delta: number): string {
     </div>
   `,
 })
-export class OrderDateFilterComponent implements OnChanges {
+export class OrderDateFilterComponent {
   private readonly tenantDate = inject(TenantDatePipe);
 
-  /** Fecha elegida, ISO `yyyy-MM-dd`. Vacío se interpreta como "hoy". */
-  @Input() value = '';
+  /** Fecha elegida, ISO `yyyy-MM-dd`. Vacío se interpreta como "hoy". Signal
+   *  de entrada (no `@Input()` corriente): `label`/`cells` son `computed()` y
+   *  solo se reevalúan cuando leen un cambio de una signal real — con un
+   *  `@Input()` normal se quedaban congelados en su primer valor (spec 121,
+   *  research.md §2). */
+  readonly value = input('');
   @Output() readonly valueChange = new EventEmitter<string>();
 
   readonly open = signal(false);
   private readonly viewIso = signal(this.today());
   readonly weekDays = DIAS_SEMANA;
 
-  ngOnChanges(): void {
-    if (this.value) this.viewIso.set(this.value);
+  constructor() {
+    effect(() => {
+      const value = this.value();
+      if (value) this.viewIso.set(value);
+    });
   }
 
   today(): string {
@@ -165,7 +172,7 @@ export class OrderDateFilterComponent implements OnChanges {
   }
 
   readonly label = computed(() => {
-    const value = this.value || this.today();
+    const value = this.value() || this.today();
     if (value === this.today()) return 'Hoy';
     if (value === this.yesterday()) return 'Ayer';
     const { y, m, d } = parseIso(value);
@@ -185,7 +192,7 @@ export class OrderDateFilterComponent implements OnChanges {
 
   readonly cells = computed<Celda[]>(() => {
     const { y, m } = parseIso(this.viewIso());
-    const selected = this.value || this.today();
+    const selected = this.value() || this.today();
     const todayIso = this.today();
     const firstDow = (new Date(y, m, 1).getDay() + 6) % 7; // lunes = 0
     const daysInMonth = new Date(y, m + 1, 0).getDate();
@@ -208,7 +215,7 @@ export class OrderDateFilterComponent implements OnChanges {
 
   toggle(event: Event): void {
     event.stopPropagation();
-    if (!this.open()) this.viewIso.set(this.value || this.today());
+    if (!this.open()) this.viewIso.set(this.value() || this.today());
     this.open.set(!this.open());
   }
 

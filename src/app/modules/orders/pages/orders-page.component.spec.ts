@@ -114,6 +114,46 @@ describe('OrdersPageComponent', () => {
     expect(text).toContain('Pendiente');
   });
 
+  it('las etiquetas de estado de pago y de estado de la orden usan un radio explícito, no `rounded-full` (spec 121, FR-007)', () => {
+    // `rounded-full` de Tailwind v4 compila a `border-radius:calc(infinity*1px)`,
+    // que navegadores embebidos/antiguos de terminales POS pueden no soportar y
+    // dejan la etiqueta sin redondear -- research.md §4. Un estado largo
+    // ("Por confirmar") para confirmar que la forma de píldora no depende de
+    // la longitud del texto.
+    svc.orders.set([
+      order('o1', { paid: true, status: 'recibida' }),
+      order('o2', { paid: false, status: 'recibida' }),
+    ]);
+    fixture.detectChanges();
+    const badges = fixture.nativeElement.querySelectorAll('.rounded-\\[9999px\\]');
+    expect(badges.length).toBeGreaterThanOrEqual(4); // 2 tarjetas × (pago + estado)
+    for (const badge of Array.from(badges)) {
+      expect((badge as HTMLElement).className).not.toContain('rounded-full');
+    }
+    expect(fixture.nativeElement.textContent).toContain('Por confirmar');
+  });
+
+  it('la tarjeta muestra el total de la orden formateado con el pipe de dinero (spec 121, FR-001/FR-002)', () => {
+    svc.orders.set([order('o1', { total: '29000.00' } as never)]);
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('$ 29.000');
+  });
+
+  it('una orden sin ítems (total "0.00") muestra "$ 0", no un espacio vacío (spec 121, US1 escenario 3)', () => {
+    svc.orders.set([order('o1', { total: '0.00' } as never)]);
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('$ 0');
+  });
+
+  it('una orden sin `total` (compat con un backend anterior) no muestra ningún monto inventado', () => {
+    svc.orders.set([order('o1', { total: null } as never)]);
+    fixture.detectChanges();
+    const card = fixture.nativeElement.querySelector('a[href^="/dashboard/orders/"]') as HTMLElement;
+    expect(card.textContent).not.toContain('$');
+  });
+
   it('el badge de estado usa displayOrderStatus: "Pagada" para paid, "Abierta" para el resto', () => {
     svc.orders.set([order('o1', { paid: true }), order('o2', { paid: false })]);
     fixture.detectChanges();
@@ -134,22 +174,25 @@ describe('OrdersPageComponent', () => {
     expect(el.querySelector('app-order-date-filter')).toBeTruthy();
   });
 
-  it('app-pagination-bar muestra "Página X de Y" y el total del Page recibido', () => {
+  it('app-orders-pagination muestra el rango "X–Y de Z" y "Página A de B" (spec 121, FR-005/FR-006)', () => {
     svc.orders.set([order('o1'), order('o2')]);
     svc.total.set(130);
     svc.totalPages.set(7);
     svc.page.set(1);
+    svc.size.set(20);
     fixture.detectChanges();
-    expect((fixture.nativeElement.textContent as string)).toContain('Página 1 de 7');
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('1–20 de 130');
+    expect(text).toContain('Página 1 de 7');
   });
 
-  it('(pageChange) y (sizeChange) de app-pagination-bar llaman a svc.list con los argumentos correctos', () => {
+  it('(pageChange) y (sizeChange) de app-orders-pagination llaman a svc.list con los argumentos correctos', () => {
     svc.orders.set([order('o1')]);
     svc.total.set(60);
     svc.totalPages.set(3);
     fixture.detectChanges();
 
-    const bar = fixture.debugElement.query(By.css('app-pagination-bar'));
+    const bar = fixture.debugElement.query(By.css('app-orders-pagination'));
     expect(bar).toBeTruthy();
 
     bar.componentInstance.pageChange.emit(2);

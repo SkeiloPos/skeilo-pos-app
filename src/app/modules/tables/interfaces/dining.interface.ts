@@ -365,6 +365,15 @@ export interface DiningOrder {
    * intento de pago). **Solo lo rellena `GET /orders/{id}`**.
    */
   payment_method_name?: string | null;
+  /**
+   * spec 121 (FR-001/FR-002): monto final de la orden, igual a `billing.total`
+   * cuando ambos están presentes. Poblado en el detalle y en el listado
+   * paginado de "Órdenes"; `null`/ausente en el listado sin paginar (Terminal
+   * de Mesas/Dashboard) -- opcional también por compatibilidad con un backend
+   * anterior a esta spec. Distinto del `total` del envoltorio `Page<T>` (el
+   * conteo de resultados), que vive un nivel más arriba.
+   */
+  total?: string | null;
 }
 
 // ── Terminal híbrida por origen (feature 028) ──────────────────────────────
