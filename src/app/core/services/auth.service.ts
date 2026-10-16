@@ -249,7 +249,10 @@ export class AuthService {
     if (!role && !backend.is_super_admin) return null;
     return {
       id: backend.uid,
-      name: displayNameFromEmail(backend.email),
+      // spec 122 (FR-010): nombre real cuando el JWT lo trae; respaldo
+      // derivado del correo para sesiones vigentes emitidas antes de este
+      // cambio, o si el campo viene vacío.
+      name: backend.name?.trim() || displayNameFromEmail(backend.email),
       email: backend.email,
       role: role ?? UserRole.ADMIN,
       tenantId: backend.tenant_id,

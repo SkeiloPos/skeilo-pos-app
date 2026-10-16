@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, OnInit, Output, computed, inject, signal } from '@angular/core';
 import { CashService } from '../../cash-register/services/cash.service';
 import { ShiftSummary } from '../../cash-register/interfaces/cash.interface';
 import { ShiftReportsService } from '../services/shift-reports.service';
@@ -83,6 +83,12 @@ export class ShiftSalesReportCardComponent implements OnInit {
   private readonly cashService = inject(CashService);
   private readonly shiftReportsService = inject(ShiftReportsService);
 
+  /** Avisa el turno elegido hacia afuera (spec 122, FR-007): la sección de
+   *  "Ingresos por método de pago" del Dashboard necesita saber cuál, para
+   *  seguir el mismo período elegido aquí -- único consumidor hoy, no hay
+   *  blast radius en añadir esta salida. */
+  @Output() readonly shiftIdChange = new EventEmitter<string>();
+
   readonly shifts = signal<ShiftSummary[]>([]);
   readonly selectedShiftId = signal('');
   readonly report = signal<ShiftSalesReport | null>(null);
@@ -107,6 +113,7 @@ export class ShiftSalesReportCardComponent implements OnInit {
       this.shifts.set(page.items);
       if (page.items.length > 0) {
         this.selectedShiftId.set(page.items[0].id);
+        this.shiftIdChange.emit(page.items[0].id);
         await this.load(page.items[0].id);
       }
     } catch {
@@ -117,6 +124,7 @@ export class ShiftSalesReportCardComponent implements OnInit {
   async onSelectShift(event: Event): Promise<void> {
     const id = (event.target as HTMLSelectElement).value;
     this.selectedShiftId.set(id);
+    this.shiftIdChange.emit(id);
     if (id) await this.load(id);
   }
 

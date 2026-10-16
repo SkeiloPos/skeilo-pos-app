@@ -7,6 +7,9 @@ export interface LoginRequest {
 /** Identity object as returned by the backend (login response and JWT claims). */
 export interface BackendUser {
   email: string;
+  /** Real name of the user (spec 122, FR-010). Optional: a JWT minted before
+   *  this field existed won't carry it. */
+  name?: string;
   uid: string;
   tenant_id: number | null;
   is_super_admin: boolean;
