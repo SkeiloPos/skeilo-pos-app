@@ -6,25 +6,53 @@ import { CashArqueoModalComponent } from './cash-arqueo-modal.component';
 import { CashSessionStore } from '../services/cash-session.store';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { ActiveOrderSummary } from '../../dashboard/interfaces/shift-reports.interface';
+import { CatalogoEstado, Denomination } from '../interfaces/cash-session.interface';
+
+/** Una fila del arqueo tal como la entrega el store (spec 121: con tipo). */
+function fila(value: number, kind: 'billete' | 'moneda'): Denomination {
+  return {
+    value,
+    label: `$ ${value}`,
+    kind,
+    kindLabel: kind === 'billete' ? 'Billete' : 'Moneda',
+    cantidad: 0,
+    subtotal: 0,
+    subtotalFmt: '$ 0',
+  };
+}
 
 describe('CashArqueoModalComponent', () => {
-  function crear(bloqueantes: ActiveOrderSummary[] = []) {
+  function crear(
+    bloqueantes: ActiveOrderSummary[] = [],
+    opts: {
+      estado?: CatalogoEstado;
+      catalogoError?: boolean;
+      filas?: Denomination[];
+      requiereObservacion?: boolean;
+      contadoIngresado?: boolean;
+    } = {},
+  ) {
     const fakeStore = {
       activeOrdersBlocking: signal<ActiveOrderSummary[]>(bloqueantes),
-      arqueoDisabled: signal(false),
+      arqueoDisabled: signal(opts.catalogoError ?? false),
       arqueoObservacion: signal(''),
+      catalogoError: signal(opts.catalogoError ?? false),
+      catalogoEstado: signal<CatalogoEstado>(opts.estado ?? 'listo'),
       closeModal: vi.fn(),
       confirmarArqueoYCerrar: vi.fn(),
-      contadoIngresado: signal(false),
-      denominaciones: signal<Array<{ label: string; value: number; qty: number }>>([]),
+      contadoIngresado: signal(opts.contadoIngresado ?? false),
+      denominaciones: signal<Denomination[]>(
+        opts.filas ?? [fila(100000, 'billete'), fila(50000, 'billete'), fila(500, 'moneda')],
+      ),
       diferenciaLive: signal(0),
-      diffClass: signal(''),
-      diffLabel: signal(''),
+      diffClass: () => '',
+      diffLabel: () => '',
       efectivoEsperado: signal(0),
       error: signal<string | null>(null),
       fmt: (n: number) => `$ ${n}`,
       isSubmitting: signal(false),
-      requiereObservacion: signal(false),
+      reintentarCatalogo: vi.fn(),
+      requiereObservacion: signal(opts.requiereObservacion ?? false),
       setDenom: vi.fn(),
       stepDenom: vi.fn(),
       totalContado: signal(0),
@@ -39,7 +67,8 @@ describe('CashArqueoModalComponent', () => {
     });
     const fixture = TestBed.createComponent(CashArqueoModalComponent);
     fixture.detectChanges();
-    return fixture.nativeElement as HTMLElement;
+    const el = fixture.nativeElement as HTMLElement;
+    return Object.assign(el, { fakeStore });
   }
 
   it('ya no renderiza el ícono de cerrar como SVG artesanal', () => {
@@ -96,5 +125,124 @@ describe('CashArqueoModalComponent', () => {
       expect(el.querySelector('.bg-amber-50')).toBeNull();
       expect(el.querySelectorAll('ul > li').length).toBe(0);
     });
+  });
+});
+
+describe('CashArqueoModalComponent — catálogo, estimación y observación (spec 121)', () => {
+  // `crear` está dentro del describe anterior; se redefine un montaje mínimo aquí.
+  function montar(opts: {
+    estado?: CatalogoEstado;
+    catalogoError?: boolean;
+    filas?: Denomination[];
+    requiereObservacion?: boolean;
+    contadoIngresado?: boolean;
+  }) {
+    const fakeStore = {
+      activeOrdersBlocking: signal<ActiveOrderSummary[]>([]),
+      arqueoDisabled: signal(opts.catalogoError ?? false),
+      arqueoObservacion: signal(''),
+      catalogoError: signal(opts.catalogoError ?? false),
+      catalogoEstado: signal<CatalogoEstado>(opts.estado ?? 'listo'),
+      closeModal: vi.fn(),
+      confirmarArqueoYCerrar: vi.fn(),
+      contadoIngresado: signal(opts.contadoIngresado ?? false),
+      denominaciones: signal<Denomination[]>(
+        opts.filas ?? [fila(100000, 'billete'), fila(50000, 'billete'), fila(500, 'moneda')],
+      ),
+      diferenciaLive: signal(-5000),
+      diffClass: () => '',
+      diffLabel: () => 'Faltante',
+      efectivoEsperado: signal(115000),
+      error: signal<string | null>(null),
+      fmt: (n: number) => `$ ${n}`,
+      isSubmitting: signal(false),
+      reintentarCatalogo: vi.fn(),
+      requiereObservacion: signal(opts.requiereObservacion ?? false),
+      setDenom: vi.fn(),
+      stepDenom: vi.fn(),
+      totalContado: signal(110000),
+    };
+    TestBed.configureTestingModule({
+      imports: [CashArqueoModalComponent],
+      providers: [
+        provideRouter([]),
+        { provide: CashSessionStore, useValue: fakeStore },
+        { provide: TenantInfoService, useValue: { info: () => null } },
+      ],
+    });
+    const fixture = TestBed.createComponent(CashArqueoModalComponent);
+    fixture.detectChanges();
+    return { el: fixture.nativeElement as HTMLElement, fakeStore, fixture };
+  }
+
+  it('renderiza una fila por denominación del catálogo, con su tipo', () => {
+    const { el } = montar({});
+
+    const textos = Array.from(el.querySelectorAll('.grid > div')).map((d) => d.textContent ?? '');
+    expect(textos.length).toBe(3);
+    expect(textos[0]).toContain('$ 100000');
+    expect(textos[0]).toContain('Billete');
+    expect(textos[2]).toContain('$ 500');
+    expect(textos[2]).toContain('Moneda');
+  });
+
+  it('no hay lista fija: sin filas del store no se renderiza ninguna', () => {
+    const { el } = montar({ filas: [] });
+    expect(el.querySelectorAll('.grid > div').length).toBe(0);
+  });
+
+  it('rotula el total y la diferencia como «(estimado)» y explica que el servidor calcula los oficiales', () => {
+    const { el } = montar({ contadoIngresado: true });
+
+    expect(el.textContent).toContain('Total contado (estimado)');
+    expect(el.textContent).toContain('Diferencia (estimado)');
+    expect(el.textContent).toContain('el servidor suma el conteo');
+  });
+
+  it('la observación está SIEMPRE visible; opcional cuando no hay diferencia (FR-025)', () => {
+    const { el } = montar({ requiereObservacion: false });
+
+    expect(el.querySelector('textarea')).toBeTruthy();
+    expect(el.textContent).toContain('Observación (opcional)');
+    expect(el.textContent).not.toContain('requerida por diferencia');
+  });
+
+  it('la observación sigue visible y pasa a «requerida por diferencia» cuando hay diferencia', () => {
+    const { el } = montar({ requiereObservacion: true, contadoIngresado: true });
+
+    expect(el.querySelector('textarea')).toBeTruthy();
+    expect(el.textContent).toContain('Observación (requerida por diferencia)');
+  });
+
+  it('mientras el catálogo carga muestra «Cargando denominaciones…» y no la rejilla', () => {
+    const { el } = montar({ estado: 'cargando', filas: [] });
+
+    expect(el.textContent).toContain('Cargando denominaciones…');
+    expect(el.querySelectorAll('.grid > div').length).toBe(0);
+  });
+
+  it('con error del catálogo muestra el mensaje y «Reintentar», sin rejilla y con confirmar deshabilitado', () => {
+    const { el, fakeStore } = montar({ estado: 'error', catalogoError: true, filas: [] });
+
+    expect(el.textContent).toContain('No se pudieron cargar las denominaciones');
+    expect(el.querySelectorAll('.grid > div').length).toBe(0);
+    const reintentar = Array.from(el.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Reintentar',
+    );
+    expect(reintentar).toBeTruthy();
+    reintentar!.click();
+    expect(fakeStore.reintentarCatalogo).toHaveBeenCalledTimes(1);
+
+    const confirmar = Array.from(el.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Confirmar arqueo'),
+    ) as HTMLButtonElement;
+    expect(confirmar.disabled).toBe(true);
+  });
+
+  it('un catálogo vacío (estado «listo» con error) también ofrece «Reintentar»', () => {
+    const { el } = montar({ estado: 'listo', catalogoError: true, filas: [] });
+    expect(
+      Array.from(el.querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Reintentar'),
+    ).toBe(true);
   });
 });

@@ -7,6 +7,7 @@ import {
   CashMovementPayload,
   CashRegister,
   CashShift,
+  CatalogDenomination,
   Page,
   Reconciliation,
   ShiftClosePayload,
@@ -145,6 +146,11 @@ export class CashService {
 
   getReport(shiftId: string): Promise<ShiftReport> {
     return firstValueFrom(this.http.get<ShiftReport>(`${this.baseUrl}/shifts/${shiftId}/report`));
+  }
+
+  /** spec 121 (FR-009 a FR-012): catálogo de denominaciones del negocio, de mayor a menor. */
+  getDenominations(): Promise<CatalogDenomination[]> {
+    return firstValueFrom(this.http.get<CatalogDenomination[]>(`${this.baseUrl}/denominations`));
   }
 
   /** Histórico de turnos (cierres). Admin. `status` por defecto 'closed'. */
