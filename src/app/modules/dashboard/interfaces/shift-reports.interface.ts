@@ -67,3 +67,28 @@ export interface ActiveOrderSummary {
   customer_name?: string | null;
   created_at: string;
 }
+
+/** Fila de `by_day` de `GET /reports/sales` (RF-059) — consumida por la
+ *  tendencia reciente del Dashboard (spec 122, FR-004), independiente del
+ *  reporte operativo por turno de arriba. */
+export interface DailySalesPoint {
+  day: string;
+  total: string;
+  count: number;
+}
+
+/** Fila de `GET /cash/reports/payment-methods` (spec 122, FR-007,
+ *  contracts/payment-methods-report-api.md). */
+export interface PaymentMethodBucketRow {
+  bucket_start: string;
+  payment_method_id: string;
+  payment_method_name: string;
+  amount: string;
+}
+
+/** `bucket_unit` es uno solo para toda la respuesta, no por fila (igual que
+ *  en el backend, data-model.md §3). */
+export interface PaymentMethodsReport {
+  bucket_unit: 'hour' | 'day' | 'week';
+  rows: PaymentMethodBucketRow[];
+}

@@ -12,6 +12,12 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
   selector: 'app-chart-card',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // El host es una etiqueta sin significado para el navegador -- sin esto cae
+  // al `display: inline` por defecto del user-agent, y el `margin-top` de
+  // `space-y-*` entre dos `<app-chart-card>` seguidos (p. ej. "Estadísticas
+  // de ventas" + "Ingresos por método de pago") no tiene ningún efecto: los
+  // márgenes verticales se ignoran en elementos inline.
+  host: { class: 'block' },
   template: `
     <section class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6">
       <div class="flex items-start justify-between gap-4 flex-wrap mb-4">
