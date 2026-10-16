@@ -20,6 +20,10 @@ export interface CashShift {
   counted_amount?: string | null;
   status: 'open' | 'closed';
   close_note?: string | null;
+  /** spec 121 (D-5): quien CERRÓ el turno (`user_*` es quien lo abrió). `null` en
+   * turnos abiertos y en los cerrados antes de la spec. */
+  closed_by_user_id?: string | null;
+  closed_by_user_name?: string | null;
 }
 
 /** Tipo de movimiento manual de efectivo. */
@@ -45,15 +49,30 @@ export interface CashMovement {
   occurred_at: string;
 }
 
+/** Tipo de una denominación de efectivo (spec 121, D-4). */
+export type DenominationKind = 'billete' | 'moneda';
+
+/** Una denominación del catálogo del negocio (`GET /cash/denominations`). El importe
+ * viaja como decimal-string (`"100000.00"`). */
+export interface CatalogDenomination {
+  denomination: string;
+  kind: DenominationKind;
+}
+
 /** Una denominación contada en el arqueo. */
 export interface DenominationIn {
   denomination: number;
   quantity: number;
 }
 
-/** Body para `POST /cash/shifts/{id}/close`. */
+/**
+ * Body para `POST /cash/shifts/{id}/close`.
+ *
+ * spec 121 (D-1, A-130): el cliente ya NO envía el efectivo contado; lo calcula el
+ * servidor a partir de las líneas `{denominación, cantidad}`. Enviar `counted_amount`
+ * (u otro total) se rechaza con 422.
+ */
 export interface ShiftClosePayload {
-  counted_amount?: number | null;
   denominations: DenominationIn[];
   close_note?: string | null;
 }
@@ -89,12 +108,20 @@ export interface Reconciliation {
   cash_sales?: string;
 }
 
+/** Línea del desglose del conteo en el reporte (spec 121): lo calcula el servidor. */
+export interface CountLine {
+  denomination: string;
+  kind: DenominationKind;
+  quantity: number;
+  subtotal: string;
+}
+
 /** `ShiftReportResponse` — reporte de cierre consolidado. */
 export interface ShiftReport {
   shift: CashShift;
   reconciliation: Reconciliation;
   movements: CashMovement[];
-  denominations: DenominationIn[];
+  denominations: CountLine[];
   close_note?: string | null;
 }
 

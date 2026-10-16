@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { CashSessionStore } from '../services/cash-session.store';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
-/** Reporte de cierre del turno: resumen financiero, arqueo y movimientos. */
+/** Reporte de cierre del turno: resumen financiero, arqueo, desglose del conteo y movimientos. */
 @Component({
   selector: 'app-cash-report',
   standalone: true,
@@ -57,6 +57,44 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
       </div>
       @if (observacion()) {
         <p class="text-sm text-gray-600 mb-2"><strong>Observación:</strong> {{ observacion() }}</p>
+      }
+
+      <div class="border-t border-gray-100 my-4"></div>
+
+      <!-- Desglose del conteo (spec 121, FR-020 a FR-023) -->
+      <h4 class="text-base font-bold text-gray-900 mb-2">Desglose del conteo</h4>
+      @if (store.contadoPor(); as quien) {
+        <p class="text-sm text-gray-500 mb-2">Contado por: {{ quien }}</p>
+      }
+      @if (store.sinDesglose()) {
+        <p class="text-sm text-gray-400 py-2 mb-4">No se registró desglose para este turno</p>
+      } @else {
+        <table class="w-full text-sm border-collapse mb-4">
+          <thead>
+            <tr class="text-left text-[11px] uppercase tracking-wide text-gray-400">
+              <th class="py-2 border-b-2 border-gray-100 font-medium">Denominación</th>
+              <th class="py-2 border-b-2 border-gray-100 font-medium">Tipo</th>
+              <th class="py-2 border-b-2 border-gray-100 font-medium text-right">Cantidad</th>
+              <th class="py-2 border-b-2 border-gray-100 font-medium text-right">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (l of store.desgloseView(); track $index) {
+              <tr>
+                <td class="py-2 border-b border-gray-100">{{ l.denominacionFmt }}</td>
+                <td class="py-2 border-b border-gray-100 text-gray-500">{{ l.tipoLabel }}</td>
+                <td class="py-2 border-b border-gray-100 text-right">{{ l.cantidad }}</td>
+                <td class="py-2 border-b border-gray-100 text-right font-semibold">{{ l.subtotalFmt }}</td>
+              </tr>
+            }
+          </tbody>
+          <tfoot>
+            <tr>
+              <td class="py-2 font-bold" colspan="3">Total</td>
+              <td class="py-2 text-right font-bold">{{ store.fmt(store.desgloseTotal()) }}</td>
+            </tr>
+          </tfoot>
+        </table>
       }
 
       <div class="border-t border-gray-100 my-4"></div>
@@ -116,6 +154,14 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
         }
         @page {
           margin: 10mm;
+        }
+        /* spec 121 (SC-005): una fila nunca se corta entre dos páginas y el encabezado
+           de la tabla se repite en la siguiente. */
+        tr {
+          break-inside: avoid;
+        }
+        thead {
+          display: table-header-group;
         }
       }
     `,

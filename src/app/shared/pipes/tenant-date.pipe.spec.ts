@@ -34,6 +34,49 @@ describe('TenantDatePipe', () => {
     expect(resultado).toBe('07:53');
   });
 
+  // `formatDate` de Angular no entiende nombres IANA y cae a la zona del navegador: estas
+  // pruebas usan zonas DISTINTAS de la del equipo de desarrollo (Bogotá) para detectarlo.
+  describe('zona horaria IANA del tenant, independiente de la del navegador', () => {
+    const formatear = (timezone: string, iso: string, format: string) => {
+      tenantInfo.info.set({ ...tenantInfoFixture, timezone });
+      return pipe.transform(iso, format);
+    };
+
+    it('Asia/Tokyo (UTC+9, sin horario de verano)', () => {
+      expect(formatear('Asia/Tokyo', '2026-08-24T12:53:07.000Z', 'dd/MM/yyyy HH:mm')).toBe(
+        '24/08/2026 21:53',
+      );
+    });
+
+    it('America/New_York respeta el horario de verano de cada instante (EDT en julio, EST en enero)', () => {
+      expect(formatear('America/New_York', '2026-07-15T12:00:00.000Z', 'HH:mm')).toBe('08:00');
+      expect(formatear('America/New_York', '2026-01-15T12:00:00.000Z', 'HH:mm')).toBe('07:00');
+    });
+
+    it('zonas con desfase de media hora (Asia/Kolkata, UTC+5:30)', () => {
+      expect(formatear('Asia/Kolkata', '2026-08-24T12:53:07.000Z', 'HH:mm')).toBe('18:23');
+    });
+
+    it('formato de 12 horas con AM/PM y cambio de día respecto de UTC', () => {
+      // 01:05 UTC del 16/10 = 08:05 p. m. del 15/10 en Bogotá.
+      expect(formatear('America/Bogota', '2026-10-16T01:05:00.000Z', 'dd/MM/yyyy hh:mm a')).toBe(
+        '15/10/2026 08:05 PM',
+      );
+      expect(formatear('America/Bogota', '2026-10-15T14:05:00.000Z', 'hh:mm a')).toBe('09:05 AM');
+      expect(formatear('America/Bogota', '2026-10-15T05:00:00.000Z', 'hh:mm a')).toBe('12:00 AM');
+      expect(formatear('America/Bogota', '2026-10-15T17:30:00.000Z', 'hh:mm a')).toBe('12:30 PM');
+    });
+
+    it('acepta `UTC` como zona', () => {
+      expect(formatear('UTC', '2026-10-16T01:05:00.000Z', 'dd/MM/yyyy HH:mm')).toBe('16/10/2026 01:05');
+    });
+
+    it('un nombre de zona inválido no lanza error (cae al comportamiento de `formatDate`)', () => {
+      expect(() => formatear('No/Existe', '2026-10-16T01:05:00.000Z', 'HH:mm')).not.toThrow();
+      expect(formatear('No/Existe', '2026-10-16T01:05:00.000Z', 'HH:mm')).toMatch(/^\d{2}:\d{2}$/);
+    });
+  });
+
   it('devuelve null para un valor nulo o vacío', () => {
     tenantInfo.info.set(tenantInfoFixture);
     expect(pipe.transform(null)).toBeNull();

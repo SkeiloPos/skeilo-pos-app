@@ -7,6 +7,7 @@ import {
   CashMovement,
   CashRegister,
   CashShift,
+  CatalogDenomination,
   DenominationIn,
   MovementKind,
   Page,
@@ -17,7 +18,9 @@ import {
 import {
   CashModal,
   CashScreen,
+  CatalogoEstado,
   Denomination,
+  DesgloseRow,
   Indicadores,
   MovementRow,
   MovementView,
@@ -31,6 +34,13 @@ import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { slugify } from '../../../shared/slug.util';
 
 const REGISTER_STORAGE_KEY = 'cash.register';
+
+/**
+ * Fechas y horas del módulo de caja en formato de 12 horas (`05:49 PM`), siempre en la
+ * zona horaria del negocio: `TenantDatePipe` aplica la del tenant (no la del navegador).
+ */
+const FORMATO_FECHA_HORA = 'dd/MM/yyyy hh:mm a';
+const FORMATO_HORA = 'hh:mm a';
 
 /**
  * Ventas del turno por método de pago, tal cual las manda el arqueo.
@@ -83,9 +93,6 @@ export class CashSessionStore {
     retiro: 'outline',
   };
 
-  /** Denominaciones de efectivo en COP, de mayor a menor. */
-  readonly DENOMS = [100000, 50000, 20000, 10000, 5000, 2000, 1000, 500, 200, 100, 50];
-
   private readonly MODAL_TITLES: Record<Exclude<CashModal, null>, string> = {
     ingreso: 'Registrar ingreso',
     egreso: 'Registrar egreso',
@@ -124,6 +131,15 @@ export class CashSessionStore {
   // Arqueo
   readonly denomCounts = signal<Record<number, string>>({});
   readonly arqueoObservacion = signal('');
+  /**
+   * spec 121 (FR-009/FR-013): catálogo de denominaciones del negocio, de mayor a
+   * menor. Es la ÚNICA fuente de las filas del arqueo (ya no hay lista fija en el
+   * cliente); se consulta cada vez que se abre el modal, sin caché entre aperturas.
+   */
+  readonly catalogo = signal<CatalogDenomination[]>([]);
+  readonly catalogoEstado = signal<CatalogoEstado>('cargando');
+  /** Descarta la respuesta de una consulta del catálogo superada por otra más reciente. */
+  private catalogoSeq = 0;
   /** spec 119 (FR-007/FR-008): pedidos activos que bloquean el cierre, del
    * cuerpo del 409 de `POST /cash/shifts/{id}/close`. Vacío = sin bloqueo. */
   readonly activeOrdersBlocking = signal<ActiveOrderSummary[]>([]);
@@ -199,13 +215,23 @@ export class CashSessionStore {
 
   readonly movimientoDisabled = computed(() => !this.formMonto() || Number(this.formMonto()) <= 0);
 
+  /** El catálogo no se pudo cargar, o cargó vacío: no se puede contar (FR-013). */
+  readonly catalogoError = computed(
+    () =>
+      this.catalogoEstado() === 'error' ||
+      (this.catalogoEstado() === 'listo' && this.catalogo().length === 0),
+  );
+
   readonly denominaciones = computed<Denomination[]>(() =>
-    this.DENOMS.map((value) => {
+    this.catalogo().map((c) => {
+      const value = Number(c.denomination);
       const cantidad = Number(this.denomCounts()[value]) || 0;
       const subtotal = value * cantidad;
       return {
         value,
         label: value >= 1000 ? this.fmt(value) : '$ ' + value,
+        kind: c.kind,
+        kindLabel: c.kind === 'billete' ? 'Billete' : 'Moneda',
         cantidad,
         subtotal,
         subtotalFmt: this.fmt(subtotal),
@@ -213,12 +239,16 @@ export class CashSessionStore {
     }),
   );
 
+  /** Estimación local; el valor oficial lo calcula el servidor al cerrar (D-1). */
   readonly totalContado = computed(() =>
-    this.DENOMS.reduce((sum, d) => sum + d * (Number(this.denomCounts()[d]) || 0), 0),
+    this.catalogo().reduce(
+      (sum, c) => sum + Number(c.denomination) * (Number(this.denomCounts()[Number(c.denomination)]) || 0),
+      0,
+    ),
   );
 
   readonly contadoIngresado = computed(() =>
-    Object.values(this.denomCounts()).some((v) => Number(v) > 0),
+    this.catalogo().some((c) => (Number(this.denomCounts()[Number(c.denomination)]) || 0) > 0),
   );
 
   readonly diferenciaLive = computed(() =>
@@ -232,9 +262,31 @@ export class CashSessionStore {
   readonly arqueoDisabled = computed(
     () =>
       this.isSubmitting() ||
+      this.catalogoEstado() !== 'listo' ||
+      this.catalogo().length === 0 ||
       !this.contadoIngresado() ||
       (this.diferenciaLive() !== 0 && !this.arqueoObservacion().trim()),
   );
+
+  // ─── Desglose del conteo en el reporte de cierre (spec 121, FR-020/FR-021) ──────
+  readonly desgloseView = computed<DesgloseRow[]>(() =>
+    (this.report()?.denominations ?? []).map((l) => ({
+      denominacionFmt: this.fmt(this.num(l.denomination)),
+      tipoLabel: l.kind === 'billete' ? 'Billete' : 'Moneda',
+      cantidad: l.quantity,
+      subtotalFmt: this.fmt(this.num(l.subtotal)),
+    })),
+  );
+
+  /** Σ de los subtotales de las líneas (no de `counted_amount`): así FR-021 se ve a simple vista. */
+  readonly desgloseTotal = computed(() =>
+    (this.report()?.denominations ?? []).reduce((sum, l) => sum + this.num(l.subtotal), 0),
+  );
+
+  readonly sinDesglose = computed(() => (this.report()?.denominations ?? []).length === 0);
+
+  /** Quien confirmó el conteo; `null` en turnos cerrados antes de la spec 121 (no se infiere). */
+  readonly contadoPor = computed(() => this.shift()?.closed_by_user_name || null);
 
   readonly aperturaDisabled = computed(
     () => this.isSubmitting() || !this.selectedRegisterId() || this.openingAmount() <= 0,
@@ -503,6 +555,31 @@ export class CashSessionStore {
     this.arqueoObservacion.set('');
     this.activeOrdersBlocking.set([]);
     this.modal.set('arqueo');
+    void this.cargarCatalogo();
+  }
+
+  /**
+   * spec 121 (FR-013): consulta el catálogo de denominaciones del negocio. Sin lista de
+   * respaldo: si falla (o llega vacío) el arqueo queda bloqueado con «Reintentar» y no se
+   * envía ninguna petición de cierre.
+   */
+  async cargarCatalogo(): Promise<void> {
+    const seq = ++this.catalogoSeq;
+    this.catalogoEstado.set('cargando');
+    try {
+      const catalogo = await this.api.getDenominations();
+      if (seq !== this.catalogoSeq) return;
+      this.catalogo.set(catalogo);
+      this.catalogoEstado.set('listo');
+    } catch {
+      if (seq !== this.catalogoSeq) return;
+      this.catalogo.set([]);
+      this.catalogoEstado.set('error');
+    }
+  }
+
+  reintentarCatalogo(): Promise<void> {
+    return this.cargarCatalogo();
   }
 
   setDenom(value: number, cantidad: string): void {
@@ -519,16 +596,18 @@ export class CashSessionStore {
   async confirmarArqueoYCerrar(): Promise<void> {
     const shift = this.shift();
     if (!shift || this.arqueoDisabled()) return;
-    const denominations: DenominationIn[] = this.DENOMS.map((d) => ({
-      denomination: d,
-      quantity: Number(this.denomCounts()[d]) || 0,
-    })).filter((d) => d.quantity > 0);
+    // Solo cantidad > 0 (FR-015); tipo, subtotales y total los calcula el servidor.
+    const denominations: DenominationIn[] = this.catalogo()
+      .map((c) => ({
+        denomination: Number(c.denomination),
+        quantity: Number(this.denomCounts()[Number(c.denomination)]) || 0,
+      }))
+      .filter((d) => d.quantity > 0);
     this.isSubmitting.set(true);
     this.error.set(null);
     this.activeOrdersBlocking.set([]);
     try {
       await this.api.closeShift(shift.id, {
-        counted_amount: this.totalContado(),
         denominations,
         close_note: this.arqueoObservacion().trim() || null,
       });
@@ -654,19 +733,19 @@ export class CashSessionStore {
     return v == null ? 0 : Number(v) || 0;
   }
 
-  /** Fecha/hora legible (para la vista de gestión). */
+  /** Fecha/hora legible en 12 horas y hora del negocio (historial de cierres y gestión de cajas). */
   formatDate(iso: string | null | undefined): string {
     return this.fmtDate(iso ?? null);
   }
 
   private fmtTime(iso: string | null): string {
     if (!iso) return '—';
-    return this.tenantDate.transform(iso, 'HH:mm') ?? '—';
+    return this.tenantDate.transform(iso, FORMATO_HORA) ?? '—';
   }
 
   private fmtDate(iso: string | null): string {
     if (!iso) return '—';
-    return this.tenantDate.transform(iso, 'dd/MM/yyyy HH:mm') ?? '—';
+    return this.tenantDate.transform(iso, FORMATO_FECHA_HORA) ?? '—';
   }
 
   private fmtDuration(iso: string | null): string {

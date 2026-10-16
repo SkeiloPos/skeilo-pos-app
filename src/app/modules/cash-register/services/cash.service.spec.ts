@@ -98,9 +98,8 @@ describe('CashService', () => {
     expect(await p).toEqual([]);
   });
 
-  it('closes a shift with denominations and close_note', async () => {
+  it('closes a shift with denominations and close_note, WITHOUT counted_amount (spec 121, D-1)', async () => {
     const p = service.closeShift('s1', {
-      counted_amount: 95000,
       denominations: [{ denomination: 50000, quantity: 1 }],
       close_note: 'faltante caja',
     });
@@ -108,8 +107,30 @@ describe('CashService', () => {
     expect(req.request.method).toBe('POST');
     expect(req.request.body.denominations).toEqual([{ denomination: 50000, quantity: 1 }]);
     expect(req.request.body.close_note).toBe('faltante caja');
+    // El servidor calcula el efectivo contado; el cliente ya no lo envía.
+    expect('counted_amount' in req.request.body).toBe(false);
     req.flush(shift({ status: 'closed', closed_at: 'x', counted_amount: '95000.00' }));
     expect((await p).status).toBe('closed');
+  });
+
+  it('gets the denomination catalog of the business (spec 121, FR-009)', async () => {
+    const p = service.getDenominations();
+    const req = http.expectOne(`${base}/denominations`);
+    expect(req.request.method).toBe('GET');
+    req.flush([
+      { denomination: '100000.00', kind: 'billete' },
+      { denomination: '50.00', kind: 'moneda' },
+    ]);
+    expect(await p).toEqual([
+      { denomination: '100000.00', kind: 'billete' },
+      { denomination: '50.00', kind: 'moneda' },
+    ]);
+  });
+
+  it('propagates the error when the catalog cannot be loaded', async () => {
+    const p = service.getDenominations();
+    http.expectOne(`${base}/denominations`).flush(null, { status: 500, statusText: 'Server Error' });
+    await expect(p).rejects.toBeTruthy();
   });
 
   it('gets the shift report', async () => {
@@ -118,6 +139,27 @@ describe('CashService', () => {
     expect(req.request.method).toBe('GET');
     req.flush({ shift: shift({ status: 'closed' }), reconciliation: {}, movements: [], denominations: [] });
     expect((await p).shift.id).toBe('s1');
+  });
+
+  it('gets the shift report with the denomination breakdown and who closed it (spec 121)', async () => {
+    const p = service.getReport('s1');
+    const req = http.expectOne(`${base}/shifts/s1/report`);
+    req.flush({
+      shift: shift({ status: 'closed', closed_by_user_name: 'Luis', closed_by_user_id: 'u9' }),
+      reconciliation: {},
+      movements: [],
+      denominations: [
+        { denomination: '100000.00', kind: 'billete', quantity: 1, subtotal: '100000.00' },
+      ],
+    });
+    const report = await p;
+    expect(report.shift.closed_by_user_name).toBe('Luis');
+    expect(report.denominations[0]).toEqual({
+      denomination: '100000.00',
+      kind: 'billete',
+      quantity: 1,
+      subtotal: '100000.00',
+    });
   });
 
   /**

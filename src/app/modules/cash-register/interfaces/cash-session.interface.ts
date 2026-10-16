@@ -1,7 +1,7 @@
 // Tipos de VISTA del Módulo de Caja (SkeiloPOS). Modelan lo que las pantallas
 // necesitan para renderizar; los DTOs del backend viven en `cash.interface.ts`.
 
-import { CashRegister, CashShift, MovementKind } from './cash.interface';
+import { CashRegister, CashShift, DenominationKind, MovementKind } from './cash.interface';
 
 /** Pantalla activa del módulo. `overview`/`history` = gestión (solo admin). */
 export type CashScreen = 'overview' | 'history' | 'apertura' | 'dashboard' | 'report';
@@ -35,12 +35,27 @@ export interface MovementRow {
   nota: string;
 }
 
-/** Una denominación de efectivo (COP) con su conteo actual, lista para render. */
+/** Una denominación de efectivo del catálogo del negocio con su conteo actual, lista para render. */
 export interface Denomination {
   value: number;
   label: string;
+  /** spec 121 (D-4): tipo de la denominación según el catálogo. */
+  kind: DenominationKind;
+  /** «Billete» | «Moneda». */
+  kindLabel: string;
   cantidad: number;
   subtotal: number;
+  subtotalFmt: string;
+}
+
+/** Estado de la carga del catálogo de denominaciones al abrir el arqueo (spec 121, FR-013). */
+export type CatalogoEstado = 'cargando' | 'listo' | 'error';
+
+/** Fila de la tabla «Desglose del conteo» del reporte de cierre (spec 121, FR-020). */
+export interface DesgloseRow {
+  denominacionFmt: string;
+  tipoLabel: string;
+  cantidad: number;
   subtotalFmt: string;
 }
 
