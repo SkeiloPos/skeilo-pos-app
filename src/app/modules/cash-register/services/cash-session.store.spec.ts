@@ -1,11 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { vi } from 'vitest';
 import { CashSessionStore, mapVentasPorMetodo } from './cash-session.store';
 import { CashService } from './cash.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
-import { Reconciliation, SalesByMethod } from '../interfaces/cash.interface';
+import { CashShift, Reconciliation, SalesByMethod } from '../interfaces/cash.interface';
+import { ActiveOrderSummary } from '../../dashboard/interfaces/shift-reports.interface';
 
 function recon(sales: SalesByMethod[]): Reconciliation {
   return {
@@ -123,5 +126,145 @@ describe('CashSessionStore — aperturaDisabled (spec 113, contracts/cash-open-f
 
     expect(store.selectedRegisterId()).toBe('');
     expect(store.aperturaDisabled()).toBe(true);
+  });
+});
+
+describe('CashSessionStore — cierre bloqueado por pedidos activos (spec 119, FR-007/FR-008)', () => {
+  const ORDEN_MESA: ActiveOrderSummary = {
+    id: 'o1',
+    order_type: 'DINE_IN',
+    status: 'abierta',
+    dining_table_id: 't1',
+    table_number: 4,
+    customer_name: null,
+    created_at: '2026-10-15T18:00:00',
+  };
+  const ORDEN_LLEVAR: ActiveOrderSummary = {
+    id: 'o2',
+    order_type: 'TAKEAWAY',
+    status: 'recibida',
+    dining_table_id: null,
+    table_number: null,
+    customer_name: 'Ana',
+    created_at: '2026-10-15T18:05:00',
+  };
+
+  /** Imita `CashService.extractError`: `detail` string del cuerpo, o el respaldo. */
+  const extractError = (err: unknown, fallback: string): string => {
+    if (err instanceof HttpErrorResponse) {
+      const detail = (err.error as { detail?: unknown } | null)?.detail;
+      if (typeof detail === 'string') return detail;
+    }
+    return fallback;
+  };
+
+  function crear() {
+    const reporte = {
+      shift: { id: 's1', status: 'closed' } as CashShift,
+      reconciliation: recon([]),
+      movements: [],
+    };
+    const api = {
+      registers: signal([]),
+      shift: signal({ id: 's1', status: 'open' } as CashShift | null),
+      closeShift: vi.fn(),
+      getReport: vi.fn().mockResolvedValue(reporte),
+      extractError,
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        CashSessionStore,
+        { provide: CashService, useValue: api },
+        { provide: AuthService, useValue: { currentUser: () => null } },
+        { provide: TenantDatePipe, useValue: { transform: () => '' } },
+        { provide: TenantInfoService, useValue: { businessName: () => '' } },
+      ],
+    });
+    const store = TestBed.inject(CashSessionStore);
+    // Efectivo contado + observación: deja `arqueoDisabled()` en false.
+    store.setDenom(100000, '1');
+    store.arqueoObservacion.set('Sobrante de prueba');
+    expect(store.arqueoDisabled()).toBe(false);
+    return { store, api, reporte };
+  }
+
+  it('un 409 con `active_orders` plano deja la lista bloqueante y el mensaje del backend', async () => {
+    const { store, api } = crear();
+    api.closeShift.mockRejectedValue(
+      new HttpErrorResponse({
+        status: 409,
+        error: {
+          detail: 'No se puede cerrar el turno: hay 2 pedidos activos sin cobrar.',
+          active_orders: [ORDEN_MESA, ORDEN_LLEVAR],
+        },
+      }),
+    );
+
+    await store.confirmarArqueoYCerrar();
+
+    expect(store.activeOrdersBlocking()).toEqual([ORDEN_MESA, ORDEN_LLEVAR]);
+    expect(store.error()).toBe('No se puede cerrar el turno: hay 2 pedidos activos sin cobrar.');
+    expect(store.isSubmitting()).toBe(false);
+    expect(store.screen()).toBe('apertura'); // no navega al reporte
+    expect(api.getReport).not.toHaveBeenCalled();
+  });
+
+  it('un 409 sin `active_orders` (turno ya cerrado) no activa el bloqueo y usa el mensaje genérico o el del backend', async () => {
+    const { store, api } = crear();
+    api.closeShift.mockRejectedValue(
+      new HttpErrorResponse({ status: 409, error: { detail: 'El turno ya está cerrado' } }),
+    );
+
+    await store.confirmarArqueoYCerrar();
+
+    expect(store.activeOrdersBlocking()).toEqual([]);
+    expect(store.error()).toBe('El turno ya está cerrado');
+    expect(store.isSubmitting()).toBe(false);
+  });
+
+  it('un 500 deja la lista vacía y el mensaje genérico', async () => {
+    const { store, api } = crear();
+    api.closeShift.mockRejectedValue(new HttpErrorResponse({ status: 500, error: null }));
+
+    await store.confirmarArqueoYCerrar();
+
+    expect(store.activeOrdersBlocking()).toEqual([]);
+    expect(store.error()).toBe('No se pudo cerrar el turno.');
+    expect(store.isSubmitting()).toBe(false);
+  });
+
+  it('un reintento exitoso tras un bloqueo limpia la lista y pasa a la pantalla de reporte', async () => {
+    const { store, api, reporte } = crear();
+    api.closeShift.mockRejectedValueOnce(
+      new HttpErrorResponse({
+        status: 409,
+        error: { detail: 'hay pedidos', active_orders: [ORDEN_MESA] },
+      }),
+    );
+    await store.confirmarArqueoYCerrar();
+    expect(store.activeOrdersBlocking().length).toBe(1);
+
+    api.closeShift.mockResolvedValueOnce({ id: 's1', status: 'closed' });
+    await store.confirmarArqueoYCerrar();
+
+    expect(store.activeOrdersBlocking()).toEqual([]);
+    expect(store.error()).toBeNull();
+    expect(store.screen()).toBe('report');
+    expect(store.report()).toBe(reporte);
+  });
+
+  it('cerrar el modal descarta la lista bloqueante', async () => {
+    const { store, api } = crear();
+    api.closeShift.mockRejectedValue(
+      new HttpErrorResponse({
+        status: 409,
+        error: { detail: 'hay pedidos', active_orders: [ORDEN_MESA] },
+      }),
+    );
+    await store.confirmarArqueoYCerrar();
+
+    store.closeModal();
+
+    expect(store.activeOrdersBlocking()).toEqual([]);
   });
 });
