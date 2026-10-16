@@ -7,9 +7,10 @@ import { orderTypeLabel } from '../../orders/order-status.util';
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 
 /**
- * Modal de arqueo: conteo de efectivo por denominación, diferencia en vivo
- * frente al efectivo esperado y cierre del turno. Cierra solo con el botón de
- * cerrar o Cancelar.
+ * Modal de arqueo: conteo de efectivo por denominación (filas del catálogo del
+ * negocio), total y diferencia ESTIMADOS frente al efectivo esperado y cierre del
+ * turno. Los valores oficiales los calcula el servidor al cerrar (spec 121, D-1).
+ * Cierra solo con el botón de cerrar o Cancelar.
  */
 @Component({
   selector: 'app-cash-arqueo-modal',
@@ -59,62 +60,88 @@ import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 
           <p class="text-sm text-gray-500">
             Cuenta el efectivo físico e indica cuántos billetes/monedas hay de cada denominación.
-            El sistema suma el total y calcula la diferencia frente al efectivo esperado
-            ({{ store.fmt(store.efectivoEsperado()) }}).
+            Los valores que ves aquí son una estimación: el servidor suma el conteo y calcula el total
+            y la diferencia oficiales al cerrar el turno (efectivo esperado
+            {{ store.fmt(store.efectivoEsperado()) }}).
           </p>
 
-          <!-- Total contado -->
-          <div class="bg-gray-900 text-white px-3 py-2 flex items-center justify-between rounded-lg">
-            <span class="text-[10px] uppercase tracking-wider opacity-70">Total contado</span>
-            <span class="text-2xl font-extrabold leading-none">{{ store.fmt(store.totalContado()) }}</span>
-          </div>
+          @if (store.catalogoEstado() === 'cargando') {
+            <!-- spec 121 (FR-013): las filas salen del catálogo del negocio -->
+            <p class="text-sm text-gray-500 py-6 text-center" role="status">Cargando denominaciones…</p>
+          } @else if (store.catalogoError()) {
+            <div class="bg-red-50 border border-red-200 rounded-xl p-3 space-y-2" role="alert">
+              <p class="text-sm text-red-700">
+                No se pudieron cargar las denominaciones del negocio, así que por ahora no es posible
+                contar el efectivo.
+              </p>
+              <button type="button" (click)="store.reintentarCatalogo()"
+                class="px-3 py-1.5 border border-red-300 rounded-lg text-sm font-medium text-red-700 hover:bg-red-100 transition-colors">
+                Reintentar
+              </button>
+            </div>
+          } @else {
+            <!-- Total contado (estimado) -->
+            <div class="bg-gray-900 text-white px-3 py-2 flex items-center justify-between rounded-lg">
+              <span class="text-[10px] uppercase tracking-wider opacity-70">Total contado (estimado)</span>
+              <span class="text-2xl font-extrabold leading-none">{{ store.fmt(store.totalContado()) }}</span>
+            </div>
 
-          <!-- Grid de denominaciones -->
-          <div class="grid grid-cols-3 gap-px bg-gray-100 border-2 border-gray-100 rounded-lg overflow-hidden">
-            @for (d of store.denominaciones(); track d.value) {
-              <div class="bg-white p-2 flex flex-col gap-1">
-                <div class="flex justify-between items-baseline">
-                  <span class="font-bold text-xs text-gray-900">{{ d.label }}</span>
-                  <span class="text-[10px] text-gray-400">{{ d.subtotalFmt }}</span>
+            <!-- Grid de denominaciones (una fila por denominación del catálogo) -->
+            <div class="grid grid-cols-3 gap-px bg-gray-100 border-2 border-gray-100 rounded-lg overflow-hidden">
+              @for (d of store.denominaciones(); track d.value) {
+                <div class="bg-white p-2 flex flex-col gap-1">
+                  <div class="flex justify-between items-baseline">
+                    <span class="font-bold text-xs text-gray-900">{{ d.label }}</span>
+                    <span class="text-[10px] text-gray-400">{{ d.subtotalFmt }}</span>
+                  </div>
+                  <span class="text-[10px] uppercase tracking-wide text-gray-400">{{ d.kindLabel }}</span>
+                  <div class="flex items-center gap-1">
+                    <button type="button" (click)="store.stepDenom(d.value, -1)"
+                      class="w-[26px] h-[26px] flex-none flex items-center justify-center border border-gray-200 rounded text-sm font-bold text-gray-700 hover:bg-gray-50">−</button>
+                    <input
+                      type="number" min="0" step="1"
+                      [value]="d.cantidad || ''"
+                      (input)="store.setDenom(d.value, $any($event.target).value)"
+                      placeholder="0"
+                      class="flex-1 w-full text-center h-[26px] px-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    <button type="button" (click)="store.stepDenom(d.value, 1)"
+                      class="w-[26px] h-[26px] flex-none flex items-center justify-center border border-gray-200 rounded text-sm font-bold text-gray-700 hover:bg-gray-50">+</button>
+                  </div>
                 </div>
-                <div class="flex items-center gap-1">
-                  <button type="button" (click)="store.stepDenom(d.value, -1)"
-                    class="w-[26px] h-[26px] flex-none flex items-center justify-center border border-gray-200 rounded text-sm font-bold text-gray-700 hover:bg-gray-50">−</button>
-                  <input
-                    type="number" min="0" step="1"
-                    [value]="d.cantidad || ''"
-                    (input)="store.setDenom(d.value, $any($event.target).value)"
-                    placeholder="0"
-                    class="flex-1 w-full text-center h-[26px] px-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                  <button type="button" (click)="store.stepDenom(d.value, 1)"
-                    class="w-[26px] h-[26px] flex-none flex items-center justify-center border border-gray-200 rounded text-sm font-bold text-gray-700 hover:bg-gray-50">+</button>
-                </div>
+              }
+            </div>
+
+            <!-- Diferencia en vivo (estimada) -->
+            @if (store.contadoIngresado()) {
+              <div class="bg-white rounded-xl border border-gray-100 p-3 flex justify-between items-center">
+                <span class="text-[10px] uppercase tracking-wide text-indigo-600 font-semibold">Diferencia (estimado)</span>
+                <span class="font-bold" [class]="store.diffClass(store.diferenciaLive())">
+                  {{ store.fmt(store.diferenciaLive()) }} · {{ store.diffLabel(store.diferenciaLive()) }}
+                </span>
               </div>
             }
+          }
+
+          <!-- spec 121 (FR-025, D-6): la observación está SIEMPRE visible; solo cambia el
+               rótulo. Antes dependía de la estimación local y dejaba al cajero sin dónde
+               escribirla si el esperado cambiaba con el modal abierto. -->
+          <div>
+            <label for="arqueo-observacion" class="block text-sm font-medium text-gray-700 mb-1">
+              @if (store.requiereObservacion()) {
+                Observación (requerida por diferencia)
+              } @else {
+                Observación (opcional)
+              }
+            </label>
+            <textarea
+              id="arqueo-observacion"
+              [value]="store.arqueoObservacion()"
+              (input)="store.arqueoObservacion.set($any($event.target).value)"
+              [placeholder]="store.requiereObservacion() ? 'Explica el sobrante o faltante' : 'Agrega una nota si lo necesitas'"
+              class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm min-h-[72px] focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            ></textarea>
           </div>
-
-          <!-- Diferencia en vivo -->
-          @if (store.contadoIngresado()) {
-            <div class="bg-white rounded-xl border border-gray-100 p-3 flex justify-between items-center">
-              <span class="text-[10px] uppercase tracking-wide text-indigo-600 font-semibold">Diferencia</span>
-              <span class="font-bold" [class]="store.diffClass(store.diferenciaLive())">
-                {{ store.fmt(store.diferenciaLive()) }} · {{ store.diffLabel(store.diferenciaLive()) }}
-              </span>
-            </div>
-          }
-
-          @if (store.requiereObservacion()) {
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Observación (requerida por diferencia)</label>
-              <textarea
-                [value]="store.arqueoObservacion()"
-                (input)="store.arqueoObservacion.set($any($event.target).value)"
-                placeholder="Explica el sobrante o faltante"
-                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm min-h-[72px] focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              ></textarea>
-            </div>
-          }
 
           @if (store.error()) {
             <p class="text-sm text-red-600">{{ store.error() }}</p>
