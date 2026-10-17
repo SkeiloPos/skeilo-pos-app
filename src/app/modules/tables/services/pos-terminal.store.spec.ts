@@ -802,6 +802,185 @@ describe('PosTerminalStore.voidPersistedItem — spec 029, Historia 1', () => {
   });
 });
 
+describe('PosTerminalStore.additionPicker / confirmAddition — spec 123', () => {
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+  let toast: ToastService;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+    toast = TestBed.inject(ToastService);
+  });
+
+  afterEach(() => http.verify());
+
+  it('openAdditionPicker/closeAdditionPicker abren y cierran el selector', () => {
+    expect(store.additionPickerItemId()).toBeNull();
+    store.openAdditionPicker('i1', 'v1');
+    expect(store.additionPickerItemId()).toBe('i1');
+    store.closeAdditionPicker();
+    expect(store.additionPickerItemId()).toBeNull();
+  });
+
+  it('confirmAddition sin ítem abierto no llama al backend', async () => {
+    await store.confirmAddition('opt1', 1);
+  });
+
+  it('confirmAddition posta a /orders/items/{id}/additions y, si falla, lo muestra sin relanzar', async () => {
+    store.openAdditionPicker('i1', 'v1');
+    const promise = store.confirmAddition('opt1', 2);
+
+    const req = http.expectOne(`${API}/orders/items/i1/additions`);
+    expect(req.request.body).toEqual({ option_id: 'opt1', quantity: 2 });
+    req.flush(
+      { detail: 'Producto ya preparado: agrega un producto nuevo' },
+      { status: 409, statusText: 'Conflict' },
+    );
+
+    await expect(promise).resolves.toBeUndefined();
+    expect(
+      toast.toasts().some((t) => t.kind === 'error' && t.text === 'Producto ya preparado: agrega un producto nuevo'),
+    ).toBe(true);
+    // El selector sigue abierto -- solo se cierra en el camino feliz.
+    expect(store.additionPickerItemId()).toBe('i1');
+  });
+
+  it('updateAdditionQuantity sin ítem abierto no llama al backend', async () => {
+    await store.updateAdditionQuantity('opt1', 3);
+  });
+
+  it('updateAdditionQuantity hace PATCH a /orders/items/{id}/additions/{optionId} y cierra el selector', async () => {
+    store.openAdditionPicker('i1', 'v1');
+    const promise = store.updateAdditionQuantity('opt1', 5);
+
+    const req = http.expectOne(`${API}/orders/items/i1/additions/opt1`);
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ quantity: 5 });
+    req.flush({ id: 'o1', channel: 'POS', order_type: 'DINE_IN', status: 'confirmado', items: [] });
+    await new Promise((r) => setTimeout(r, 0));
+
+    // El camino feliz dispara `reload()` (igual que `confirmAddition`).
+    http.expectOne(`${API}/orders/tables`).flush([]);
+    http.expectOne((r) => r.url === `${API}/orders`).flush([]);
+    await promise;
+    expect(store.additionPickerItemId()).toBeNull();
+  });
+
+  it('updateAdditionQuantity sin relanzar muestra el error del backend y deja el selector abierto', async () => {
+    store.openAdditionPicker('i1', 'v1');
+    const promise = store.updateAdditionQuantity('opt1', 1);
+
+    const req = http.expectOne(`${API}/orders/items/i1/additions/opt1`);
+    req.flush(
+      { detail: 'Esa adición ya tiene esa cantidad.' },
+      { status: 422, statusText: 'Unprocessable Entity' },
+    );
+
+    await expect(promise).resolves.toBeUndefined();
+    expect(
+      toast.toasts().some(
+        (t) => t.kind === 'error' && t.text === 'Esa adición ya tiene esa cantidad.',
+      ),
+    ).toBe(true);
+    expect(store.additionPickerItemId()).toBe('i1');
+  });
+
+  it('additionPickerExistingQty lee la cantidad ya persistida en la línea abierta', () => {
+    const o = order('o1', 'abierta', ['pendiente']);
+    o.items = [
+      { ...o.items![0], options: [{ id: 'oio1', option_id: 'opt1', quantity: 3 }] },
+    ] as DiningOrderItem[];
+    store.orders.set([o]);
+    store.selectedOrderId.set('o1');
+
+    expect(store.additionPickerExistingQty().size).toBe(0);
+
+    store.openAdditionPicker(o.items[0].id, 'v1');
+    expect(store.additionPickerExistingQty().get('opt1')).toBe(3);
+    expect(store.additionPickerExistingQty().get('opt-otra')).toBeUndefined();
+
+    store.closeAdditionPicker();
+    expect(store.additionPickerExistingQty().size).toBe(0);
+  });
+});
+
+describe('PosTerminalStore.settlePendingBalance — spec 123', () => {
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+  let toast: ToastService;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+        ...checkoutDataAlreadyLoadedProviders(),
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+    toast = TestBed.inject(ToastService);
+  });
+
+  afterEach(() => http.verify());
+
+  it('sin turno de caja abierto, no llama al backend', async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+        { provide: CashService, useValue: { shift: () => null, isOpen: () => false, discoverOpenShift: () => Promise.resolve() } },
+      ],
+    });
+    const sinTurno = TestBed.inject(PosTerminalStore);
+    const httpSinTurno = TestBed.inject(HttpTestingController);
+    const toastSinTurno = TestBed.inject(ToastService);
+
+    await sinTurno.settlePendingBalance('o1', { payment_method_id: 'pm-cash', amount: 2000 });
+
+    expect(toastSinTurno.toasts().some((t) => t.kind === 'error' && t.text === 'No hay un turno de caja abierto.')).toBe(true);
+    httpSinTurno.verify();
+  });
+
+  it('con turno abierto, posta a /orders/{id}/complementary-payment y, si falla, lo muestra sin relanzar', async () => {
+    const promise = store.settlePendingBalance('o1', { payment_method_id: 'pm-cash', amount: 2000 });
+
+    const req = http.expectOne(`${API}/orders/o1/complementary-payment`);
+    expect(req.request.body).toEqual({
+      cash_shift_id: 'shift-1',
+      payments: [{ payment_method_id: 'pm-cash', amount: 2000 }],
+    });
+    req.flush(
+      { detail: 'No hay saldo pendiente por cobrar' },
+      { status: 409, statusText: 'Conflict' },
+    );
+
+    await expect(promise).resolves.toBeUndefined();
+    expect(
+      toast.toasts().some((t) => t.kind === 'error' && t.text === 'No hay saldo pendiente por cobrar'),
+    ).toBe(true);
+  });
+});
+
 /**
  * Spec 029, hotfix #4: `cancel_order` ya existía en el backend (sin venta ni
  * movimiento de caja) pero no tenía ningún botón en la Terminal de Mesas —
@@ -3307,6 +3486,84 @@ describe('PosTerminalStore.loadCheckoutPreview — spec 073', () => {
   });
 });
 
+/**
+ * spec 123 (hotfix): el backend emite `session.bill_changed` por TODA adición
+ * (agregar/editar/quitar), incluida la que el propio cajero acaba de hacer y
+ * que `confirmAddition`/`updateAdditionQuantity`/`removeAddition` ya está
+ * resolviendo con su propio `publishEstimate`/`settleEstimate` (spec 089). Sin
+ * guardia, ese eco por tiempo real prendía `checkoutPreviewStale` a mitad de
+ * esa espera -- el banner "El total cambió" parpadeaba un instante antes de
+ * que `settleEstimate` lo volviera a apagar. A diferencia del resto de este
+ * archivo, aquí `RealtimeService.on` SÍ captura el handler real (no es un
+ * no-op) para ejercer la regla tal como vive en `connectRealtime()`.
+ */
+describe('PosTerminalStore — eco de "session.bill_changed" durante un estimado propio no parpadea (spec 123)', () => {
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+  let billChanged: (ev: { table_session_id: string }) => void;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => Promise.resolve(), activePromotions: () => [], ready: () => false, now: () => new Date() } },
+        { provide: TableService, useValue: { loadTables: () => Promise.resolve(), tables: () => [] } },
+        { provide: MenuService, useValue: { loadMenu: () => Promise.resolve(), categories: () => [] } },
+        {
+          provide: RealtimeService,
+          useValue: {
+            status: () => 'open',
+            connectStaff: () => {},
+            disconnect: () => {},
+            on: (type: string, fn: never) => {
+              if (type === 'session.bill_changed') billChanged = fn as never;
+              return () => {};
+            },
+          },
+        },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  const conPreviewCargado = async () => {
+    const initPromise = store.init();
+    http.expectOne((r) => r.url === `${API}/orders`).flush([]);
+    await initPromise;
+    store.selectedOrderId.set('o1');
+    store.checkoutPreview.set({
+      subtotal: '20000', discount: '0', delivery_fee: '0', total: '20000',
+      promotion_evaluated_at: '2026-09-30T10:00:00Z',
+    } as CheckoutPreview);
+  };
+
+  it('con un estimado propio en vuelo, el eco de bill_changed NO marca el preview obsoleto', async () => {
+    await conPreviewCargado();
+    // Lo que `confirmAddition`/`updateAdditionQuantity`/`removeAddition` publican
+    // de forma síncrona antes de que el servidor confirme (spec 089).
+    store.checkoutPreviewEstimate.set({ subtotal: 23000, total: 23000 });
+
+    billChanged({ table_session_id: 'ts-ajeno' });
+
+    expect(store.checkoutPreviewStale()).toBe(false);
+  });
+
+  it('sin un estimado en vuelo, un bill_changed sigue marcando el preview obsoleto (sin cambio de comportamiento)', async () => {
+    await conPreviewCargado();
+
+    billChanged({ table_session_id: 'ts-ajeno' });
+
+    expect(store.checkoutPreviewStale()).toBe(true);
+  });
+});
+
 // ── spec 087, FR-015 (US9): adicionales visibles en el panel del pedido ────
 describe('PosTerminalStore — adicionales del panel del pedido (spec 087, FR-015)', () => {
   let store: PosTerminalStore;
@@ -3907,5 +4164,126 @@ describe('PosTerminalStore — total inmediato al guardar y quitar (spec 089, A-
 
     del.resolve(pos([]));
     await voiding;
+  });
+
+  // ── spec 123 (hotfix): agregar/editar/quitar una adición también actualiza el
+  //    total al instante -- antes quedaba en "El total cambió" esperando que el
+  //    cajero pulsara "Actualizar" a mano, igual bug que §2/§2b ya resolvieron
+  //    para agregar/quitar un producto. ──
+
+  const sembrarCatalogoConAdicion = () => {
+    TestBed.inject(MenuService).categories.set([{
+      id: 'c1', name: 'Helados', products: [{
+        id: 'p1', name: 'Ojo de Diablo', description: null, image_url: null, available: true,
+        option_groups: [],
+        variants: [{
+          id: 'v1', name: '8 onz', price: 8000, available: true,
+          option_groups: [{
+            id: 'g1', name: 'Toppings', min_select: 0, max_select: 99, consume: false,
+            selection_mode: 'cantidad', max_quantity_per_option: null, max_total_quantity: null,
+            options: [{ id: 'opt1', name: 'Gomita', extra_price: 1000, available: true }],
+          }],
+        }],
+      }],
+    }] as never);
+  };
+
+  it('confirmAddition publica el estimado (extra_price × cantidad) ANTES de que el servidor responda', async () => {
+    sembrarCatalogoConAdicion();
+    store.orders.set([pos([{ id: 'i1', product_variant_id: 'v1', unit_price: '8000' }])]);
+    store.checkoutPreview.set(preview('20000'));
+    store.openAdditionPicker('i1', 'v1');
+    const add = deferred<DiningOrder>();
+    vi.spyOn(api, 'addAddition').mockReturnValue(add.promise);
+    vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('23000'));
+
+    const confirming = store.confirmAddition('opt1', 3);
+
+    // Síncrono: 20.000 + 1.000 × 3 = 23.000, el servidor todavía no respondió.
+    expect(store.checkoutPreviewEstimate()).toEqual({ subtotal: 23000, total: 23000 });
+
+    add.resolve(pos([{ id: 'i1', product_variant_id: 'v1', unit_price: '8000' }]));
+    await confirming;
+
+    expect(store.checkoutPreviewEstimate()).toBeNull();
+    expect(store.checkoutPreview()?.total).toBe('23000');
+  });
+
+  it('updateAdditionQuantity publica el delta (nueva − actual) × extra_price al instante', async () => {
+    sembrarCatalogoConAdicion();
+    store.orders.set([pos([{
+      id: 'i1', product_variant_id: 'v1', unit_price: '8000',
+      options: [{ id: 'oio1', option_id: 'opt1', quantity: 2 }],
+    }])]);
+    store.checkoutPreview.set(preview('22000')); // 20.000 base + 2 × 1.000
+    store.openAdditionPicker('i1', 'v1');
+    const patch = deferred<DiningOrder>();
+    vi.spyOn(api, 'updateAdditionQuantity').mockReturnValue(patch.promise);
+    vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('25000'));
+
+    const updating = store.updateAdditionQuantity('opt1', 5);
+
+    // (5 − 2) × 1.000 = 3.000 sobre los 22.000 confirmados.
+    expect(store.checkoutPreviewEstimate()).toEqual({ subtotal: 25000, total: 25000 });
+
+    patch.resolve(pos([{ id: 'i1', product_variant_id: 'v1', unit_price: '8000' }]));
+    await updating;
+
+    expect(store.checkoutPreviewEstimate()).toBeNull();
+    expect(store.checkoutPreview()?.total).toBe('25000');
+  });
+
+  it('removeAddition publica -(cantidad existente × extra_price) al instante', async () => {
+    sembrarCatalogoConAdicion();
+    store.orders.set([pos([{
+      id: 'i1', product_variant_id: 'v1', unit_price: '8000',
+      options: [{ id: 'oio1', option_id: 'opt1', quantity: 3 }],
+    }])]);
+    store.checkoutPreview.set(preview('23000')); // 20.000 base + 3 × 1.000
+    store.openAdditionPicker('i1', 'v1');
+    const del = deferred<DiningOrder>();
+    vi.spyOn(api, 'removeAddition').mockReturnValue(del.promise);
+    vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('20000'));
+
+    const removing = store.removeAddition('opt1');
+
+    expect(store.checkoutPreviewEstimate()).toEqual({ subtotal: 20000, total: 20000 });
+
+    del.resolve(pos([{ id: 'i1', product_variant_id: 'v1', unit_price: '8000' }]));
+    await removing;
+
+    expect(store.checkoutPreviewEstimate()).toBeNull();
+    expect(store.checkoutPreview()?.total).toBe('20000');
+  });
+
+  it('si el servidor rechaza la adición, el total revierte al confirmado', async () => {
+    const { HttpErrorResponse } = await import('@angular/common/http');
+    sembrarCatalogoConAdicion();
+    store.orders.set([pos([{ id: 'i1', product_variant_id: 'v1', unit_price: '8000' }])]);
+    store.checkoutPreview.set(preview('20000'));
+    store.openAdditionPicker('i1', 'v1');
+    vi.spyOn(api, 'addAddition').mockRejectedValue(
+      new HttpErrorResponse({ status: 422, error: { detail: 'ya está en la línea' } }),
+    );
+    vi.spyOn(api, 'checkoutPreview').mockResolvedValue(preview('20000'));
+
+    await store.confirmAddition('opt1', 1);
+
+    expect(store.checkoutPreviewEstimate()).toBeNull();
+    expect(store.checkoutPreview()?.total).toBe('20000');
+  });
+
+  it('sin un total confirmado (panel sin cobro), agregar/editar/quitar una adición no publica ningún estimado', async () => {
+    sembrarCatalogoConAdicion();
+    store.checkoutPreview.set(null);
+    store.orders.set([pos([{ id: 'i1', product_variant_id: 'v1', unit_price: '8000' }])]);
+    store.openAdditionPicker('i1', 'v1');
+    vi.spyOn(api, 'addAddition').mockResolvedValue(pos([{ id: 'i1', product_variant_id: 'v1', unit_price: '8000' }]));
+    const previewSpy = vi.spyOn(api, 'checkoutPreview');
+
+    await store.confirmAddition('opt1', 2);
+
+    expect(previewSpy).not.toHaveBeenCalled();
+    expect(store.checkoutPreviewEstimate()).toBeNull();
   });
 });

@@ -38,6 +38,17 @@ export interface ItemKitchenChangedEvent extends RealtimeBase {
   readonly estado_cocina: string;
 }
 
+/** spec 123: se agregó una adición a una línea ya persistida -- distinto de
+ *  `ItemKitchenChangedEvent`: no cambia `estado_cocina`. */
+export interface ItemAddonAddedEvent extends RealtimeBase {
+  readonly type: 'order.item_addon_added';
+  readonly order_id: string;
+  readonly table_session_id: string | null;
+  readonly item_id: string;
+  readonly option_name: string | null;
+  readonly quantity: number;
+}
+
 export interface ItemVoidedEvent extends RealtimeBase {
   readonly type: 'order.item_voided';
   readonly order_id: string;
@@ -110,6 +121,7 @@ export type RealtimeEvent =
   | OrderCreatedEvent
   | OrderConfirmedEvent
   | ItemKitchenChangedEvent
+  | ItemAddonAddedEvent
   | ItemVoidedEvent
   | OrderCancelledEvent
   | BillChangedEvent
