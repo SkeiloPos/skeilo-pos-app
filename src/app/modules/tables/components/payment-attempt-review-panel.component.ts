@@ -15,6 +15,7 @@ import { DiningSessionService } from '../services/dining-session.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
 import { MoneyInputComponent } from '../../../shared/money-input/money-input.component';
 import { formatMoney } from '../../../shared/money';
+import { roundingSuggestions } from '../services/payment-draft.util';
 import { BillSummaryComponent } from './bill-summary.component';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
@@ -123,6 +124,27 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               sizeClass="w-full min-h-11 px-3 py-2 text-base rounded-lg"
               [autofocus]="true"
             />
+            @if (orderTotal() !== null) {
+              <!-- Spec 124 (FR-013): mismas sugerencias que en el panel de cobro de la
+                   Terminal, calculadas sobre el total autoritativo de este pedido. -->
+              <div class="flex flex-wrap gap-2 mt-2">
+                @for (sugerencia of suggestions(); track sugerencia) {
+                  <button
+                    type="button"
+                    data-testid="sugerencia-monto"
+                    (click)="amountReceived = sugerencia"
+                    class="min-h-9 px-3 py-1.5 rounded-md text-sm font-medium border"
+                    [class]="
+                      sugerencia === amountReceived
+                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    "
+                  >
+                    {{ sugerencia === orderTotal() ? 'Exacto' : money(sugerencia) }}
+                  </button>
+                }
+              </div>
+            }
             @let cambio = cashChangePreview();
             @if (cambio !== null) {
               <!--
@@ -418,10 +440,20 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
   /** spec 073, US7 (FR-022, research.md D14): el `Total` real a cobrar sale del
    *  desglose autoritativo del backend (`checkoutPreview()`), no de una suma
    *  local. `null` mientras no haya preview — no se calcula vuelto contra un
-   *  total no verificado. */
-  private orderTotal(): number | null {
+   *  total no verificado. Público desde spec 124 (FR-013): la plantilla lo usa
+   *  para decidir si ya puede mostrar sugerencias y para etiquetar "Exacto". */
+  orderTotal(): number | null {
     const p = this.checkoutPreview();
     return p ? Number(p.total) : null;
+  }
+
+  /** Hasta 5 montos sugeridos para el monto recibido en efectivo (spec 124,
+   *  FR-013), calculados sobre el total autoritativo de este pedido -- este
+   *  panel no tiene pago mixto, así que no hay saldo pendiente que restar
+   *  (research.md D5). Vacío mientras no haya un total verificado. */
+  suggestions(): number[] {
+    const total = this.orderTotal();
+    return total !== null ? roundingSuggestions(total) : [];
   }
 
   /** Vista previa del cambio mientras el cajero escribe el monto recibido,
