@@ -100,6 +100,11 @@ export interface DiningOrderItemOption {
    */
   name?: string | null;
   group_name?: string | null;
+  /**
+   * spec 123: `true` si esta adición se agregó después de que el pedido ya
+   * tenía una `Sale` emitida -- se usa para pintar el badge "Modificada".
+   */
+  added_after_sale?: boolean;
 }
 
 /** One line of an order response (`OrderItemResponse`). Amounts are strings. */
@@ -211,6 +216,19 @@ export interface BlockPayload {
 /** Body for `POST /orders/items/{id}/void` (`VoidItemIn`). */
 export interface VoidItemPayload {
   motivo: string;
+}
+
+/** Body for `POST /orders/items/{id}/additions` (spec 123, `OptionSelectionIn`). */
+export interface AddAdditionPayload {
+  option_id: string;
+  quantity: number;
+}
+
+/** Body for `POST /orders/{id}/complementary-payment` (spec 123,
+ *  `ComplementaryPaymentIn`) — siempre un único pago (FR-018). */
+export interface ComplementaryPaymentPayload {
+  cash_shift_id: string;
+  payments: [PaymentLine];
 }
 
 // ── Pagos (spec 024) ────────────────────────────────────────────────────────
@@ -332,6 +350,12 @@ export interface DiningOrder {
    * a `'pagada'` en los caminos QR/mostrador vigentes, ver `deriveTableStatus`).
    */
   paid?: boolean;
+  /**
+   * spec 123: saldo pendiente generado por adiciones agregadas a una línea
+   * después de que el pedido ya tenía una `Sale` emitida, aún sin cobrar
+   * (computado, no una columna). `"0"`/ausente cuando no hay saldo pendiente.
+   */
+  pending_balance?: string;
   /**
    * spec 094 (FR-011): descuento agregado congelado en el pedido. Campo crudo,
    * publicado para otros consumidores — el Detalle de Orden **no lo consume**
@@ -498,6 +522,10 @@ export interface SessionBill {
   total: string;
   order_ids: string[];
   split: SessionBillLine[];
+  /** spec 123: saldo pendiente acumulado de todas las órdenes no canceladas
+   *  de la sesión (adiciones agregadas después de facturar, aún sin
+   *  cobrar). `"0"`/ausente cuando no hay saldo pendiente. */
+  pending_balance?: string;
 }
 
 /** Pago de un comensal concreto en modo `split` (`SplitPaymentIn`). */

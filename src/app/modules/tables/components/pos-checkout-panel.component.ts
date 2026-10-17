@@ -377,6 +377,32 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
         -->
         @if (!pendingCheckout()) {
           <div class="p-3 border-t border-gray-200 space-y-2 shrink-0">
+            <!-- spec 123 (FR-006/FR-016): saldo generado por adiciones agregadas
+               después de facturar -- visible mientras exista, con su propia
+               acción de cobro (reutiliza el mismo selector de método de pago
+               del cobro normal). Bloquea "Liberar Mesa" en el backend hasta
+               cobrarse íntegramente. -->
+            @if (store.selectedOrder(); as pendingOrder) {
+              @if (+(pendingOrder.pending_balance ?? 0) > 0) {
+                <div class="rounded-[6px] bg-amber-50 border border-amber-200 p-2.5 space-y-2">
+                  <div class="text-[13px] font-semibold text-amber-800">
+                    Saldo pendiente: {{ store.fmt(+pendingOrder.pending_balance!) }}
+                  </div>
+                  <app-payment-input
+                    [total]="+pendingOrder.pending_balance!"
+                    [methods]="store.paymentMethodsAvailable()"
+                    (changed)="pendingBalanceDraft.set($event)"
+                  />
+                  <button
+                    (click)="settlePendingBalance(pendingOrder.id)"
+                    [disabled]="store.submitting() || pendingBalanceDraft().length !== 1 || !pendingBalanceDraft()[0].methodId"
+                    class="w-full min-h-10 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[13px] font-semibold rounded-[6px] disabled:opacity-40 transition-colors"
+                  >
+                    Cobrar saldo
+                  </button>
+                </div>
+              }
+            }
             @if (store.selectedOrder(); as order) {
               <!--
                 FR-001/FR-002 (spec 029, Historia 4): única acción de impresión
@@ -473,6 +499,19 @@ export class PosCheckoutPanelComponent {
 
   /** Cómo paga el cajero el pedido de mostrador que se está cobrando (T024/T025). */
   readonly paymentDraft = signal<PaymentDraft>(emptyPaymentDraft());
+
+  /** spec 123: cómo paga el cajero el saldo pendiente -- borrador aparte del
+   *  cobro normal (`paymentDraft`), aunque comparta el mismo componente de
+   *  selección de método. Siempre debe quedar en un único renglón (FR-018);
+   *  el botón "Cobrar saldo" se deshabilita si no es así. */
+  readonly pendingBalanceDraft = signal<PaymentDraft>(emptyPaymentDraft());
+
+  async settlePendingBalance(orderId: string): Promise<void> {
+    const [line] = paymentLines(this.pendingBalanceDraft(), this.store.paymentMethodsAvailable());
+    if (!line) return;
+    await this.store.settlePendingBalance(orderId, line);
+    this.pendingBalanceDraft.set(emptyPaymentDraft());
+  }
 
   /** Spec 058: modo edición de "Facturar a nombre de" — solo lectura por defecto, mismo
    *  patrón que `editandoCliente` en `manual-order-page.component.ts` (spec 054). Estado

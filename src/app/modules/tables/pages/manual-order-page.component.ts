@@ -586,7 +586,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     <div class="col-span-3 text-right pr-3">
                       @if (it.promo; as promo) {
                         <div
-                          class="font-semibold text-[15px] text-red-600 tabular-nums font-mono"
+                          class="font-semibold text-[15px] text-indigo-600 tabular-nums font-mono"
                         >
                           {{ store.fmt(promo.discountedAmount) }}
                         </div>
@@ -671,7 +671,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                       <div class="text-right shrink-0">
                         @if (it.promo; as promo) {
                           <div
-                            class="font-semibold text-[15px] text-red-600 tabular-nums font-mono"
+                            class="font-semibold text-[15px] text-indigo-600 tabular-nums font-mono"
                           >
                             {{ store.fmt(promo.discountedAmount) }}
                           </div>
