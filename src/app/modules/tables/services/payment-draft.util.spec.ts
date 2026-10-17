@@ -2,6 +2,7 @@ import {
   MAX_PAYMENT_LINES,
   PaymentDraft,
   PaymentLineDraft,
+  ROUNDING_DENOMINATIONS_BY_CURRENCY,
   assignedOf,
   assignedTotal,
   changeDue,
@@ -11,6 +12,7 @@ import {
   paymentIssue,
   paymentLines,
   pendingBalanceExcluding,
+  roundingSuggestions,
 } from './payment-draft.util';
 import { PaymentMethod } from '../../sales/interfaces/sales.interface';
 
@@ -210,5 +212,41 @@ describe('paymentIssue', () => {
 describe('MAX_PAYMENT_LINES (RN3)', () => {
   it('es 3', () => {
     expect(MAX_PAYMENT_LINES).toBe(3);
+  });
+});
+
+describe('roundingSuggestions (spec 124, FR-001 a FR-004: montos sugeridos de pago en efectivo)', () => {
+  it('redondea hacia arriba a cada denominación COP, sin duplicados, ascendente ($22.000)', () => {
+    expect(roundingSuggestions(22000, ROUNDING_DENOMINATIONS_BY_CURRENCY.COP)).toEqual([
+      24000, 30000, 40000, 50000, 100000,
+    ]);
+  });
+
+  it('elimina duplicados cuando dos denominaciones redondean al mismo valor ($47.500)', () => {
+    expect(roundingSuggestions(47500, ROUNDING_DENOMINATIONS_BY_CURRENCY.COP)).toEqual([
+      48000, 50000, 60000, 100000,
+    ]);
+  });
+
+  it('usa el saldo pendiente recibido, no el total (pago mixto, saldo $12.000)', () => {
+    expect(roundingSuggestions(12000, ROUNDING_DENOMINATIONS_BY_CURRENCY.COP)).toEqual([
+      16000, 20000, 50000, 100000,
+    ]);
+  });
+
+  it('deja un redondeo igual al saldo cuando ya es múltiplo exacto de varias denominaciones ($100.000)', () => {
+    expect(roundingSuggestions(100000, ROUNDING_DENOMINATIONS_BY_CURRENCY.COP)).toEqual([
+      100000, 104000,
+    ]);
+  });
+
+  it('usa la lista COP por defecto cuando no se pasa ninguna', () => {
+    expect(roundingSuggestions(22000)).toEqual([24000, 30000, 40000, 50000, 100000]);
+  });
+
+  it('nunca devuelve más elementos que denominaciones configuradas', () => {
+    expect(roundingSuggestions(1, ROUNDING_DENOMINATIONS_BY_CURRENCY.COP).length).toBeLessThanOrEqual(
+      ROUNDING_DENOMINATIONS_BY_CURRENCY.COP.length,
+    );
   });
 });

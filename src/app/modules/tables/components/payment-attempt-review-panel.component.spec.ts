@@ -537,6 +537,48 @@ describe('PaymentAttemptReviewPanelComponent', () => {
     expect(fixture.nativeElement.textContent as string).toContain('Rechazar');
   });
 
+  // ── Sugerencias de monto en efectivo (spec 124, FR-013) ──────────────────
+
+  const suggestionBtns = (): HTMLButtonElement[] =>
+    Array.from(fixture.nativeElement.querySelectorAll('[data-testid="sugerencia-monto"]'));
+
+  it('con total $16.000, muestra las sugerencias calculadas sobre ese total, "Exacto" incluida', async () => {
+    await renderWith([attempt({ status: 'pendiente' })], order('o1', [item('16000', 1)]), preview({ total: '16000' }));
+
+    const textos = suggestionBtns().map((b) => b.textContent?.trim());
+    expect(textos).toEqual(['Exacto', '$ 20.000', '$ 50.000', '$ 100.000']);
+  });
+
+  it('tocar una sugerencia llena el monto recibido y actualiza el Cambio (FR-013)', async () => {
+    await renderWith([attempt({ status: 'pendiente' })], order('o1', [item('16000', 1)]), preview({ total: '16000' }));
+
+    suggestionBtns()
+      .find((b) => b.textContent?.trim() === '$ 20.000')!
+      .click();
+    fixture.detectChanges();
+
+    expect(panel.amountReceived).toBe(20000);
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).toContain('Cambio');
+    expect(texto).toContain('4.000');
+  });
+
+  it('no muestra sugerencias mientras no haya un total autoritativo (preview en error)', async () => {
+    await renderWith([attempt({ status: 'pendiente' })], order('o1', [item('16000', 1)]), 'error');
+
+    expect(suggestionBtns().length).toBe(0);
+  });
+
+  it('no muestra sugerencias para un intento que no es en efectivo (transferencia)', async () => {
+    await renderWith(
+      [attempt({ status: 'pendiente', is_cash: false, receipt_file_url: 'https://example.invalid/r.jpg' })],
+      order('o1', [item('16000', 1)]),
+      preview({ total: '16000' }),
+    );
+
+    expect(suggestionBtns().length).toBe(0);
+  });
+
   it('el método de pago pendiente ya no usa el emoji 💳 (spec 082)', async () => {
     await renderWith(
       [attempt({ status: 'pendiente', payment_method_name: 'Efectivo' })],

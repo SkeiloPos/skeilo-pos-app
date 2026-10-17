@@ -144,6 +144,31 @@ export function paymentLines(draft: PaymentDraft, _methods: PaymentMethodCheckou
  * método/importe vacíos → una línea no efectivo supera el saldo que las
  * líneas anteriores ya reclamaron (RN2) → falta por asignar (RN1).
  */
+/**
+ * Denominaciones de redondeo para las sugerencias de monto en efectivo (spec 124), por código de
+ * moneda del tenant -- hoy solo `COP`, el único valor real (ningún tenant tiene un campo de
+ * moneda todavía, `research.md` D1 de spec 124). Lista propia e independiente del catálogo de
+ * denominaciones del arqueo de caja (spec 121): ese catálogo sirve para contar efectivo físico y
+ * mete valores (monedas, $2.000, $20.000) que esta lista de redondeo no quiere.
+ */
+export const ROUNDING_DENOMINATIONS_BY_CURRENCY: Record<'COP', number[]> = {
+  COP: [8000, 10000, 20000, 50000, 100000],
+};
+
+/**
+ * Hasta 5 montos sugeridos para "Con cuánto paga" en efectivo (spec 124, FR-001 a FR-004):
+ * redondea `saldoPendiente` hacia arriba a cada denominación, sin duplicados, ascendente. El
+ * monto exacto no se agrega como candidato aparte -- si un redondeo coincide con el saldo, el
+ * componente lo etiqueta "Exacto" (FR-012), no esta función.
+ */
+export function roundingSuggestions(
+  saldoPendiente: number,
+  denominations: number[] = ROUNDING_DENOMINATIONS_BY_CURRENCY.COP,
+): number[] {
+  const values = denominations.map((d) => Math.ceil(saldoPendiente / d) * d);
+  return Array.from(new Set(values)).sort((a, b) => a - b);
+}
+
 export function paymentIssue(
   draft: PaymentDraft,
   total: number,

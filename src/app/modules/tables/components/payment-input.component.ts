@@ -18,6 +18,8 @@ import {
   emptyPaymentDraft,
   emptyPaymentLineDraft,
   paymentIssue,
+  pendingBalanceExcluding,
+  roundingSuggestions,
 } from '../services/payment-draft.util';
 import { formatMoney } from '../services/receipt.util';
 import { MoneyInputComponent } from '../../../shared/money-input/money-input.component';
@@ -71,10 +73,33 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
               {{ isCash(line.methodId) ? 'Con cuánto paga' : 'Importe' }}
             </label>
             <app-money-input
-              [ngModel]="line.amount"
+              [ngModel]="line.amount || null"
               (ngModelChange)="setAmount(i, $event ?? 0)"
               sizeClass="min-h-11 px-3 py-2 rounded-lg text-base"
             />
+
+            @if (isCash(line.methodId) && pendingBalance(i) > 0) {
+              <!-- Spec 124 (FR-001 a FR-005, FR-012): hasta 5 botones con los montos más
+                   probables -- el monto exacto más redondeos a billetes comunes -- para llenar
+                   "Con cuánto paga" con un toque, sin digitar. -->
+              <div class="flex flex-wrap gap-2 mt-2">
+                @for (sugerencia of suggestions(i); track sugerencia) {
+                  <button
+                    type="button"
+                    data-testid="sugerencia-monto"
+                    (click)="setAmount(i, sugerencia)"
+                    class="min-h-9 px-3 py-1.5 rounded-md text-sm font-medium border"
+                    [class]="
+                      sugerencia === line.amount
+                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    "
+                  >
+                    {{ sugerencia === pendingBalance(i) ? 'Exacto' : money(sugerencia) }}
+                  </button>
+                }
+              </div>
+            }
 
             @if (!isCash(line.methodId)) {
               <label class="block text-sm font-medium text-gray-600">Referencia (opcional)</label>
@@ -143,17 +168,39 @@ export class PaymentInputComponent implements OnChanges {
     return changeDue(this.draft(), index, this.total, this.methods);
   }
 
-  /** Al elegir método en una línea nueva y vacía se precarga el importe
-   * justo (FR-014): el caso de un solo método sigue exactamente igual. Las
-   * líneas agregadas con "Agregar otro método" ya llegan precargadas con el
-   * saldo pendiente (`addLine`), así que elegir su método no les toca el
-   * importe. */
+  /** Saldo pendiente de esa línea (spec 124, FR-001/FR-009): el total si es
+   * la única línea, o lo que falte por asignar excluyendo las anteriores. */
+  pendingBalance(index: number): number {
+    return pendingBalanceExcluding(this.draft(), index, this.total, this.methods);
+  }
+
+  /** Hasta 5 montos sugeridos para esa línea en efectivo (spec 124, FR-001 a
+   * FR-004), calculados sobre `pendingBalance(index)` -- nunca sobre el
+   * total cuando hay otras líneas (FR-009). */
+  suggestions(index: number): number[] {
+    return roundingSuggestions(this.pendingBalance(index));
+  }
+
+  /** Al elegir un método no efectivo en una línea nueva y vacía se precarga
+   * el importe justo (FR-014, sin cambios): el caso de un solo método sigue
+   * exactamente igual. Las líneas agregadas con "Agregar otro método" ya
+   * llegan precargadas con el saldo pendiente (`addLine`), así que elegir su
+   * método no les toca el importe.
+   *
+   * Si el método elegido es Efectivo, el campo nace vacío en cualquier caso
+   * (spec 124, FR-010, decisión de negocio `A-135`): precargarlo volvía
+   * redundante la sugerencia "Exacto" y ocultaba la verificación real del
+   * monto recibido -- esto anula, solo para efectivo, el precargado que
+   * `addLine` ya le haya puesto a la línea. */
   setMethod(index: number, methodId: string): void {
-    this.patchLine(index, (line) => ({
-      ...line,
-      methodId,
-      amount: this.draft().length === 1 && line.amount === 0 ? this.total : line.amount,
-    }));
+    this.patchLine(index, (line) => {
+      if (this.isCash(methodId)) return { ...line, methodId, amount: 0 };
+      return {
+        ...line,
+        methodId,
+        amount: this.draft().length === 1 && line.amount === 0 ? this.total : line.amount,
+      };
+    });
   }
 
   setAmount(index: number, value: string | number): void {
