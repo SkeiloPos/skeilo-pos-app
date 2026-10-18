@@ -121,6 +121,16 @@ export interface NotificationCreatedEvent extends RealtimeBase {
   readonly origin_client_id?: string | null;
 }
 
+/**
+ * Spec 128 (US3, FR-009): un administrador cambió `visible_en_qr` de una
+ * categoría. Evento delgado a propósito -- sin payload más allá del aviso
+ * mismo (`app/core/events.py::menu_updated`); el cliente vuelve a pedir el
+ * menú por REST en vez de intentar reconstruirlo del evento.
+ */
+export interface MenuUpdatedEvent extends RealtimeBase {
+  readonly type: 'menu.updated';
+}
+
 export type RealtimeEvent =
   | OrderCreatedEvent
   | OrderConfirmedEvent
@@ -132,7 +142,8 @@ export type RealtimeEvent =
   | PaymentCompletedEvent
   | SessionClosedEvent
   | TableStatusChangedEvent
-  | NotificationCreatedEvent;
+  | NotificationCreatedEvent
+  | MenuUpdatedEvent;
 
 export type RealtimeEventType = RealtimeEvent['type'];
 

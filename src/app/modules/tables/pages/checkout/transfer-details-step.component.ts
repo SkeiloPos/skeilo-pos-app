@@ -396,6 +396,9 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
       // El comprobante ya subido se conserva a propósito: un segundo click en
       // "Enviar pedido" no debe volver a subir el archivo.
       this.error.set(this.api.extractError(err, 'No se pudo enviar el pedido.'));
+      // spec 128 (FR-007): mismo motivo que payment-method-step -- sincroniza
+      // el carrito local con lo que el servidor ya quitó.
+      await this.cart.load().catch(() => undefined);
     }
   }
 
