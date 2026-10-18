@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 import { PromotionsPageComponent } from './promotions-page.component';
 import { MenuService } from '../../../core/services/menu.service';
 import { PresentationService } from '../../presentations/services/presentation.service';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import type { Promotion } from '../interfaces/promotion.interface';
 
 /**
@@ -172,6 +173,39 @@ describe('PromotionsPageComponent', () => {
       expect(c.form.rules).toEqual([]);
       // FR-011: fecha de inicio con valor por defecto (hoy), requerida al guardar.
       expect(c.form.starts_at).toBeTruthy();
+    });
+
+    it('spec 127 (FR-001): starts_at usa el día calendario LOCAL del tenant, no el día UTC', async () => {
+      // 2026-10-19T02:00:00Z = 2026-10-18 21:00 hora de Bogotá (UTC-5): el
+      // día UTC ya es "mañana" aunque en Bogotá todavía es "hoy" — el
+      // defecto reportado era exactamente esto (promoción guardada después
+      // de las 7pm quedando con starts_at del día siguiente).
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-19T02:00:00Z'));
+      try {
+        const fixture = TestBed.createComponent(PromotionsPageComponent);
+        fixture.detectChanges();
+        const c = fixture.componentInstance;
+        TestBed.inject(TenantInfoService).info.set({
+          id: 1,
+          name: 'Heladería de prueba',
+          host: 'prueba.skeilopos.com',
+          logo_url: null,
+          receipt_message: null,
+          timezone: 'America/Bogota',
+        });
+
+        c.openNew();
+        c.createName.set('2x1 Granizados');
+        const fakeResult = { id: 'new-id', rules: [] } as unknown as Promotion;
+        vi.spyOn(c.svc, 'create').mockResolvedValue(fakeResult);
+
+        await c.continueToConfigure();
+
+        expect(c.form.starts_at).toBe('2026-10-18');
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('si el backend rechaza la creación, se queda en la pantalla de creación con el error visible', async () => {
@@ -710,7 +744,8 @@ describe('PromotionsPageComponent', () => {
     await c.saveConfigure();
 
     expect(updateShapeSpy).toHaveBeenCalledWith('p1', c.form);
-    expect(updateSpy).toHaveBeenCalledWith('p1', c.form);
+    // spec 127 (FR-005): pausada -> no es draft -> starts_at se excluye del PATCH.
+    expect(updateSpy).toHaveBeenCalledWith('p1', c.form, false);
     expect(updateShapeSpy.mock.invocationCallOrder[0]).toBeLessThan(
       updateSpy.mock.invocationCallOrder[0],
     );
@@ -740,7 +775,8 @@ describe('PromotionsPageComponent', () => {
 
     expect(createSpy).not.toHaveBeenCalled();
     expect(updateShapeSpy).toHaveBeenCalledWith('new-id', c.form);
-    expect(updateSpy).toHaveBeenCalledWith('new-id', c.form);
+    // spec 127 (FR-005): sigue en draft -> starts_at viaja en el PATCH.
+    expect(updateSpy).toHaveBeenCalledWith('new-id', c.form, true);
     expect(c.screen()).toBe('list');
   });
 
