@@ -1577,7 +1577,21 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
       // cierra la sesión (cobro dividido puede tener otros comensales
       // pagando todavía), así que solo muestra el banner, no navega.
       this.realtime.on('payment.completed', () => this.showPaymentConfirmed()),
+      // spec 128 (US3, FR-009): un admin ocultó/mostró una categoría en QR —
+      // vuelve a pedir el menú para que este comensal lo vea sin recargar.
+      this.realtime.on('menu.updated', () => this.refreshMenu()),
     );
+  }
+
+  /** spec 128 (US3): vuelve a resolver el menú y reindexa el carrito contra él. */
+  private async refreshMenu(): Promise<void> {
+    try {
+      const { categories } = await this.api.resolveByToken(this.token);
+      this.categories.set(categories);
+      this.cart.indexMenu(categories);
+    } catch (err) {
+      if (err instanceof DinerSessionExpiredError) this.handleSessionError(err);
+    }
   }
 
   private showPaymentConfirmed(): void {

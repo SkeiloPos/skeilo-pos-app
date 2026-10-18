@@ -123,6 +123,13 @@ export class PaymentMethodStepComponent implements OnInit {
         return;
       }
       this.error.set(this.api.extractError(err, 'No se pudo enviar el pedido.'));
+      // spec 128 (FR-007): si el rechazo quitó productos del carrito en el
+      // servidor (categoría ya no visible en QR), se recarga para que la
+      // pantalla de revisión ya los muestre fuera antes de reintentar --
+      // `extractError` ya traduce el mensaje exacto del 409 ("Algunos
+      // productos ya no están disponibles y se quitaron de tu carrito");
+      // esto solo sincroniza el estado local con lo que el servidor hizo.
+      await this.cart.load().catch(() => undefined);
     } finally {
       this.submitting.set(false);
     }

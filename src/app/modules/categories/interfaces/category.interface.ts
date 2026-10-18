@@ -10,6 +10,9 @@ export interface Category {
   name: string;
   description: string | null;
   active: boolean;
+  /** spec 128 (FR-001/FR-002): visibilidad específica del menú QR,
+   *  independiente de `active`. */
+  visible_en_qr: boolean;
   display_order: number;
   created_at: string;
   updated_at?: string | null;
@@ -39,6 +42,9 @@ export interface CategoryUpdatePayload {
   name?: string;
   description?: string | null;
   active?: boolean;
+  /** spec 128 (FR-005/FR-006): solo ADMIN, y solo con la categoría activa —
+   *  el backend responde 403/422 en caso contrario. */
+  visible_en_qr?: boolean;
   display_order: number | null;
   presentation_ids?: string[];
 }

@@ -5,6 +5,7 @@ import { CategoryService } from '../services/category.service';
 import { CategoryFormComponent } from '../components/category-form.component';
 import { PaginationBarComponent } from '../../../shared/pagination/pagination-bar.component';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { ToastService } from '../../../shared/feedback/toast.service';
 
 @Component({
   selector: 'app-categories-page',
@@ -43,6 +44,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           <option value="all">Todas</option>
           <option value="active">Activas</option>
           <option value="inactive">Inactivas</option>
+          <!-- spec 128 (FR-011): encontrar rápido las ocultas en el menú QR. -->
+          <option value="hidden_qr">Ocultas en QR</option>
         </select>
       </div>
 
@@ -87,6 +90,9 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                   <th class="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3 hidden md:table-cell">Descripción</th>
                   <th class="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">Orden</th>
                   <th class="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">Estado</th>
+                  <!-- spec 128 (Notas técnicas/UX): columna dedicada con toggle en línea, no un
+                       ícono más dentro de Acciones. -->
+                  <th class="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">Menú QR</th>
                   <th class="text-right text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">Acciones</th>
                 </tr>
               </thead>
@@ -118,6 +124,36 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
                           Inactiva
                         </span>
+                      }
+                    </td>
+                    <td class="px-5 py-4">
+                      <!-- spec 128 (FR-010): toggle en línea Visible/Oculta, reversible de un
+                           solo paso, sin modal. FR-006: deshabilitado mientras la categoría está
+                           inactiva, con texto de ayuda. Mismo patrón de switch accesible
+                           (role="switch") que product-form.component.ts. -->
+                      <div class="flex items-center gap-2">
+                        <button
+                          type="button"
+                          (click)="onToggleQr(cat)"
+                          role="switch"
+                          [attr.aria-checked]="cat.visible_en_qr"
+                          [disabled]="!cat.active"
+                          [title]="!cat.active
+                            ? 'Activa la categoría para controlar su visibilidad en QR'
+                            : (cat.visible_en_qr ? 'Ocultar del menú QR' : 'Mostrar en menú QR')"
+                          class="relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                          [class]="cat.visible_en_qr ? 'bg-indigo-600' : 'bg-gray-300'"
+                        >
+                          <span class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" [class]="cat.visible_en_qr ? 'left-[22px]' : 'left-0.5'"></span>
+                        </button>
+                        <span class="text-xs font-medium" [class]="cat.visible_en_qr ? 'text-white' : 'text-gray-500'">
+                          {{ cat.visible_en_qr ? 'Visible' : 'Oculta en QR' }}
+                        </span>
+                      </div>
+                      @if (!cat.active) {
+                        <p class="text-[11px] text-gray-400 mt-1">
+                          Activa la categoría para controlar su visibilidad en QR
+                        </p>
                       }
                     </td>
                     <td class="px-5 py-4">
@@ -172,6 +208,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 })
 export class CategoriesPageComponent implements OnInit, OnDestroy {
   readonly categoryService = inject(CategoryService);
+  private readonly toast = inject(ToastService);
 
   readonly showForm = signal(false);
   readonly editingCategory = signal<Category | null>(null);
@@ -180,7 +217,7 @@ export class CategoriesPageComponent implements OnInit, OnDestroy {
   readonly searchSignal = signal('');
   private searchDebounce: ReturnType<typeof setTimeout> | null = null;
 
-  statusFilterValue: 'all' | 'active' | 'inactive' = 'all';
+  statusFilterValue: 'all' | 'active' | 'inactive' | 'hidden_qr' = 'all';
 
   ngOnInit(): void {
     this.categoryService.loadCategories();
@@ -199,8 +236,16 @@ export class CategoriesPageComponent implements OnInit, OnDestroy {
     this.searchDebounce = setTimeout(() => this.categoryService.setSearch(value), 300);
   }
 
-  onStatusFilterChange(value: 'all' | 'active' | 'inactive'): void {
+  onStatusFilterChange(value: 'all' | 'active' | 'inactive' | 'hidden_qr'): void {
     this.statusFilterValue = value;
+    // spec 128 (FR-011): "Ocultas en QR" es mutuamente excluyente con
+    // Activas/Inactivas en este selector de una sola opción.
+    if (value === 'hidden_qr') {
+      this.categoryService.setActiveFilter('');
+      this.categoryService.setVisibleQrFilter('hidden');
+      return;
+    }
+    this.categoryService.setVisibleQrFilter('');
     this.categoryService.setActiveFilter(value === 'all' ? '' : value);
   }
 
@@ -216,6 +261,23 @@ export class CategoriesPageComponent implements OnInit, OnDestroy {
 
   async onToggle(category: Category): Promise<void> {
     await this.categoryService.toggleActive(category.id, category.active);
+  }
+
+  /** spec 128 (FR-010): toggle de un solo paso, sin modal -- ya es reversible
+   *  por sí mismo (un segundo clic vuelve al estado anterior), así que el
+   *  toast confirma el cambio sin necesitar una acción "Deshacer" aparte
+   *  (`ToastService` no tiene hoy botones de acción; agregar esa capacidad
+   *  sería infraestructura compartida fuera del alcance de esta spec). */
+  async onToggleQr(category: Category): Promise<void> {
+    if (!category.active) return;
+    const willBeVisible = !category.visible_en_qr;
+    await this.categoryService.toggleVisibleQr(category.id, category.visible_en_qr);
+    if (this.categoryService.otherError()) return;
+    this.toast.success(
+      willBeVisible
+        ? `${category.name} visible en el menú QR`
+        : `${category.name} oculta del menú QR`,
+    );
   }
 
   onSaved(): void {

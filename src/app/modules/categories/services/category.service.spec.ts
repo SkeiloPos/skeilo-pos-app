@@ -51,6 +51,7 @@ describe('CategoryService.searchActiveCategories() (spec 102)', () => {
           name: 'Postres fríos',
           description: null,
           active: true,
+          visible_en_qr: true,
           display_order: 105,
           created_at: '2026-01-01T00:00:00',
           presentations: [],
@@ -74,5 +75,60 @@ describe('CategoryService.searchActiveCategories() (spec 102)', () => {
       (r) => r.url === base && r.params.get('search') === 'postre',
     );
     req.flush({ items: [], total: 0, page: 1, size: 20, pages: 0 });
+  });
+});
+
+/** spec 128 (FR-005/FR-010): toggleVisibleQr() envía el valor invertido,
+ *  mismo patrón que toggleActive(). */
+describe('CategoryService.toggleVisibleQr (spec 128)', () => {
+  let service: CategoryService;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        CategoryService,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+      ],
+    });
+    service = TestBed.inject(CategoryService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('envía visible_en_qr invertido vía PATCH', async () => {
+    const promise = service.toggleVisibleQr('c1', true);
+
+    const req = http.expectOne(`${base}/c1`);
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body.visible_en_qr).toBe(false);
+    req.flush({
+      id: 'c1', name: 'Con licor', description: null, active: true,
+      visible_en_qr: false, display_order: 1, created_at: '2026-01-01T00:00:00',
+      presentations: [],
+    });
+
+    await promise;
+    expect(service.otherError()).toBeNull();
+  });
+
+  it('un error del backend (403/422) queda en otherError()', async () => {
+    const promise = service.toggleVisibleQr('c1', true);
+
+    const req = http.expectOne(`${base}/c1`);
+    req.flush(
+      { detail: 'Solo un Administrador puede cambiar la visibilidad en el menú QR' },
+      { status: 403, statusText: 'Forbidden' },
+    );
+
+    await promise;
+    expect(service.otherError()).toBe(
+      'Solo un Administrador puede cambiar la visibilidad en el menú QR',
+    );
   });
 });

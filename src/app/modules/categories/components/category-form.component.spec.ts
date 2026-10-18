@@ -16,6 +16,7 @@ function makeCategory(partial: Partial<Category> = {}): Category {
     name: 'Bebidas',
     description: 'Gaseosas, jugos y aguas',
     active: true,
+    visible_en_qr: true,
     display_order: 10,
     created_at: '2026-09-01T00:00:00Z',
     ...partial,
