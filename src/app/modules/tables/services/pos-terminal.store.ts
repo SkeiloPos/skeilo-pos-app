@@ -2852,14 +2852,33 @@ export class PosTerminalStore {
     }
   }
 
-  /** Tras cobrar: arma las facturas, refresca todo y suelta la selección. */
+  /**
+   * Tras cobrar: arma las facturas y refresca todo.
+   *
+   * A pedido del usuario: ya no suelta la mesa seleccionada — cobrar no debe
+   * expulsar al cajero de vuelta a la grilla de la Terminal; se queda en la
+   * misma mesa (con el estado ya actualizado por `reload()`: liberada si no
+   * quedaba nada más por cobrar, o con el resto de sus pedidos si la mesa
+   * tenía varios en paralelo, A-138). Solo se limpia la selección por
+   * completo cuando el pedido cobrado no tenía mesa (mostrador/domicilio/
+   * para llevar), donde no hay ninguna página de detalle de mesa en la que
+   * quedarse.
+   */
   async onCharged(closed: CloseSessionResponse): Promise<void> {
     const total = Number(this.sessionBill()?.total ?? 0);
     this.lastSale.set({ total, customer: this.customerName() || 'Mesa' });
     this.successOpen.set(true);
     this.sessionBill.set(null);
+    const tableId = this.selectedTableId();
     await Promise.all([this.loadReceipts(closed), this.reload()]);
-    this.cancelSelection();
+    // No se toca `selectedOrderId`: si el pedido seleccionado seguía
+    // existiendo tras el cierre (p. ej. la mesa tenía otro pedido en
+    // paralelo sin incluir en este cobro, A-138), `selectedOrder()` lo sigue
+    // resolviendo tal cual; si ya no existe (se cobró y la sesión se
+    // cerró), `selectedOrder()` cae a `null` por su cuenta y
+    // `centralState()` decide solo, por `tableOrders(tableId)`, si queda
+    // algo que mostrar o si la mesa pasa a verse libre.
+    if (!tableId) this.cancelSelection();
   }
 
   /**
@@ -2927,7 +2946,15 @@ export class PosTerminalStore {
       // Spec 125 (FR-001): el modal de éxito que se abre arriba ya es la única
       // confirmación — este toast duplicaba el mismo aviso.
       await this.reload();
-      this.cancelSelection();
+      // A pedido del usuario: cobrar un pedido de una mesa ya no suelta la
+      // selección por completo -- el cajero se queda en esa misma mesa y en
+      // ese mismo pedido, ahora visto con el estado actualizado (ya pagado);
+      // si la mesa tenía otros pedidos en paralelo (A-138), siguen ahí para
+      // cobrarlos sin tener que volver a buscar la mesa en la grilla. Un
+      // pedido sin mesa (mostrador/domicilio/para llevar) sí suelta la
+      // selección por completo, como antes: no hay ninguna página de
+      // detalle de mesa en la que quedarse.
+      if (!order.dining_table_id) this.cancelSelection();
       return true;
     } catch (err) {
       // Spec 125 (FR-008): un solo mensaje de error — antes también disparaba

@@ -558,14 +558,15 @@ describe('TableSessionsComponent — columna de detalle: una sola columna flex a
     expect(scrollWrappers).toHaveLength(1);
   });
 
-  it('el botón de volver y la barra de pestañas/campana siguen shrink-0', () => {
+  it('la fila del título dentro de la columna de detalle sigue shrink-0 (el botón de volver ya vive en la sub-barra, fuera de este flujo)', () => {
     store.orders.set([conPedido()]);
     store.selectedTableId.set('t1');
     fixture.detectChanges();
 
-    const back = fixture.nativeElement.querySelector('[data-testid="page-back-button"]')
-      ?.parentElement as HTMLElement;
-    expect(back.className).toContain('shrink-0');
+    const titulo = Array.from(fixture.nativeElement.querySelectorAll('span')).find(
+      (s) => (s as HTMLElement).textContent?.trim() === 'Pedido de la mesa',
+    ) as HTMLElement;
+    expect(titulo.parentElement!.className).toContain('shrink-0');
   });
 
   it('el @switch del panel central y app-pos-checkout-panel viven juntos en una única región flex-1 min-h-0 overflow-y-auto (hotfix posterior)', () => {
@@ -866,6 +867,49 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
     fixture.detectChanges();
     expect(cta().disabled).toBe(false);
   });
+
+  it(
+    'con una mesa seleccionada que tiene un pedido sin pagar o con saldo pendiente, el CTA ' +
+      'sigue habilitado (spec 126, A-138: revierte A-137 — "Crear pedido nuevo" nunca se ' +
+      'condiciona al saldo de la mesa)',
+    () => {
+      store.setOrderTypeTab('mesas');
+      store.orders.set([
+        {
+          id: 'o1',
+          channel: 'POS',
+          status: 'recibida',
+          version: 1,
+          dining_table_id: 't1',
+          customer_name: null,
+          created_at: '2026-08-28T10:00:00',
+          items: [],
+        } as DiningOrder,
+      ]);
+      store.selectedTableId.set('t1');
+      fixture.detectChanges();
+
+      expect(cta().disabled).toBe(false); // pedido 'recibida' sin pagar — A-138
+
+      store.orders.set([
+        {
+          id: 'o1',
+          channel: 'POS',
+          status: 'recibida',
+          version: 1,
+          dining_table_id: 't1',
+          customer_name: null,
+          created_at: '2026-08-28T10:00:00',
+          items: [],
+          paid: true,
+          pending_balance: '15000',
+        } as DiningOrder,
+      ]);
+      fixture.detectChanges();
+
+      expect(cta().disabled).toBe(false); // pagado con saldo pendiente (spec 123) — A-138
+    },
+  );
 });
 
 // spec 111 (FR-001/FR-008): al volver de "Nueva orden" con un pedido recién creado, esta pantalla
