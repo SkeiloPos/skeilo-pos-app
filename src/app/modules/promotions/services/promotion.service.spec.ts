@@ -8,6 +8,8 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { PromotionService } from './promotion.service';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
+import type { PromotionForm } from '../interfaces/promotion.interface';
 
 /** Drain pending microtasks so the reactive query effect fires the HTTP request. */
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -59,5 +61,119 @@ describe('PromotionService — hora sincronizada con el servidor (A-09)', () => 
 
     expect(service.ready()).toBe(true);
     expect(service.now().toISOString()).toBe('2026-08-18T22:32:00.000Z');
+  });
+});
+
+/** spec 127 (FR-001): respaldo de `toCreate()` cuando `form.starts_at` llega
+ *  vacío — mismo defecto UTC-vs-local que `continueToConfigure()`, pero en
+ *  el constructor del payload en vez del componente. */
+describe('PromotionService.create — starts_at usa el día calendario LOCAL del tenant (spec 127)', () => {
+  let service: PromotionService;
+  let http: HttpTestingController;
+  let tenantInfo: TenantInfoService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        PromotionService,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+      ],
+    });
+    service = TestBed.inject(PromotionService);
+    http = TestBed.inject(HttpTestingController);
+    tenantInfo = TestBed.inject(TenantInfoService);
+  });
+
+  afterEach(() => {
+    http.verify();
+    vi.useRealTimers();
+  });
+
+  const formWithoutStartsAt: PromotionForm = {
+    name: '2x1 Granizados',
+    starts_at: null,
+    ends_at: null,
+    days_of_week: [],
+    start_time: null,
+    end_time: null,
+    type: 'package_price',
+    rules: [],
+  };
+
+  it('sin starts_at explícito, el payload usa el día LOCAL del tenant, no el día UTC', async () => {
+    // 2026-10-19T02:00:00Z = 2026-10-18 21:00 hora de Bogotá (UTC-5).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-19T02:00:00Z'));
+    tenantInfo.info.set({
+      id: 1,
+      name: 'Heladería de prueba',
+      host: 'prueba.skeilopos.com',
+      logo_url: null,
+      receipt_message: null,
+      timezone: 'America/Bogota',
+    });
+
+    void service.create(formWithoutStartsAt, 'draft');
+
+    const req = http.expectOne((r) => r.url === base && r.method === 'POST');
+    expect(req.request.body.starts_at).toBe('2026-10-18');
+    req.flush({ id: 'new-id' });
+  });
+});
+
+/** spec 127 (FR-005): `starts_at` ahora viaja en `PATCH /promotions/{id}`,
+ *  pero el backend solo la acepta mientras la promoción sigue en `draft`
+ *  (409 fuera de ese estado) -- `includeStartsAt` evita reenviarla sin
+ *  querer cuando el campo del formulario está deshabilitado. */
+describe('PromotionService.update — starts_at solo viaja cuando includeStartsAt (spec 127)', () => {
+  let service: PromotionService;
+  let http: HttpTestingController;
+
+  const form: PromotionForm = {
+    name: 'Promo',
+    starts_at: '2026-10-18',
+    ends_at: null,
+    days_of_week: [],
+    start_time: null,
+    end_time: null,
+    type: 'package_price',
+    rules: [],
+  };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        PromotionService,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+      ],
+    });
+    service = TestBed.inject(PromotionService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('includeStartsAt=true (default): el PATCH incluye starts_at', () => {
+    void service.update('p1', form);
+
+    const req = http.expectOne((r) => r.url === `${base}/p1` && r.method === 'PATCH');
+    expect(req.request.body.starts_at).toBe('2026-10-18');
+    req.flush({ id: 'p1' });
+  });
+
+  it('includeStartsAt=false: el PATCH NO incluye starts_at', () => {
+    void service.update('p1', form, false);
+
+    const req = http.expectOne((r) => r.url === `${base}/p1` && r.method === 'PATCH');
+    expect('starts_at' in req.request.body).toBe(false);
+    req.flush({ id: 'p1' });
   });
 });

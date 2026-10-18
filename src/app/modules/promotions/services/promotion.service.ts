@@ -5,6 +5,8 @@ import { Observable, firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { Page } from '../../../core/interfaces/page.interface';
 import { injectPagedQuery } from '../../../core/query/paged-query';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
+import { businessToday } from '../../../shared/date-format.util';
 import {
   OverlapConflictError,
   PackageNotDiscountError,
@@ -32,10 +34,16 @@ interface PromotionErrorBody {
   message?: string;
 }
 
+/** Zona horaria de respaldo mientras `TenantInfoService.info()` aún no cargó
+ *  (spec 127: mismo patrón ya usado en `reports.service.ts`/
+ *  `tenant-date.pipe.ts`). */
+const DEFAULT_TIMEZONE = 'America/Bogota';
+
 @Injectable({ providedIn: 'root' })
 export class PromotionService {
   private readonly http = inject(HttpClient);
   private readonly queryClient = inject(QueryClient);
+  private readonly tenantInfo = inject(TenantInfoService);
   private readonly baseUrl = `${environment.apiBaseUrl}/promotions`;
 
   readonly isSubmitting = signal(false);
@@ -175,9 +183,15 @@ export class PromotionService {
     );
   }
 
-  /** `PATCH /promotions/{id}` — solo campos escalares (FR-018). */
-  update(id: string, form: PromotionForm): Promise<Promotion | null> {
+  /** `PATCH /promotions/{id}` — solo campos escalares (FR-018). `includeStartsAt`
+   *  (spec 127, FR-005): el backend rechaza con 409 cualquier payload que
+   *  incluya `starts_at` fuera de `draft` -- el campo del formulario queda
+   *  deshabilitado (no editable) en ese caso, pero `toScalars()` siempre lo
+   *  serializa, así que el caller debe pedir excluirlo explícitamente en vez
+   *  de reenviar sin querer el mismo valor sin cambios. */
+  update(id: string, form: PromotionForm, includeStartsAt = true): Promise<Promotion | null> {
     const payload: PromotionUpdatePayload = this.toScalars(form);
+    if (!includeStartsAt) delete payload.starts_at;
     return this.submit(() => this.http.patch<Promotion>(`${this.baseUrl}/${id}`, payload));
   }
 
@@ -259,7 +273,12 @@ export class PromotionService {
     return {
       ...this.toScalars(form),
       status,
-      starts_at: form.starts_at ?? new Date().toISOString(),
+      // spec 127: respaldo con el día calendario LOCAL del tenant, no el día
+      // UTC (`new Date().toISOString()` ya cae en "mañana" desde las 19:00
+      // en Bogotá) — mismo defecto y misma corrección que
+      // `continueToConfigure()` en `promotions-page.component.ts`.
+      starts_at:
+        form.starts_at ?? businessToday(this.tenantInfo.info()?.timezone ?? DEFAULT_TIMEZONE),
       rules: this.toRules(form),
     };
   }
@@ -267,6 +286,11 @@ export class PromotionService {
   private toScalars(form: PromotionForm) {
     return {
       name: form.name.trim(),
+      // spec 127 (FR-005): se suma a `update()` -- el backend solo la acepta
+      // mientras la promoción sigue en `draft` (409 fuera de ese estado);
+      // `toCreate()` la sobreescribe igual que antes con el respaldo
+      // `businessToday()` cuando no se indicó explícitamente.
+      starts_at: form.starts_at || null,
       ends_at: form.ends_at || null,
       days_of_week: this.daysToStr(form.days_of_week),
       start_time: form.start_time || null,
