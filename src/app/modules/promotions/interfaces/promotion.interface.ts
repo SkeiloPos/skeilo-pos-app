@@ -116,6 +116,10 @@ export interface PromotionRuleInPayload {
  *  sigue existiendo, sin cambios, para no perder datos históricos). */
 interface PromotionScalars {
   name: string;
+  /** spec 127 (FR-005): editable en update, pero el backend solo la acepta
+   *  mientras la promoción sigue en `draft` (409 fuera de ese estado) — ver
+   *  `PromotionCreatePayload`, donde además es obligatoria. */
+  starts_at: string | null;
   ends_at: string | null;
   days_of_week: string | null;
   start_time: string | null;
@@ -137,6 +141,7 @@ export interface PromotionCreatePayload extends PromotionScalars {
  * (revisión 2026-09-01, FR-018): `type`/`value`/`min_qty`/conjunto ya no
  * existen aquí — viven en cada regla y solo se editan por
  * `PATCH /{id}/shape`, y solo en borrador (reemplazo completo de la lista).
+ * spec 127 (FR-005): `starts_at` se suma a los escalares editables.
  */
 export type PromotionUpdatePayload = Partial<PromotionScalars>;
 

@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 import { provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
@@ -422,75 +423,6 @@ describe('PosOrderPanelComponent — reparto de alto: lista de productos sin scr
     expect(list).toBeTruthy();
     expect(list.className).not.toMatch(/\bh-\[/);
     expect(list.className).not.toMatch(/\bmin-h-\[/);
-  });
-});
-
-/** Spec 029, Historia 3 (FR-013): el encabezado del pedido distingue tres
- *  estados — "en preparación", "pago pendiente" y "listo para cobrar" —, ya
- *  no solo dos. */
-describe('PosOrderPanelComponent — encabezado de tres estados (spec 029)', () => {
-  let fixture: ComponentFixture<PosOrderPanelComponent>;
-  let store: PosTerminalStore;
-  let http: HttpTestingController;
-
-  function orderCon(estado: 'pendiente' | 'listo', paid: boolean): DiningOrder {
-    return {
-      id: 'o1',
-      channel: 'POS',
-      status: 'abierta',
-      version: 1,
-      dining_table_id: 't1',
-      customer_name: null,
-      created_at: '2026-08-21T10:00:00',
-      paid,
-      items: [{ id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '10000', estado_cocina: estado }],
-    } as DiningOrder;
-  }
-
-  beforeEach(() => {
-    TestBed.resetTestingModule();
-    TestBed.configureTestingModule({
-      imports: [PosOrderPanelComponent],
-      providers: [
-        PosTerminalStore,
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        provideTanStackQuery(new QueryClient()),
-        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
-      ],
-    });
-
-    fixture = TestBed.createComponent(PosOrderPanelComponent);
-    store = TestBed.inject(PosTerminalStore);
-    http = TestBed.inject(HttpTestingController);
-    store.selectedTableId.set('t1');
-    store.selectedOrderId.set('o1');
-  });
-
-  afterEach(() => http.verify());
-
-  // El texto "Pedido · <estado>" que mostraba estos tres valores se retiró de
-  // la cabecera (dejaba de caber junto a las pestañas "Pedido N", movidas al
-  // lado del botón de cerrar) -- headerStatusText() sigue existiendo y
-  // decidiendo la insignia "Cobro pendiente", así que estas pruebas verifican
-  // el método directamente en vez de buscar el texto en el DOM.
-  it('cocina en curso → "en preparación", sin importar el pago', () => {
-    store.orders.set([orderCon('pendiente', false)]);
-    fixture.detectChanges();
-    expect(fixture.componentInstance.headerStatusText()).toBe('en preparación');
-  });
-
-  it('cocina lista pero sin pagar → "pago pendiente" (insignia "Cobro pendiente" visible)', () => {
-    store.orders.set([orderCon('listo', false)]);
-    fixture.detectChanges();
-    expect(fixture.componentInstance.headerStatusText()).toBe('pago pendiente');
-    expect(fixture.nativeElement.textContent).toContain('Cobro pendiente');
-  });
-
-  it('cocina lista y pagado → "listo para cobrar"', () => {
-    store.orders.set([orderCon('listo', true)]);
-    fixture.detectChanges();
-    expect(fixture.componentInstance.headerStatusText()).toBe('listo para cobrar');
   });
 });
 
@@ -1142,5 +1074,238 @@ describe('PosOrderPanelComponent — una sola card para adiciones sucesivas con 
     expect(strike).toBeTruthy();
     expect(strike.textContent?.trim()).toBe(store.fmt(14000));
     expect(row.textContent).toContain(store.fmt(12000));
+  });
+});
+
+/**
+ * El selector "Agregar adición" rechazaba con 422 ("Esa opción ya está en la
+ * línea") al elegir un topping que la línea ya tenía -- único camino era
+ * anular la línea entera. Ahora, si la opción ya está en la línea, el mismo
+ * botón sube su cantidad (PATCH) en vez de intentar agregarla de nuevo (POST).
+ */
+describe('PosOrderPanelComponent — reutilizar "Agregar adición" para subir cantidad', () => {
+  let fixture: ComponentFixture<PosOrderPanelComponent>;
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+  let menuService: MenuService;
+
+  function pedidoConAdicion(): DiningOrder {
+    return {
+      id: 'o1',
+      channel: 'POS',
+      status: 'abierta',
+      dining_table_id: 't1',
+      customer_name: null,
+      created_at: '2026-08-21T10:00:00',
+      paid: false,
+      items: [{
+        id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '8000',
+        estado_cocina: 'pendiente',
+        options: [{ id: 'oio1', option_id: 'opt1', quantity: 3, name: 'Gomita' }],
+      }],
+    } as DiningOrder;
+  }
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [PosOrderPanelComponent],
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+
+    fixture = TestBed.createComponent(PosOrderPanelComponent);
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+    menuService = TestBed.inject(MenuService);
+    menuService.categories.set([{
+      id: 'c1', name: 'Helados', products: [{
+        id: 'p1', name: 'Ojo de Diablo', description: null, image_url: null, available: true,
+        option_groups: [],
+        variants: [{
+          id: 'v1', name: '8 onz', price: 8000, available: true,
+          option_groups: [{
+            id: 'g1', name: 'Toppings', min_select: 0, max_select: 99, consume: false,
+            selection_mode: 'cantidad', max_quantity_per_option: null, max_total_quantity: null,
+            options: [
+              { id: 'opt1', name: 'Gomita', extra_price: 1000, available: true },
+              { id: 'opt2', name: 'Cinta acida', extra_price: 1000, available: true },
+            ],
+          }],
+        }],
+      }],
+    }]);
+    store.catalogCategoryId.set('c1');
+    store.orders.set([pedidoConAdicion()]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    store.openAdditionPicker('i1', 'v1');
+    fixture.detectChanges();
+  });
+
+  afterEach(() => http.verify());
+
+  const filaDe = (nombre: string): HTMLElement =>
+    Array.from(fixture.nativeElement.querySelectorAll('.border-b.border-gray-50')).find((row) =>
+      (row as HTMLElement).textContent?.includes(nombre),
+    ) as HTMLElement;
+
+  // La fila tiene hasta cuatro botones: stepper "−", stepper "+", el de confirmar
+  // (Agregar/Actualizar, único con fondo indigo) y, solo si ya está en la línea, el
+  // de quitarla -- se identifica por clase, no por posición, porque ese último varía.
+  const confirmarBotonDe = (fila: HTMLElement): HTMLButtonElement =>
+    fila.querySelector('button.bg-indigo-600') as HTMLButtonElement;
+  const quitarBotonDe = (fila: HTMLElement): HTMLButtonElement | null =>
+    fila.querySelector('button[title="Quitar esta adición de la línea"]');
+  const stepperBotonDe = (fila: HTMLElement, simbolo: '−' | '+'): HTMLButtonElement =>
+    (Array.from(fila.querySelectorAll('button')) as HTMLButtonElement[]).find(
+      (b) => b.textContent?.trim() === simbolo,
+    )!;
+
+  it('la opción ya en la línea arranca en su cantidad actual (no en "actual + 1") y el botón dice "Actualizar"', () => {
+    const fila = filaDe('Gomita');
+    expect(fila.textContent).toContain('Ya en la línea: x3');
+    expect(confirmarBotonDe(fila).textContent?.trim()).toBe('Actualizar');
+    const input = fila.querySelector('input') as HTMLInputElement;
+    // No asume que el cajero quiere una unidad más -- arranca en lo que ya hay.
+    expect(input.value).toBe('3');
+    // El PATCH admite bajar la cantidad -- el `min` nunca baja de 1 (no de 0).
+    expect(input.min).toBe('1');
+  });
+
+  it('una opción nueva arranca en 0 (no en 1) -- no asume que siempre se agrega al menos una unidad', () => {
+    const fila = filaDe('Cinta acida');
+    expect(fila.textContent).not.toContain('Ya en la línea');
+    expect(confirmarBotonDe(fila).textContent?.trim()).toBe('Agregar');
+    const input = fila.querySelector('input') as HTMLInputElement;
+    expect(input.value).toBe('0');
+    expect(input.min).toBe('0');
+  });
+
+  it('el botón de confirmar arranca deshabilitado (0 en una opción nueva, o la misma cantidad en una existente) y se habilita al mover el contador', () => {
+    const nueva = filaDe('Cinta acida');
+    expect(confirmarBotonDe(nueva).disabled).toBe(true);
+    stepperBotonDe(nueva, '+').click();
+    fixture.detectChanges();
+    expect(confirmarBotonDe(nueva).disabled).toBe(false);
+
+    const existente = filaDe('Gomita');
+    expect(confirmarBotonDe(existente).disabled).toBe(true);
+    stepperBotonDe(existente, '+').click();
+    fixture.detectChanges();
+    expect(confirmarBotonDe(existente).disabled).toBe(false);
+  });
+
+  it('el stepper +/- incrementa y decrementa el campo, sin bajar del mínimo de cada caso', () => {
+    const fila = filaDe('Gomita');
+    const input = fila.querySelector('input') as HTMLInputElement;
+    expect(input.value).toBe('3');
+
+    stepperBotonDe(fila, '+').click();
+    fixture.detectChanges();
+    expect(input.value).toBe('4');
+
+    stepperBotonDe(fila, '−').click();
+    stepperBotonDe(fila, '−').click();
+    stepperBotonDe(fila, '−').click();
+    stepperBotonDe(fila, '−').click();
+    fixture.detectChanges();
+    expect(input.value).toBe('1'); // existente: nunca baja de additionQtyMinFor (1)
+
+    const botonMenos = stepperBotonDe(fila, '−');
+    expect(botonMenos.disabled).toBe(true);
+  });
+
+  it('el stepper "−" de una opción nueva se deshabilita en 0, no en 1', () => {
+    const fila = filaDe('Cinta acida');
+    const input = fila.querySelector('input') as HTMLInputElement;
+    expect(input.value).toBe('0');
+    expect(stepperBotonDe(fila, '−').disabled).toBe(true);
+
+    stepperBotonDe(fila, '+').click();
+    fixture.detectChanges();
+    expect(input.value).toBe('1');
+    expect(stepperBotonDe(fila, '−').disabled).toBe(false);
+
+    stepperBotonDe(fila, '−').click();
+    fixture.detectChanges();
+    expect(input.value).toBe('0');
+    expect(stepperBotonDe(fila, '−').disabled).toBe(true);
+  });
+
+  it('"Actualizar" con una cantidad menor a la actual también llama a store.updateAdditionQuantity', () => {
+    const update = vi.spyOn(store, 'updateAdditionQuantity').mockResolvedValue(undefined);
+
+    const fila = filaDe('Gomita');
+    const input = fila.querySelector('input') as HTMLInputElement;
+    input.value = '1';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges(); // el botón pasa de deshabilitado (1 ≠ 3) a habilitado
+
+    confirmarBotonDe(fila).click();
+
+    expect(update).toHaveBeenCalledWith('opt1', 1);
+  });
+
+  it('"Actualizar" llama a store.updateAdditionQuantity (PATCH), no a confirmAddition (POST)', () => {
+    // El resto del flujo HTTP de `updateAdditionQuantity`/`confirmAddition` (incluido su
+    // `reload()` en cascada) ya está cubierto en `pos-terminal.store.spec.ts` -- aquí solo
+    // importa a cuál de los dos métodos enruta el botón reutilizado.
+    const update = vi.spyOn(store, 'updateAdditionQuantity').mockResolvedValue(undefined);
+    const confirm = vi.spyOn(store, 'confirmAddition').mockResolvedValue(undefined);
+
+    const fila = filaDe('Gomita');
+    stepperBotonDe(fila, '+').click(); // 3 -> 4: sin mover el contador, el botón sigue deshabilitado
+    fixture.detectChanges();
+    confirmarBotonDe(fila).click();
+
+    expect(update).toHaveBeenCalledWith('opt1', 4);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('"Agregar" sobre una opción nueva sigue llamando a store.confirmAddition (POST)', () => {
+    const update = vi.spyOn(store, 'updateAdditionQuantity').mockResolvedValue(undefined);
+    const confirm = vi.spyOn(store, 'confirmAddition').mockResolvedValue(undefined);
+
+    const fila = filaDe('Cinta acida');
+    stepperBotonDe(fila, '+').click(); // 0 -> 1: el cajero elige explícitamente cuántas quiere
+    fixture.detectChanges();
+    confirmarBotonDe(fila).click();
+
+    expect(confirm).toHaveBeenCalledWith('opt2', 1);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('solo la opción ya en la línea tiene botón para quitarla', () => {
+    expect(quitarBotonDe(filaDe('Gomita'))).toBeTruthy();
+    expect(quitarBotonDe(filaDe('Cinta acida'))).toBeNull();
+  });
+
+  it('el botón de quitar llama a store.removeAddition con el id de la opción', () => {
+    const remove = vi.spyOn(store, 'removeAddition').mockResolvedValue(undefined);
+
+    quitarBotonDe(filaDe('Gomita'))!.click();
+
+    expect(remove).toHaveBeenCalledWith('opt1');
+  });
+
+  it('"Agregar adición" en la línea desaparece si la variante no tiene ningún grupo de opciones configurado', () => {
+    menuService.categories.set([{
+      id: 'c1', name: 'Helados', products: [{
+        id: 'p1', name: 'Ojo de Diablo', description: null, image_url: null, available: true,
+        option_groups: [],
+        variants: [{ id: 'v1', name: '8 onz', price: 8000, available: true, option_groups: [] }],
+      }],
+    }]);
+    store.closeAdditionPicker();
+    fixture.detectChanges();
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).not.toContain('Agregar adición');
   });
 });

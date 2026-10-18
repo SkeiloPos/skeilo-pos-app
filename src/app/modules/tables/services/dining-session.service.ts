@@ -3,8 +3,10 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import {
+  AddAdditionPayload,
   CheckoutAndSendPayload,
   CheckoutPreview,
+  ComplementaryPaymentPayload,
   DiningOrder,
   DiningOrderItem,
   DiningOrderStatus,
@@ -231,6 +233,57 @@ export class DiningSessionService {
   async voidItem(itemId: string, motivo: string): Promise<DiningOrder> {
     return firstValueFrom(
       this.http.post<DiningOrder>(`${this.api}/orders/items/${itemId}/void`, { motivo }),
+    );
+  }
+
+  /**
+   * Agrega una adición a una línea de pedido ya creada (spec 123), mientras
+   * siga `pendiente`/`en_preparacion`. Si el pedido ya tenía factura emitida,
+   * no la toca: el nuevo saldo pendiente viaja en `pending_balance` de la
+   * respuesta, sin cobrarse todavía.
+   */
+  async addAddition(itemId: string, body: AddAdditionPayload): Promise<DiningOrder> {
+    return firstValueFrom(
+      this.http.post<DiningOrder>(`${this.api}/orders/items/${itemId}/additions`, body),
+    );
+  }
+
+  /**
+   * Sube o baja la cantidad de una adición que ya está en la línea (spec 123), en vez
+   * de forzar a anular la línea para ajustar un topping ya agregado. `quantity` es el
+   * total nuevo (no un delta); el backend rechaza repetir la misma cantidad.
+   */
+  async updateAdditionQuantity(
+    itemId: string, optionId: string, quantity: number,
+  ): Promise<DiningOrder> {
+    return firstValueFrom(
+      this.http.patch<DiningOrder>(
+        `${this.api}/orders/items/${itemId}/additions/${optionId}`, { quantity },
+      ),
+    );
+  }
+
+  /**
+   * Quita del todo una adición que ya está en la línea (spec 123), en vez de forzar a
+   * anular la línea entera para deshacerla. El backend rechaza quitar una opción
+   * obligatoria que dejaría la línea sin el mínimo exigido (p. ej. un sabor).
+   */
+  async removeAddition(itemId: string, optionId: string): Promise<DiningOrder> {
+    return firstValueFrom(
+      this.http.delete<DiningOrder>(`${this.api}/orders/items/${itemId}/additions/${optionId}`),
+    );
+  }
+
+  /**
+   * Cobra el saldo pendiente de un pedido como pago complementario (spec
+   * 123): genera una factura independiente vinculada al pedido, sin
+   * modificar la factura original. Siempre un único método de pago (FR-018).
+   */
+  async settleComplementaryPayment(
+    orderId: string, body: ComplementaryPaymentPayload,
+  ): Promise<Sale> {
+    return firstValueFrom(
+      this.http.post<Sale>(`${this.api}/orders/${orderId}/complementary-payment`, body),
     );
   }
 

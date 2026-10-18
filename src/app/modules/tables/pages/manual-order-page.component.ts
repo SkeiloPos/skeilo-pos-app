@@ -318,7 +318,13 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               <button
                 type="button"
                 (click)="setOrderTypeTab('mesas')"
-                class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all"
+                [disabled]="mesaConPedidoExistente()"
+                [title]="
+                  mesaConPedidoExistente()
+                    ? 'Esta mesa ya tiene otro pedido: el tipo de orden no se puede cambiar.'
+                    : ''
+                "
+                class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 [class]="
                   store.orderTypeTab() === 'mesas'
                     ? 'bg-white text-gray-900 font-semibold border border-gray-200'
@@ -335,7 +341,13 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               <button
                 type="button"
                 (click)="setOrderTypeTab('para-llevar')"
-                class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all"
+                [disabled]="mesaConPedidoExistente()"
+                [title]="
+                  mesaConPedidoExistente()
+                    ? 'Esta mesa ya tiene otro pedido: el tipo de orden no se puede cambiar.'
+                    : ''
+                "
+                class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 [class]="
                   store.orderTypeTab() === 'para-llevar'
                     ? 'bg-white text-gray-900 font-semibold border border-gray-200'
@@ -352,7 +364,13 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               <button
                 type="button"
                 (click)="setOrderTypeTab('domicilios')"
-                class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all"
+                [disabled]="mesaConPedidoExistente()"
+                [title]="
+                  mesaConPedidoExistente()
+                    ? 'Esta mesa ya tiene otro pedido: el tipo de orden no se puede cambiar.'
+                    : ''
+                "
+                class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 [class]="
                   store.orderTypeTab() === 'domicilios'
                     ? 'bg-white text-gray-900 font-semibold border border-gray-200'
@@ -397,6 +415,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     placeholder="Buscar mesa…"
                     [options]="mesaOptions()"
                     [ngModel]="store.selectedTableId()"
+                    [disabled]="mesaConPedidoExistente()"
                     (ngModelChange)="selectTable($event)"
                   />
                 </div>
@@ -586,7 +605,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     <div class="col-span-3 text-right pr-3">
                       @if (it.promo; as promo) {
                         <div
-                          class="font-semibold text-[15px] text-red-600 tabular-nums font-mono"
+                          class="font-semibold text-[15px] text-indigo-600 tabular-nums font-mono"
                         >
                           {{ store.fmt(promo.discountedAmount) }}
                         </div>
@@ -671,7 +690,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                       <div class="text-right shrink-0">
                         @if (it.promo; as promo) {
                           <div
-                            class="font-semibold text-[15px] text-red-600 tabular-nums font-mono"
+                            class="font-semibold text-[15px] text-indigo-600 tabular-nums font-mono"
                           >
                             {{ store.fmt(promo.discountedAmount) }}
                           </div>
@@ -892,6 +911,20 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
     this.store.orderTypeTab();
     this.store.deliveryFee();
     void this.store.loadDraftPreview();
+  });
+
+  /**
+   * spec 126 (A-138): esta pantalla arma siempre un pedido nuevo, nunca edita
+   * uno existente -- pero cuando se llega aquí con una mesa que YA tiene otro
+   * pedido (p. ej. "+ Crear pedido nuevo" sobre una mesa ocupada, o con saldo
+   * pendiente), el tipo de orden y la mesa asignada deben quedar fijos: el
+   * cajero no debe poder reasignar este segundo pedido a otra mesa ni a
+   * Para llevar/Domicilio a mitad de armado -- solo puede volver al catálogo
+   * y agregar productos, o volver a la Terminal sin guardar nada.
+   */
+  readonly mesaConPedidoExistente = computed(() => {
+    const t = this.store.selectedTableId();
+    return !!t && this.store.orders().some((o) => o.dining_table_id === t);
   });
 
   /** Opciones del select buscable de mesas (spec 053, corrección posterior:

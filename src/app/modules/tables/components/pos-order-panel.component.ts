@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { KitchenStatus, getSidebarMode } from '../interfaces/dining.interface';
 import { kitchenStatusClass, kitchenStatusLabel } from '../../orders/order-status.util';
@@ -123,15 +123,6 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                     </button>
                   }
                 </div>
-              }
-              <!-- Mismo dato que ya calculaba headerStatusText() ("pago
-                   pendiente"), ahora también como insignia visible de un
-                   vistazo -- no se inventa ningún estado nuevo. -->
-              @if (headerStatusText() === 'pago pendiente') {
-                <span
-                  class="px-2.5 py-1 rounded-[6px] bg-indigo-600 text-white text-[11px] font-semibold whitespace-nowrap"
-                  >Cobro pendiente</span
-                >
               }
             </div>
           </div>
@@ -287,6 +278,15 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                             {{ statusLabel(estado) }}
                           </span>
                         }
+                        <!-- spec 123: la línea tiene al menos una adición
+                           agregada después de que el pedido ya se cobró. -->
+                        @if (it.modificada) {
+                          <span
+                            class="px-2 py-0.5 rounded-[6px] bg-amber-50 text-amber-700 font-semibold"
+                          >
+                            Modificada
+                          </span>
+                        }
                       </div>
                       <div class="flex items-center gap-3">
                         <!-- Marcar listo desde aquí es lo que sustituye al tablero de
@@ -303,6 +303,28 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                           >
                             Marcar listo
                           </button>
+                        }
+                        <!-- spec 123 (FR-001 a FR-003): solo mientras la línea
+                           siga "pendiente"/"en_preparacion" (!it.ready) y no
+                           sea un combo -- disponible aunque el pedido ya esté
+                           pagado (a diferencia de "Anular", abajo). Además,
+                           solo si la variante tiene algún grupo de opciones
+                           configurado -- si no, el selector solo mostraría
+                           el estado vacío. -->
+                        @if (!it.ready && !it.comboId && store.variantHasAdditionOptions(it.variantId)) {
+                          <button
+                            (click)="store.openAdditionPicker(it.itemIds[0], it.variantId!)"
+                            [disabled]="store.submitting()"
+                            class="px-2.5 py-1 rounded-[6px] border border-blue-200 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 transition-colors"
+                          >
+                            Agregar adición
+                          </button>
+                        } @else if (it.ready) {
+                          <!-- FR-003: texto de ayuda cuando la acción no está
+                             disponible por el estado de la línea. -->
+                          <span class="text-[11px] text-gray-400" title="Producto ya preparado: agrega un producto nuevo">
+                            Producto ya preparado
+                          </span>
                         }
                         <!-- Un pedido ya pagado se asume entregado: no se anula
                            (spec 029, FR-007). Mismo tratamiento outline que
@@ -381,10 +403,158 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
         }
       </div>
     }
+
+    <!-- spec 123: selector mínimo de "Agregar adición" -- lista las opciones
+       de la variante de la línea abierta; el cajero elige una y su
+       cantidad, y confirma. No valida min/max aquí: el backend es la
+       autoridad final (FR-008/FR-009). -->
+    @if (store.additionPickerItemId(); as itemId) {
+      <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+          <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+            <h2 class="text-sm font-semibold text-gray-900">Agregar adición</h2>
+            <button
+              type="button"
+              (click)="closeAdditionPicker()"
+              class="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+          <div class="p-4 max-h-96 overflow-y-auto">
+            @if (store.additionPickerOptions().length === 0) {
+              <p class="text-[12px] text-gray-500">
+                Este producto no tiene adiciones configuradas.
+              </p>
+            }
+            @for (entry of store.additionPickerOptions(); track entry.option.id) {
+              @let existingQty = store.additionPickerExistingQty().get(entry.option.id);
+              <div class="flex items-center justify-between gap-2 py-1.5 border-b border-gray-50 last:border-0">
+                <div class="text-[12px]">
+                  <div class="text-gray-900">{{ entry.option.name }}</div>
+                  <div class="text-gray-400">{{ entry.groupName }} · $ {{ entry.option.extra_price }}</div>
+                  @if (existingQty != null) {
+                    <div class="text-indigo-600">Ya en la línea: x{{ existingQty }}</div>
+                  }
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="flex items-center gap-1">
+                    <button
+                      type="button"
+                      [disabled]="additionQtyFor(entry.option.id) <= additionQtyMinFor(entry.option.id)"
+                      (click)="decAdditionQty(entry.option.id)"
+                      class="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-[13px] font-bold transition-colors disabled:opacity-40"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      [attr.min]="additionQtyMinFor(entry.option.id)"
+                      [value]="additionQtyFor(entry.option.id)"
+                      (input)="setAdditionQty(entry.option.id, +$any($event.target).value || additionQtyMinFor(entry.option.id))"
+                      class="w-10 border border-gray-200 rounded-[6px] text-[12px] px-1 py-1 text-center font-mono tabular-nums"
+                    />
+                    <button
+                      type="button"
+                      (click)="incAdditionQty(entry.option.id)"
+                      class="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-[13px] font-bold transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <button
+                    [disabled]="additionConfirmDisabled(entry.option.id)"
+                    (click)="confirmAdditionEntry(entry.option.id)"
+                    class="px-2.5 py-1 rounded-[6px] bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                  >
+                    {{ existingQty != null ? 'Actualizar' : 'Agregar' }}
+                  </button>
+                  @if (existingQty != null) {
+                    <button
+                      type="button"
+                      [disabled]="store.submitting()"
+                      (click)="store.removeAddition(entry.option.id)"
+                      title="Quitar esta adición de la línea"
+                      class="p-1 text-gray-400 hover:text-red-600 hover:bg-gray-100 rounded-[6px] disabled:opacity-50 transition-colors"
+                    >
+                      <app-mi-icon name="delete" ariaLabel="Quitar adición" [size]="16" />
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    }
   `,
 })
 export class PosOrderPanelComponent {
   readonly store = inject(PosTerminalStore);
+
+  /** spec 123: cantidad elegida en el selector de "Agregar adición" --
+   *  estado transitorio de UI, no vive en el store. Una entrada por
+   *  option.id para que cada adición tenga su propio contador. */
+  private readonly additionQty = signal<Record<string, number>>({});
+
+  /** El contador arranca en lo que de verdad hay -- 0 para una opción nueva, la
+   *  cantidad ya persistida para una que ya está en la línea -- nunca asumiendo que
+   *  el cajero quiere agregar/sumar 1 por defecto. El cajero decide con +/- cuánto
+   *  quiere, y "Agregar"/"Actualizar" se deshabilita mientras eso siga siendo nada
+   *  (0 para agregar) o lo mismo que ya hay (para actualizar). */
+  additionQtyFor(optionId: string): number {
+    const typed = this.additionQty()[optionId];
+    if (typed != null) return typed;
+    return this.store.additionPickerExistingQty().get(optionId) ?? 0;
+  }
+
+  /** Una opción nueva puede bajar hasta 0 (sin elegir nada); una ya persistida no
+   *  baja de 1 -- el PATCH siempre exige `quantity >= 1` (quitarla del todo va por
+   *  el botón de borrar, no por bajar el contador a 0). */
+  additionQtyMinFor(optionId: string): number {
+    return this.store.additionPickerExistingQty().has(optionId) ? 1 : 0;
+  }
+
+  /** Nada que enviar: 0 en una opción nueva (no se agrega nada) o la misma
+   *  cantidad que ya tiene una existente (el backend lo rechazaría igual). */
+  additionConfirmDisabled(optionId: string): boolean {
+    if (this.store.submitting()) return true;
+    const qty = this.additionQtyFor(optionId);
+    const existing = this.store.additionPickerExistingQty().get(optionId);
+    return existing != null ? qty === existing : qty === 0;
+  }
+
+  setAdditionQty(optionId: string, value: number): void {
+    this.additionQty.update((qty) => ({ ...qty, [optionId]: value }));
+  }
+
+  /** Stepper de botones -/+ (más accesible que las flechitas nativas del
+   *  `<input type="number">`, sobre todo para bajar la cantidad). */
+  incAdditionQty(optionId: string): void {
+    this.setAdditionQty(optionId, this.additionQtyFor(optionId) + 1);
+  }
+
+  decAdditionQty(optionId: string): void {
+    const next = this.additionQtyFor(optionId) - 1;
+    if (next >= this.additionQtyMinFor(optionId)) this.setAdditionQty(optionId, next);
+  }
+
+  /** La opción ya en la línea sube o baja su cantidad (PATCH); una nueva se agrega
+   *  (POST) -- reutiliza el mismo botón "Agregar adición" para los tres casos en
+   *  vez de obligar a anular la línea para ajustar un topping ya puesto. */
+  confirmAdditionEntry(optionId: string): void {
+    const qty = this.additionQtyFor(optionId);
+    if (this.store.additionPickerExistingQty().has(optionId)) {
+      this.store.updateAdditionQuantity(optionId, qty);
+    } else {
+      this.store.confirmAddition(optionId, qty);
+    }
+  }
+
+  closeAdditionPicker(): void {
+    this.additionQty.set({});
+    this.store.closeAdditionPicker();
+  }
 
   /**
    * Ítems del pedido seleccionado -- incluido un pago QR por confirmar,
@@ -398,11 +568,16 @@ export class PosOrderPanelComponent {
   readonly cartIsEmpty = computed(() => this.cartItems().length === 0);
 
   /** spec 087 (FR-004, A-88): el nombre del cliente se destaca en la
-   *  cabecera del pedido -- "Cliente sin nombre" solo para pedidos
-   *  históricos anteriores a esta spec (`customer_name` nulo/vacío), nunca
-   *  migrados. */
+   *  cabecera del pedido. Si el pedido no trae `customer_name` (p. ej. mesa
+   *  sin cliente capturado), sigue lo que el cajero escriba en "Facturar a
+   *  nombre de" del panel de cobro (`billingCustomerName`) -- es la única
+   *  forma de nombrar al cliente en ese caso, así que la cabecera debe
+   *  reflejarlo en vez de quedarse fija en "Consumidor Final". */
   readonly displayCustomerName = computed(
-    () => this.store.customerName().trim() || 'Cliente sin nombre',
+    () =>
+      this.store.customerName().trim() ||
+      this.store.billingCustomerName().trim() ||
+      'Consumidor Final',
   );
 
   /** Spec 036, US2, escenario 5: mismo criterio que ya usa
@@ -421,17 +596,6 @@ export class PosOrderPanelComponent {
   selectOrderTab(orderId: string): void {
     this.store.showAllOrders.set(false);
     this.store.selectOrder(orderId);
-  }
-
-  /**
-   * Spec 029, Historia 3: "listo para cobrar" exige pago Y cocina, las dos a
-   * la vez — antes solo miraba `kitchenReady()`. `kitchenReady()` en sí no
-   * cambia: sigue controlando, sin relación con el pago, cuándo se oculta
-   * el botón "Marcar pedido listo".
-   */
-  headerStatusText(): string {
-    if (!this.store.kitchenReady()) return 'en preparación';
-    return this.store.selectedOrder()?.paid ? 'listo para cobrar' : 'pago pendiente';
   }
 
   /**

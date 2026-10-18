@@ -77,7 +77,7 @@ describe('PaymentInputComponent', () => {
     expect(removeLineBtns().length).toBe(0);
   });
 
-  it('con efectivo elegido, el importe se precarga con el total y sigue editable', async () => {
+  it('con efectivo elegido, el campo "Con cuánto paga" nace precargado con el total (spec 124, FR-010/FR-012: revierte A-135 a pedido del usuario)', async () => {
     await chooseMethod('pm-cash');
 
     expect(amountEls()[0].value).toBe('12.000');
@@ -180,5 +180,100 @@ describe('PaymentInputComponent', () => {
 
     await chooseMethod('pm-transfer');
     expect(fixture.nativeElement.querySelector('input[placeholder*="comprobante"]')).not.toBeNull();
+  });
+
+  // ── Sugerencias de monto en efectivo (spec 124, FR-001 a FR-012) ─────────
+
+  function suggestionBtns(): HTMLButtonElement[] {
+    return Array.from(fixture.nativeElement.querySelectorAll('[data-testid="sugerencia-monto"]'));
+  }
+
+  async function setTotal(total: number): Promise<void> {
+    fixture.componentRef.setInput('total', total);
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  it('con saldo $22.000, muestra las 5 sugerencias redondeadas, ninguna "Exacto" (FR-001/002/003)', async () => {
+    await setTotal(22000);
+    await chooseMethod('pm-cash');
+
+    const textos = suggestionBtns().map((b) => b.textContent?.trim());
+    expect(textos).toEqual(['$ 24.000', '$ 30.000', '$ 40.000', '$ 50.000', '$ 100.000']);
+  });
+
+  it('con saldo $47.500, elimina duplicados y muestra 4 sugerencias (FR-003)', async () => {
+    await setTotal(47500);
+    await chooseMethod('pm-cash');
+
+    const textos = suggestionBtns().map((b) => b.textContent?.trim());
+    expect(textos).toEqual(['$ 48.000', '$ 50.000', '$ 60.000', '$ 100.000']);
+  });
+
+  it('con saldo $100.000, no ofrece un botón para el monto exacto -- ya está precargado en el campo (FR-012, revierte A-135)', async () => {
+    await setTotal(100000);
+    await chooseMethod('pm-cash');
+
+    expect(amountEls()[0].value).toBe('100.000');
+    const textos = suggestionBtns().map((b) => b.textContent?.trim());
+    expect(textos).toEqual(['$ 104.000']);
+  });
+
+  it('tocar una sugerencia llena "Con cuánto paga" y muestra el Cambio correspondiente (FR-005/006)', async () => {
+    await setTotal(22000);
+    await chooseMethod('pm-cash');
+
+    suggestionBtns()
+      .find((b) => b.textContent?.trim() === '$ 50.000')!
+      .click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(amountEls()[0].value).toBe('50.000');
+    expect(fixture.nativeElement.textContent).toContain('Cambio');
+    expect(fixture.nativeElement.textContent).toContain('28.000');
+  });
+
+  it('no muestra ninguna sugerencia cuando el método no es efectivo (FR-008)', async () => {
+    await setTotal(22000);
+    await chooseMethod('pm-transfer');
+
+    expect(suggestionBtns().length).toBe(0);
+  });
+
+  it('sugerencias de la segunda línea en pago mixto usan el saldo pendiente, no el total (FR-009)', async () => {
+    await setTotal(22000);
+    await chooseMethod('pm-transfer');
+    await setAmount(10000);
+    await clickAddLine();
+    await chooseMethod('pm-cash', 1);
+
+    const textos = suggestionBtns().map((b) => b.textContent?.trim());
+    expect(textos).toEqual(['$ 16.000', '$ 20.000', '$ 50.000', '$ 100.000']);
+  });
+
+  it('eliminar la línea de Nequi recalcula de inmediato las sugerencias de efectivo (FR-009)', async () => {
+    await setTotal(22000);
+    await chooseMethod('pm-transfer');
+    await setAmount(10000);
+    await clickAddLine();
+    await chooseMethod('pm-cash', 1);
+
+    removeLineBtns()[0].click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const textos = suggestionBtns().map((b) => b.textContent?.trim());
+    expect(textos).toEqual(['$ 24.000', '$ 30.000', '$ 40.000', '$ 50.000', '$ 100.000']);
+  });
+
+  it('escribir a mano un monto menor al saldo pendiente sigue mostrando "Faltan... por asignar" (FR-007)', async () => {
+    await setTotal(22000);
+    await chooseMethod('pm-cash');
+    await setAmount(20000);
+
+    expect(fixture.nativeElement.textContent).toContain('Faltan');
+    expect(fixture.nativeElement.textContent).toContain('2.000');
+    expect(fixture.nativeElement.textContent).toContain('por asignar');
   });
 });

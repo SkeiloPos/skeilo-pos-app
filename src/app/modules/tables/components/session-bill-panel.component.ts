@@ -27,6 +27,7 @@ import {
   paymentLines,
 } from '../services/payment-draft.util';
 import { ToastService } from '../../../shared/feedback/toast.service';
+import { RealtimeService } from '../../../core/realtime/realtime.service';
 
 /**
  * Cuenta de la mesa y cobro.
@@ -185,6 +186,7 @@ export class SessionBillPanelComponent implements OnChanges {
 
   private readonly api = inject(TableSessionService);
   private readonly toast = inject(ToastService);
+  private readonly realtime = inject(RealtimeService);
 
   readonly submitting = signal(false);
   readonly error = signal<string | null>(null);
@@ -296,6 +298,7 @@ export class SessionBillPanelComponent implements OnChanges {
       payments,
       // Vacío no se manda: el backend cae a los comensales o a la mesa.
       ...(nombre ? { customer_name: nombre } : {}),
+      origin_client_id: this.realtime.clientId,
     };
   }
 

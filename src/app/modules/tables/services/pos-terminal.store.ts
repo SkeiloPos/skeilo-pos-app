@@ -1,6 +1,7 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import {
   MenuCategory,
+  MenuOption,
   MenuProduct,
   MenuVariant,
   MenuVariantPromotion,
@@ -412,6 +413,14 @@ export class PosTerminalStore {
   readonly editingDraftKey = signal<string | null>(null);
   /** Buscador por nombre de la grilla de "+ Agregar producto" (spec 036, FR-007). */
   readonly catalogSearchText = signal('');
+
+  /**
+   * spec 123: ítem (`OrderItem` concreto, ya persistido) al que se le está
+   * agregando una adición ahora mismo — `null` cuando el selector está
+   * cerrado. Se abre con `openAdditionPicker`.
+   */
+  readonly additionPickerItemId = signal<string | null>(null);
+  private readonly additionPickerVariantId = signal<string | null>(null);
 
   readonly loading = signal(false);
   readonly submitting = signal(false);
@@ -1074,6 +1083,12 @@ export class PosTerminalStore {
         key: `plain:${order?.id}:${key}`,
         comboId: undefined as string | undefined,
         itemIds: rows.map((r) => r.id),
+        // spec 123: para abrir el selector de "Agregar adición" con las
+        // opciones de la variante correcta.
+        variantId: first.product_variant_id,
+        // spec 123: `true` si alguna fila de la línea tiene una adición
+        // agregada después de facturar -- pinta el badge "Modificada".
+        modificada: rows.some((r) => (r.options ?? []).some((o) => o.added_after_sale)),
         qty: rows.reduce((s, r) => s + r.quantity, 0),
         name: lk.variantLabel(first.product_variant_id),
         options: (first.options ?? [])
@@ -1110,6 +1125,8 @@ export class PosTerminalStore {
         key: 'combo:' + comboId,
         comboId,
         itemIds: its.map((it) => it.id),
+        variantId: undefined as string | undefined,
+        modificada: false,
         qty: units > 0 ? units : 1,
         name: `🎁 ${promo?.name ?? 'Combo'}`,
         // Los componentes de un combo no pertenecen a un grupo de opciones
@@ -1439,6 +1456,10 @@ export class PosTerminalStore {
       this.realtime.on('order.cancelled', recargar),
       this.realtime.on('order.item_kitchen_changed', recargar),
       this.realtime.on('order.item_voided', recargar),
+      // spec 123: una adición se agregó a una línea -- recarga para traer el
+      // badge "Modificada" (pintado por `pos-order-panel.component.ts` desde
+      // `added_after_sale`, ya incluido en la respuesta de los pedidos).
+      this.realtime.on('order.item_addon_added', recargar),
       this.realtime.on('table.status_changed', recargar),
       this.realtime.on('session.closed', recargar),
       this.realtime.on('payment.completed', recargar),
@@ -1454,7 +1475,17 @@ export class PosTerminalStore {
         // se recarga sola). El pedido de mostrador puede no tener
         // `table_session_id`, así que si hay un preview cargado y un pedido
         // seleccionado, se marca sin más.
-        if (this.checkoutPreview() && this.selectedOrderId()) {
+        //
+        // spec 123 (hotfix): salvo mientras `checkoutPreviewEstimate()` ya
+        // está publicado -- ahí el propio cajero disparó el cambio (agregar
+        // producto, agregar/editar/quitar una adición) y ya hay un
+        // `settleEstimate()` en vuelo que va a traer el total real en
+        // cuanto termine. Sin este guardia, el eco por tiempo real del
+        // mismo cambio llega a mitad de esa espera y prende el banner "El
+        // total cambió" un instante, justo antes de que `settleEstimate` lo
+        // vuelva a apagar -- un parpadeo falso de algo que el cajero mismo
+        // acaba de hacer, no un cambio externo que de verdad haya que avisar.
+        if (this.checkoutPreview() && this.selectedOrderId() && this.checkoutPreviewEstimate() === null) {
           this.checkoutPreviewStale.set(true);
         }
       }),
@@ -2277,6 +2308,190 @@ export class PosTerminalStore {
   }
 
   /**
+   * Grupos/opciones configurados para una variante, leídos del catálogo ya
+   * cacheado (`MenuService.categories()`) -- TODAS las categorías, no solo
+   * `catalogProducts()` (acotada a la categoría que el cajero tiene abierta
+   * en "+ Agregar producto"): la línea cuya adición se está editando puede
+   * ser de cualquier categoría, sin relación con cuál esté abierta ahora.
+   */
+  private variantAdditionOptions(variantId: string | null | undefined): {
+    groupName: string;
+    option: MenuOption;
+  }[] {
+    if (!variantId) return [];
+    for (const category of this.categories()) {
+      const product = category.products.find((p) =>
+        p.variants.some((v) => v.id === variantId),
+      );
+      const variant = product?.variants.find((v) => v.id === variantId);
+      if (!variant) continue;
+      return variant.option_groups.flatMap((g) =>
+        g.options.map((option) => ({ groupName: g.name, option })),
+      );
+    }
+    return [];
+  }
+
+  /** Opciones elegibles para "Agregar adición" sobre la variante de la línea
+   *  abierta (spec 123) -- plana, con el nombre de su grupo. */
+  readonly additionPickerOptions = computed(() =>
+    this.variantAdditionOptions(this.additionPickerVariantId()),
+  );
+
+  /** La variante tiene al menos un grupo de opciones configurado -- el botón
+   *  "Agregar adición" solo tiene sentido ofrecerlo cuando hay algo que
+   *  elegir; si no, abrir el selector solo mostraría el estado vacío. */
+  variantHasAdditionOptions(variantId: string | null | undefined): boolean {
+    return this.variantAdditionOptions(variantId).length > 0;
+  }
+
+  /** Cantidad ya persistida, por `option_id`, en la línea que tiene abierto el
+   *  selector de "Agregar adición" -- distingue en el picker entre agregar una
+   *  opción nueva (POST) y subir la cantidad de una que ya está (PATCH), en vez
+   *  de que el backend rechace el POST con "ya está en la línea". */
+  readonly additionPickerExistingQty = computed(() => {
+    const itemId = this.additionPickerItemId();
+    const map = new Map<string, number>();
+    if (!itemId) return map;
+    const item = this.selectedOrder()?.items?.find((i) => i.id === itemId);
+    for (const o of item?.options ?? []) map.set(o.option_id, o.quantity);
+    return map;
+  });
+
+  /** Abre el selector de "Agregar adición" para un `OrderItem` concreto ya
+   *  persistido (spec 123) — mientras siga "pendiente"/"en_preparacion". */
+  openAdditionPicker(itemId: string, variantId: string): void {
+    this.additionPickerItemId.set(itemId);
+    this.additionPickerVariantId.set(variantId);
+  }
+
+  closeAdditionPicker(): void {
+    this.additionPickerItemId.set(null);
+    this.additionPickerVariantId.set(null);
+  }
+
+  /** Precio estimado de `quantity` unidades de una opción del picker, para
+   *  publicar un estimado local del cobro (`publishEstimate`) sin esperar la
+   *  respuesta del servidor -- mismo patrón que `saveOrder()`/`voidItem()`,
+   *  nunca exacto al centavo (no distingue `per_line`) pero lo bastante
+   *  cercano para la cifra transitoria: `settleEstimate` la reemplaza por la
+   *  real en cuanto el servidor responde. */
+  private additionOptionPrice(optionId: string): number {
+    return this.additionPickerOptions().find((e) => e.option.id === optionId)?.option
+      .extra_price ?? 0;
+  }
+
+  /** Confirma la adición elegida (spec 123). Funciona igual para un pedido
+   *  sin pagar (recalcula normal) que para uno ya facturado (genera saldo
+   *  pendiente) — el backend decide, esta acción no distingue el caso.
+   *
+   *  spec 123 (hotfix): el total del panel de cobro se actualiza solo, con un
+   *  estimado local (mismo mecanismo que agregar/anular un producto,
+   *  `publishEstimate`/`settleEstimate`) -- antes quedaba en "El total
+   *  cambió" esperando que el cajero pulsara "Actualizar" a mano. */
+  async confirmAddition(optionId: string, quantity: number): Promise<void> {
+    const itemId = this.additionPickerItemId();
+    if (!itemId) return;
+    this.submitting.set(true);
+    const orderId = this.selectedOrderId();
+    const hadPreview = this.checkoutPreview() != null;
+    if (hadPreview) this.publishEstimate(this.additionOptionPrice(optionId) * quantity);
+    try {
+      await this.api.addAddition(itemId, { option_id: optionId, quantity });
+      await this.reload();
+      this.closeAdditionPicker();
+      if (hadPreview) await this.settleEstimate(orderId);
+    } catch (err) {
+      this.toast.error(this.api.extractError(err, 'No se pudo agregar la adición.'));
+      if (hadPreview) await this.settleEstimate(orderId);
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /** Sube o baja la cantidad de una adición que ya está en la línea (spec 123) -- lo
+   *  que el picker usa en vez de `confirmAddition` cuando `additionPickerExistingQty`
+   *  ya trae esa opción, para no chocar con el "ya está en la línea" del backend.
+   *  Mismo auto-actualizado del total que `confirmAddition` (ver su comentario). */
+  async updateAdditionQuantity(optionId: string, quantity: number): Promise<void> {
+    const itemId = this.additionPickerItemId();
+    if (!itemId) return;
+    this.submitting.set(true);
+    const orderId = this.selectedOrderId();
+    const hadPreview = this.checkoutPreview() != null;
+    if (hadPreview) {
+      const existingQty = this.additionPickerExistingQty().get(optionId) ?? 0;
+      this.publishEstimate(this.additionOptionPrice(optionId) * (quantity - existingQty));
+    }
+    try {
+      await this.api.updateAdditionQuantity(itemId, optionId, quantity);
+      await this.reload();
+      this.closeAdditionPicker();
+      if (hadPreview) await this.settleEstimate(orderId);
+    } catch (err) {
+      this.toast.error(this.api.extractError(err, 'No se pudo actualizar la adición.'));
+      if (hadPreview) await this.settleEstimate(orderId);
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /** Quita del todo una adición que ya está en la línea (spec 123) -- lo que faltaba
+   *  junto a agregar/editar cantidad: antes la única forma de deshacerla era anular la
+   *  línea entera. El backend rechaza quitar una opción obligatoria que dejaría la
+   *  línea sin el mínimo exigido (p. ej. un sabor). Mismo auto-actualizado del total
+   *  que `confirmAddition` (ver su comentario). */
+  async removeAddition(optionId: string): Promise<void> {
+    const itemId = this.additionPickerItemId();
+    if (!itemId) return;
+    this.submitting.set(true);
+    const orderId = this.selectedOrderId();
+    const hadPreview = this.checkoutPreview() != null;
+    if (hadPreview) {
+      const existingQty = this.additionPickerExistingQty().get(optionId) ?? 0;
+      this.publishEstimate(-(this.additionOptionPrice(optionId) * existingQty));
+    }
+    try {
+      await this.api.removeAddition(itemId, optionId);
+      await this.reload();
+      this.closeAdditionPicker();
+      if (hadPreview) await this.settleEstimate(orderId);
+    } catch (err) {
+      this.toast.error(this.api.extractError(err, 'No se pudo quitar la adición.'));
+      if (hadPreview) await this.settleEstimate(orderId);
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /**
+   * Cobra el saldo pendiente de un pedido como pago complementario (spec
+   * 123): genera una factura independiente, sin tocar la original. Siempre
+   * un único pago (FR-018) — el backend lo valida igual, esto solo evita el
+   * viaje si falta el turno de caja.
+   */
+  async settlePendingBalance(orderId: string, payment: PaymentLine): Promise<void> {
+    const shiftId = this.cashShiftId();
+    if (!shiftId) {
+      this.toast.error('No hay un turno de caja abierto.');
+      return;
+    }
+    this.submitting.set(true);
+    try {
+      await this.api.settleComplementaryPayment(orderId, {
+        cash_shift_id: shiftId,
+        payments: [payment],
+      });
+      this.toast.success('Saldo pendiente cobrado');
+      await this.reload();
+    } catch (err) {
+      this.toast.error(this.api.extractError(err, 'No se pudo cobrar el saldo pendiente.'));
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /**
    * Marca listo todo lo que le falte por preparar al pedido entero.
    *
    * PATCH por ítem (`updateItemKitchen`), igual que el botón "✓ Listo" de
@@ -2637,14 +2852,33 @@ export class PosTerminalStore {
     }
   }
 
-  /** Tras cobrar: arma las facturas, refresca todo y suelta la selección. */
+  /**
+   * Tras cobrar: arma las facturas y refresca todo.
+   *
+   * A pedido del usuario: ya no suelta la mesa seleccionada — cobrar no debe
+   * expulsar al cajero de vuelta a la grilla de la Terminal; se queda en la
+   * misma mesa (con el estado ya actualizado por `reload()`: liberada si no
+   * quedaba nada más por cobrar, o con el resto de sus pedidos si la mesa
+   * tenía varios en paralelo, A-138). Solo se limpia la selección por
+   * completo cuando el pedido cobrado no tenía mesa (mostrador/domicilio/
+   * para llevar), donde no hay ninguna página de detalle de mesa en la que
+   * quedarse.
+   */
   async onCharged(closed: CloseSessionResponse): Promise<void> {
     const total = Number(this.sessionBill()?.total ?? 0);
     this.lastSale.set({ total, customer: this.customerName() || 'Mesa' });
     this.successOpen.set(true);
     this.sessionBill.set(null);
+    const tableId = this.selectedTableId();
     await Promise.all([this.loadReceipts(closed), this.reload()]);
-    this.cancelSelection();
+    // No se toca `selectedOrderId`: si el pedido seleccionado seguía
+    // existiendo tras el cierre (p. ej. la mesa tenía otro pedido en
+    // paralelo sin incluir en este cobro, A-138), `selectedOrder()` lo sigue
+    // resolviendo tal cual; si ya no existe (se cobró y la sesión se
+    // cerró), `selectedOrder()` cae a `null` por su cuenta y
+    // `centralState()` decide solo, por `tableOrders(tableId)`, si queda
+    // algo que mostrar o si la mesa pasa a verse libre.
+    if (!tableId) this.cancelSelection();
   }
 
   /**
@@ -2703,18 +2937,29 @@ export class PosTerminalStore {
         cash_shift_id: shiftId,
         payments,
         billing_customer_name: this.billingCustomerName().trim() || 'Consumidor Final',
+        origin_client_id: this.realtime.clientId,
       });
       this.lastSale.set({ total: Number(sale.total), customer: sale.customer_name || 'Mostrador' });
       this.lastReceipts.set([saleToReceipt(sale, this.receiptContext())]);
       this.checkoutSaleByOrderId.update((m) => ({ ...m, [order.id]: sale }));
       this.successOpen.set(true);
-      this.toast.success('Pedido cobrado, facturado y enviado a cocina');
+      // Spec 125 (FR-001): el modal de éxito que se abre arriba ya es la única
+      // confirmación — este toast duplicaba el mismo aviso.
       await this.reload();
-      this.cancelSelection();
+      // A pedido del usuario: cobrar un pedido de una mesa ya no suelta la
+      // selección por completo -- el cajero se queda en esa misma mesa y en
+      // ese mismo pedido, ahora visto con el estado actualizado (ya pagado);
+      // si la mesa tenía otros pedidos en paralelo (A-138), siguen ahí para
+      // cobrarlos sin tener que volver a buscar la mesa en la grilla. Un
+      // pedido sin mesa (mostrador/domicilio/para llevar) sí suelta la
+      // selección por completo, como antes: no hay ninguna página de
+      // detalle de mesa en la que quedarse.
+      if (!order.dining_table_id) this.cancelSelection();
       return true;
     } catch (err) {
+      // Spec 125 (FR-008): un solo mensaje de error — antes también disparaba
+      // un toast con el mismo texto que ya muestra el panel (`store.error()`).
       this.error.set(this.api.extractError(err, 'No se pudo cobrar el pedido.'));
-      this.toast.error(this.error()!);
       return false;
     } finally {
       this.checkoutSubmitting.set(false);
@@ -2841,6 +3086,13 @@ export class PosTerminalStore {
   // ─── Helpers ─────────────────────────────────────────────────────────────────
   fmt(n: number): string {
     return formatMoney(n);
+  }
+
+  /** Spec 125 (FR-002): nombre(s) del/los método(s) de pago de un recibo, para
+   * el modal "Pago registrado" — varios métodos (cobro mixto, spec 112) se
+   * muestran unidos con " + ". */
+  paymentMethodLabel(receipt: ReceiptData): string {
+    return receipt.payments.map((p) => p.name).join(' + ');
   }
 
   private methodName(id: string): string {

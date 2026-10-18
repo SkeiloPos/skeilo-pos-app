@@ -75,21 +75,28 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
            (extraído a un componente compartido con manual-order-page.component.ts). -->
       <app-pos-terminal-header />
 
-      <!-- Sub-barra: pestañas de tipo de orden + resumen de salón. Se oculta
-           en la vista de detalle de pedido (a pedido del usuario, el detalle
-           no necesita las pestañas de tipo ni el CTA de "Crear pedido nuevo",
-           ya tiene su propio botón de volver) -- EXCEPTO cuando la mesa
-           seleccionada ya tiene un pedido abierto (spec 087, FR-007, A-88):
-           ahí se mantiene visible para permitir un segundo pedido en
-           paralelo sobre la misma mesa (goToNewOrder() ya apunta a esta
-           mesa vía newOrderTableId(), que cae a selectedTableId() aunque
-           esté ocupada). Un pedido "Para llevar"/"Domicilio" sin mesa
-           (selectedTableId() nulo) conserva el comportamiento previo. -->
-      @if (!showingDetail() || store.selectedTableId()) {
-        <div
-          class="bg-white border-b border-gray-200 px-3 sm:px-4 py-2 sm:py-0 sm:h-14 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0"
-        >
-          <div class="flex items-center gap-3">
+      <!-- Sub-barra: pestañas de tipo de orden + resumen de salón, o botón de
+           volver cuando se está viendo el detalle de un pedido -- a pedido
+           del usuario, siempre visible y en la misma posición (misma fila
+           que el CTA "Crear pedido nuevo"), para que el cajero tenga un
+           único lugar consistente de dónde volver, sin importar si el
+           detalle es de una mesa, un domicilio o un pedido para llevar
+           (antes el botón de volver vivía en una fila propia, solo dentro
+           de la tarjeta de detalle, y encima las pestañas desaparecían del
+           todo para domicilio/para llevar en vez de dejar paso al botón). -->
+      <div
+        class="bg-white border-b border-gray-200 px-3 sm:px-4 py-2 sm:py-0 sm:h-14 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0"
+      >
+        <div class="flex items-center gap-3">
+          @if (showingDetail()) {
+            <button
+              data-testid="page-back-button"
+              (click)="store.cancelSelection()"
+              class="px-3 py-1.5 text-[13px] font-medium rounded-[6px] border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors shrink-0"
+            >
+              ← Volver a mesas
+            </button>
+          } @else {
             <nav
               class="flex items-center gap-1 bg-gray-100 p-1 rounded-[6px] overflow-x-auto sm:overflow-visible"
             >
@@ -107,36 +114,38 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 </button>
               }
             </nav>
-          </div>
-
-          <!-- spec 078 (US2, FR-007/FR-013/FR-015): el CTA "Crear pedido nuevo"
-               está fuera del guard de pestaña — visible y habilitado en las tres
-               pestañas y en los tres anchos, con etiqueta de texto siempre (nunca
-               solo el ícono +). Solo en "Mesas" exige una mesa libre; Domicilio y
-               Para llevar no exigen mesa y goToNewOrder() navega a la ruta sin
-               tableId con el query param tipo. -->
-          <div class="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              (click)="goToNewOrder()"
-              [disabled]="store.orderTypeTab() === 'mesas' && !store.newOrderTableId()"
-              [title]="
-                store.orderTypeTab() === 'mesas' && !store.newOrderTableId()
-                  ? 'No hay ninguna mesa libre disponible'
-                  : ''
-              "
-              class="h-9 sm:h-10 px-3 sm:px-3.5 rounded-[6px] bg-indigo-600 hover:bg-indigo-700 text-white text-[12px] sm:text-[13px] font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <app-mi-icon name="add_circle" [size]="16" class="shrink-0" />
-              <span>Crear pedido nuevo</span>
-              <span
-                class="hidden md:inline px-1.5 py-0.5 bg-white/20 rounded-[6px] text-[10px] font-semibold uppercase tracking-wider"
-                >[F3]</span
-              >
-            </button>
-          </div>
+          }
         </div>
-      }
+
+        <!-- spec 078 (US2, FR-007/FR-013/FR-015): el CTA "Crear pedido nuevo"
+             está fuera del guard de pestaña — visible y habilitado en las tres
+             pestañas y en los tres anchos, con etiqueta de texto siempre (nunca
+             solo el ícono +). Solo en "Mesas" exige una mesa libre; Domicilio y
+             Para llevar no exigen mesa y goToNewOrder() navega a la ruta sin
+             tableId con el query param tipo. Sigue visible en la vista de
+             detalle (spec 087/126, A-138: crear un segundo pedido en paralelo
+             nunca se restringe), ahora también para domicilio/para llevar. -->
+        <div class="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            (click)="goToNewOrder()"
+            [disabled]="store.orderTypeTab() === 'mesas' && !store.newOrderTableId()"
+            [title]="
+              store.orderTypeTab() === 'mesas' && !store.newOrderTableId()
+                ? 'No hay ninguna mesa libre disponible'
+                : ''
+            "
+            class="h-9 sm:h-10 px-3 sm:px-3.5 rounded-[6px] bg-indigo-600 hover:bg-indigo-700 text-white text-[12px] sm:text-[13px] font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <app-mi-icon name="add_circle" [size]="16" class="shrink-0" />
+            <span>Crear pedido nuevo</span>
+            <span
+              class="hidden md:inline px-1.5 py-0.5 bg-white/20 rounded-[6px] text-[10px] font-semibold uppercase tracking-wider"
+              >[F3]</span
+            >
+          </button>
+        </div>
+      </div>
 
       @if (store.loading()) {
         <div class="flex-1 flex items-center justify-center text-sm text-gray-400">
@@ -190,39 +199,16 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                    scroll horizontal de página en tablet/móvil). Ahora: secciones
                    fijas shrink-0, una única región flex-1 min-h-0 que scrollea, y
                    app-pos-checkout-panel shrink-0 (su host ya lo lleva). -->
-              <!-- Único botón de volver para los 3 estados del panel central,
-                   en cualquier ancho -- la tarjeta de mesas se oculta a la vez
-                   que aparece esta (ver mesas-column/detail-column arriba),
-                   así que hace falta en tablet/desktop igual que en móvil.
-                   El botón "Cerrar" (X) que tenía app-pos-order-panel para
-                   lg+ se retiró: hubiera quedado duplicado con este. -->
-              <!-- Acción primaria en outline (borde/texto en el color primario,
-                   fondo blanco -- no rellena, a pedido del usuario): es la
-                   única forma de salir de la tarjeta de detalle ahora que
-                   ocupa toda la pantalla (mesas-column se oculta a la vez) en
-                   cualquier ancho, pero como es una acción de "salir/volver"
-                   y no la acción principal de la pantalla (esa es "Cobrar" /
-                   "Marcar pedido listo"), lleva el peso visual de una
-                   secundaria -- outline en vez de relleno sólido. -->
               <!--
-                A pedido del usuario: el botón "Volver a mesas" y el título
-                "Pedido de la mesa" van en la misma fila (antes en dos filas
-                separadas), con el título más grande. Ya no hay una vista
-                separada "Pagos por confirmar" (con su propio título y sin la
-                lista de ítems al lado) -- un pago QR pendiente de confirmar
-                se ve integrado en esta misma vista, junto a la lista de
-                ítems y el resto del cobro (ver app-pos-checkout-panel).
+                A pedido del usuario: el botón "Volver a mesas" ya no vive
+                aquí -- se movió a la sub-barra (misma fila que "Crear pedido
+                nuevo"), para que sea consistente y esté siempre en la misma
+                posición sin importar el tipo de pedido. Esta fila solo
+                conserva el título.
               -->
               <div
                 class="flex items-center gap-3 px-4 py-3 border-b border-gray-200 shrink-0"
               >
-                <button
-                  data-testid="page-back-button"
-                  (click)="store.cancelSelection()"
-                  class="px-3 py-1.5 text-[13px] font-medium rounded-[6px] border border-indigo-600 text-indigo-600 bg-white hover:bg-indigo-50 transition-colors shrink-0"
-                >
-                  ← Volver a mesas
-                </button>
                 <span class="text-[18px] font-semibold text-gray-900">Pedido de la mesa</span>
               </div>
 
@@ -282,9 +268,14 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 @if (store.lastReceipts().length > 1) {
                   Cuenta dividida en {{ store.lastReceipts().length }} pagos ·
                   {{ store.fmt(s.total) }}. El inventario se actualizó.
-                } @else {
-                  Venta de {{ store.fmt(s.total) }} ({{ s.customer }}) registrada. El inventario se
-                  actualizó.
+                } @else if (store.lastReceipts()[0]; as r) {
+                  <!-- Spec 125 (FR-002/FR-003): monto, cliente, método de pago
+                       y vuelto (si el pago fue en efectivo) en una sola línea. -->
+                  {{ store.fmt(s.total) }} · {{ s.customer }} ·
+                  {{ store.paymentMethodLabel(r) }}
+                  @if (r.change != null) {
+                    · Vuelto {{ store.fmt(r.change) }}
+                  }
                 }
               </p>
             }
@@ -315,17 +306,26 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
           <div class="flex gap-2 justify-center pt-1">
             @if (store.lastReceipts().length > 1) {
-              <!-- Spec 029, Historia 4: el caso de un solo comprobante ya no
-                   imprime desde aquí — duplicaba "Imprimir Factura" de la
-                   barra lateral (D1 de research.md). El de cuenta dividida
-                   sí se conserva: no hay equivalente en la barra lateral
-                   para imprimir el ticket de cada comensal de una vez. -->
               <button
                 (click)="store.printReceipt()"
                 class="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1.5"
               >
                 <app-mi-icon name="receipt" [size]="16" />
                 Imprimir todos
+              </button>
+            } @else {
+              <!-- Spec 125, Historia 4 (decisión A-136): reintroduce aquí
+                   "Imprimir Factura" para un solo comprobante, revirtiendo el
+                   retiro de spec 029 (Historia 4) — la confirmación del cobro
+                   queda autocontenida, sin tener que buscar la acción en la
+                   barra lateral. Reutiliza printReceipt(), sin ruta de
+                   impresión nueva. -->
+              <button
+                (click)="store.printReceipt(); store.closeSuccess()"
+                class="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1.5"
+              >
+                <app-mi-icon name="receipt" [size]="16" />
+                Imprimir Factura
               </button>
             }
             <button

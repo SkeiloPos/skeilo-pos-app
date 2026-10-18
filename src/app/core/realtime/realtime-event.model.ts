@@ -38,6 +38,17 @@ export interface ItemKitchenChangedEvent extends RealtimeBase {
   readonly estado_cocina: string;
 }
 
+/** spec 123: se agregó una adición a una línea ya persistida -- distinto de
+ *  `ItemKitchenChangedEvent`: no cambia `estado_cocina`. */
+export interface ItemAddonAddedEvent extends RealtimeBase {
+  readonly type: 'order.item_addon_added';
+  readonly order_id: string;
+  readonly table_session_id: string | null;
+  readonly item_id: string;
+  readonly option_name: string | null;
+  readonly quantity: number;
+}
+
 export interface ItemVoidedEvent extends RealtimeBase {
   readonly type: 'order.item_voided';
   readonly order_id: string;
@@ -104,12 +115,17 @@ export interface NotificationCreatedEvent extends RealtimeBase {
   readonly related_entity_type: string;
   readonly related_entity_id: string;
   readonly summary: string;
+  /** Spec 125 (FR-007): id de la terminal que originó el evento, si lo mandó
+   * (hoy, `payment.completed`). Se compara contra `RealtimeService.clientId`
+   * para silenciar el aviso solo en esa misma terminal. */
+  readonly origin_client_id?: string | null;
 }
 
 export type RealtimeEvent =
   | OrderCreatedEvent
   | OrderConfirmedEvent
   | ItemKitchenChangedEvent
+  | ItemAddonAddedEvent
   | ItemVoidedEvent
   | OrderCancelledEvent
   | BillChangedEvent

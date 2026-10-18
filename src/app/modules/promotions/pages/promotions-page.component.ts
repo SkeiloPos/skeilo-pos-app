@@ -20,11 +20,13 @@ import {
 import { CategoryService } from '../../categories/services/category.service';
 import { MenuService } from '../../../core/services/menu.service';
 import { PresentationService } from '../../presentations/services/presentation.service';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
 import { PaginationBarComponent } from '../../../shared/pagination/pagination-bar.component';
 import { MoneyInputComponent } from '../../../shared/money-input/money-input.component';
 import { formatMoney } from '../../../shared/money';
+import { businessToday } from '../../../shared/date-format.util';
 import {
   PROMOTION_TRANSITIONS,
   Promotion,
@@ -37,6 +39,11 @@ import { PromotionService } from '../services/promotion.service';
 import { PromoDisplay, getPromoDisplay } from '../services/promotion-pricing.util';
 import { setDescriptor } from '../services/promotion-condition.util';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+
+/** Zona horaria de respaldo mientras `TenantInfoService.info()` aún no cargó
+ *  (spec 127: misma constante y mismo patrón ya usados en
+ *  `reports.service.ts`/`tenant-date.pipe.ts`). */
+const DEFAULT_TIMEZONE = 'America/Bogota';
 
 /**
  * spec 083 (US3): tres pantallas fieles a los prototipos
@@ -1356,6 +1363,7 @@ export class PromotionsPageComponent implements OnInit {
   private readonly categories = inject(CategoryService);
   private readonly menu = inject(MenuService);
   private readonly presentations = inject(PresentationService);
+  private readonly tenantInfo = inject(TenantInfoService);
   private readonly confirm = inject(ConfirmService);
   private readonly toast = inject(ToastService);
   private readonly overlay = inject(Overlay);
@@ -1719,7 +1727,11 @@ export class PromotionsPageComponent implements OnInit {
       ...emptyForm(),
       name,
       type: this.createType(),
-      starts_at: new Date().toISOString().slice(0, 10),
+      // spec 127: día calendario LOCAL del tenant, no el día UTC -- en
+      // Bogotá (UTC-5), `new Date().toISOString()` ya cae en "mañana" desde
+      // las 19:00 locales, dejando la promoción con `starts_at` del día
+      // siguiente (el defecto reportado).
+      starts_at: businessToday(this.tenantInfo.info()?.timezone ?? DEFAULT_TIMEZONE),
     };
     const res = await this.svc.create(form, 'draft');
     if (!res) {
@@ -2122,11 +2134,14 @@ export class PromotionsPageComponent implements OnInit {
     // abierta para editar desde el listado) — `saveConfigure` nunca crea.
     const id = this.editingId()!;
     let res: Promotion | null;
+    // spec 127 (FR-005): `starts_at` solo se reenvía mientras sigue en
+    // `draft` -- el backend rechaza con 409 cualquier otro estado, igual que
+    // el campo del formulario queda deshabilitado fuera de `draft`.
     if (this.isDraft() || this.isPaused()) {
       res = await this.svc.updateShape(id, this.form);
-      if (res) res = await this.svc.update(id, this.form);
+      if (res) res = await this.svc.update(id, this.form, this.isDraft());
     } else {
-      res = await this.svc.update(id, this.form);
+      res = await this.svc.update(id, this.form, this.isDraft());
     }
 
     if (res) {
