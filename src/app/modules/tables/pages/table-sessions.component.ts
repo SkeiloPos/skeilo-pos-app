@@ -282,9 +282,14 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 @if (store.lastReceipts().length > 1) {
                   Cuenta dividida en {{ store.lastReceipts().length }} pagos ·
                   {{ store.fmt(s.total) }}. El inventario se actualizó.
-                } @else {
-                  Venta de {{ store.fmt(s.total) }} ({{ s.customer }}) registrada. El inventario se
-                  actualizó.
+                } @else if (store.lastReceipts()[0]; as r) {
+                  <!-- Spec 125 (FR-002/FR-003): monto, cliente, método de pago
+                       y vuelto (si el pago fue en efectivo) en una sola línea. -->
+                  {{ store.fmt(s.total) }} · {{ s.customer }} ·
+                  {{ store.paymentMethodLabel(r) }}
+                  @if (r.change != null) {
+                    · Vuelto {{ store.fmt(r.change) }}
+                  }
                 }
               </p>
             }
@@ -315,17 +320,26 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
           <div class="flex gap-2 justify-center pt-1">
             @if (store.lastReceipts().length > 1) {
-              <!-- Spec 029, Historia 4: el caso de un solo comprobante ya no
-                   imprime desde aquí — duplicaba "Imprimir Factura" de la
-                   barra lateral (D1 de research.md). El de cuenta dividida
-                   sí se conserva: no hay equivalente en la barra lateral
-                   para imprimir el ticket de cada comensal de una vez. -->
               <button
                 (click)="store.printReceipt()"
                 class="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1.5"
               >
                 <app-mi-icon name="receipt" [size]="16" />
                 Imprimir todos
+              </button>
+            } @else {
+              <!-- Spec 125, Historia 4 (decisión A-136): reintroduce aquí
+                   "Imprimir Factura" para un solo comprobante, revirtiendo el
+                   retiro de spec 029 (Historia 4) — la confirmación del cobro
+                   queda autocontenida, sin tener que buscar la acción en la
+                   barra lateral. Reutiliza printReceipt(), sin ruta de
+                   impresión nueva. -->
+              <button
+                (click)="store.printReceipt(); store.closeSuccess()"
+                class="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1.5"
+              >
+                <app-mi-icon name="receipt" [size]="16" />
+                Imprimir Factura
               </button>
             }
             <button

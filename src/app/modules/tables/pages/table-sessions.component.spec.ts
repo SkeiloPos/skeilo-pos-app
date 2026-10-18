@@ -49,10 +49,12 @@ describe('TableSessionsComponent — atajo F4 retirado (spec 029)', () => {
   });
 });
 
-/** Spec 029, Historia 4 (FR-001): el diálogo de éxito ya no imprime el caso
- *  de un solo comprobante — duplicaba "Imprimir Factura" de la barra
- *  lateral. El caso de cuenta dividida (varios comprobantes) sí se
- *  conserva. `store.init()` se anula (`vi.spyOn`) para poder llamar
+/** Spec 029, Historia 4 (FR-001), había retirado "Imprimir Factura" del
+ *  diálogo de éxito para un solo comprobante por duplicar la barra lateral.
+ *  Spec 125 (Historia 4, decisión A-136) lo revierte: el diálogo vuelve a
+ *  ofrecerlo, para que la confirmación de pago quede autocontenida. El caso
+ *  de cuenta dividida (varios comprobantes) no cambia — nunca lo había
+ *  perdido. `store.init()` se anula (`vi.spyOn`) para poder llamar
  *  `fixture.detectChanges()` y renderizar el diálogo sin disparar las
  *  peticiones HTTP de `ngOnInit`, ajenas a lo que prueba este bloque.
  *
@@ -61,7 +63,7 @@ describe('TableSessionsComponent — atajo F4 retirado (spec 029)', () => {
  *  `TestBed`) — hay que tomar el store desde `fixture.componentInstance`,
  *  no desde `TestBed.inject`, o el mock de `init()` queda sobre una
  *  instancia distinta a la que usa el componente. */
-describe('TableSessionsComponent — diálogo de éxito sin botón duplicado (spec 029)', () => {
+describe('TableSessionsComponent — diálogo de éxito (spec 029 + spec 125)', () => {
   let fixture: ComponentFixture<TableSessionsComponent>;
   let store: PosTerminalStore;
 
@@ -88,13 +90,59 @@ describe('TableSessionsComponent — diálogo de éxito sin botón duplicado (sp
       (b as HTMLButtonElement).textContent?.includes('Imprimir'),
     ) as HTMLButtonElement[];
 
-  it('un solo comprobante: no ofrece ningún botón de impresión en el diálogo', () => {
+  it('un solo comprobante: ofrece "Imprimir Factura" (spec 125, decisión A-136 — revierte esta spec 029)', () => {
     store.successOpen.set(true);
     store.lastSale.set({ total: 10000, customer: 'Consumidor Final' });
-    store.lastReceipts.set([{ saleId: 's1', customerName: null, total: 10000 } as ReturnType<PosTerminalStore['lastReceipts']>[number]]);
+    store.lastReceipts.set([{
+      saleId: 's1', customerName: null, total: 10000,
+      payments: [{ name: 'Efectivo', amount: 10000 }], change: 0,
+    } as ReturnType<PosTerminalStore['lastReceipts']>[number]]);
     fixture.detectChanges();
 
-    expect(printButtons()).toHaveLength(0);
+    const textos = printButtons().map((b) => b.textContent?.replace(/\s+/g, ' ').trim());
+    expect(textos.some((t) => t?.endsWith('Imprimir Factura'))).toBe(true);
+  });
+
+  it('spec 125 (FR-009): "Imprimir Factura" imprime y cierra el modal', () => {
+    store.successOpen.set(true);
+    store.lastSale.set({ total: 10000, customer: 'Consumidor Final' });
+    store.lastReceipts.set([{
+      saleId: 's1', customerName: null, total: 10000,
+      payments: [{ name: 'Efectivo', amount: 10000 }], change: 0,
+    } as ReturnType<PosTerminalStore['lastReceipts']>[number]]);
+    fixture.detectChanges();
+    const printSpy = vi.spyOn(store, 'printReceipt').mockImplementation(() => {});
+
+    const boton = printButtons().find((b) => b.textContent?.includes('Imprimir Factura'))!;
+    boton.click();
+    fixture.detectChanges();
+
+    expect(printSpy).toHaveBeenCalled();
+    expect(store.successOpen()).toBe(false);
+  });
+
+  it('spec 125 (FR-002/FR-003): muestra método de pago y vuelto solo si el pago fue en efectivo', () => {
+    store.successOpen.set(true);
+    store.lastSale.set({ total: 22000, customer: 'Consumidor Final' });
+    store.lastReceipts.set([{
+      saleId: 's1', customerName: null, total: 22000,
+      payments: [{ name: 'Efectivo', amount: 50000 }], change: 28000,
+    } as ReturnType<PosTerminalStore['lastReceipts']>[number]]);
+    fixture.detectChanges();
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent!.replace(/\s+/g, ' ');
+    expect(texto).toContain('Efectivo');
+    expect(texto).toContain('Vuelto');
+
+    store.lastReceipts.set([{
+      saleId: 's2', customerName: null, total: 22000,
+      payments: [{ name: 'Tarjeta', amount: 22000 }], change: null,
+    } as ReturnType<PosTerminalStore['lastReceipts']>[number]]);
+    fixture.detectChanges();
+
+    const texto2 = (fixture.nativeElement as HTMLElement).textContent!.replace(/\s+/g, ' ');
+    expect(texto2).toContain('Tarjeta');
+    expect(texto2).not.toContain('Vuelto');
   });
 
   it('cuenta dividida: conserva "Imprimir todos" y el botón por comensal', () => {
@@ -115,7 +163,10 @@ describe('TableSessionsComponent — diálogo de éxito sin botón duplicado (sp
     store.successOpen.set(true);
     store.lastSale.set({ total: 20000, customer: 'Mostrador' });
     store.lastReceipts.set([
-      { saleId: 's1', customerName: 'Ana', total: 10000 } as ReturnType<PosTerminalStore['lastReceipts']>[number],
+      {
+        saleId: 's1', customerName: 'Ana', total: 10000,
+        payments: [{ name: 'Efectivo', amount: 10000 }], change: 0,
+      } as ReturnType<PosTerminalStore['lastReceipts']>[number],
     ]);
     fixture.detectChanges();
 

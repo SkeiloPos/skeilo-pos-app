@@ -24,6 +24,7 @@ import { MenuProduct, MenuVariantPromotion } from '../../products/interfaces/pro
 import { PaymentMethodService } from '../../sales/services/payment-method.service';
 import { CashService } from '../../cash-register/services/cash.service';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 
 const API = environment.apiBaseUrl;
 
@@ -978,6 +979,77 @@ describe('PosTerminalStore.settlePendingBalance — spec 123', () => {
     expect(
       toast.toasts().some((t) => t.kind === 'error' && t.text === 'No hay saldo pendiente por cobrar'),
     ).toBe(true);
+  });
+});
+
+describe('PosTerminalStore.checkoutAndSend — spec 125 (confirmación única de pago)', () => {
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+  let toast: ToastService;
+  let realtime: RealtimeService;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+        // `saleToReceipt()`/`receiptContext()` leen `TenantInfoService`, que a su
+        // vez depende de `TenantContextService` (no inicializado en este TestBed) —
+        // se mockea igual que `PaymentMethodService`/`CashService` arriba.
+        { provide: TenantInfoService, useValue: { businessName: () => 'Heladería', logoUrl: () => null, receiptMessage: () => '' } },
+        ...checkoutDataAlreadyLoadedProviders(),
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+    toast = TestBed.inject(ToastService);
+    realtime = TestBed.inject(RealtimeService);
+    store.orders.set([order('o1', 'recibida')]);
+    store.selectedOrderId.set('o1');
+  });
+
+  afterEach(() => http.verify());
+
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  it('éxito: manda origin_client_id y no dispara el toast duplicado "Pedido cobrado..." (FR-001, FR-007)', async () => {
+    const promise = store.checkoutAndSend([{ payment_method_id: 'pm-cash', amount: 4000 }]);
+
+    const req = http.expectOne(`${API}/orders/o1/checkout-and-send`);
+    expect(req.request.body.origin_client_id).toBe(realtime.clientId);
+    req.flush({
+      id: 's1', total: '4000', customer_name: 'Consumidor Final', items: [], payments: [],
+    } as unknown as Sale);
+    await tick();
+    // `reload()` dispara su propia cascada de HTTP (mesas + pedidos); sin
+    // mesa seleccionada en este test, no hay cuenta de sesión que recargar.
+    http.expectOne(`${API}/orders/tables`).flush([]);
+    http.expectOne((r) => r.url === `${API}/orders`).flush([]);
+
+    await expect(promise).resolves.toBe(true);
+    expect(store.successOpen()).toBe(true);
+    expect(
+      toast.toasts().some((t) => t.text === 'Pedido cobrado, facturado y enviado a cocina'),
+    ).toBe(false);
+  });
+
+  it('error: un único mensaje (sin toast) y conserva la selección (FR-008)', async () => {
+    const promise = store.checkoutAndSend([{ payment_method_id: 'pm-cash', amount: 4000 }]);
+
+    const req = http.expectOne(`${API}/orders/o1/checkout-and-send`);
+    req.flush({ detail: 'Versión desactualizada' }, { status: 409, statusText: 'Conflict' });
+
+    await expect(promise).resolves.toBe(false);
+    expect(store.error()).toBe('Versión desactualizada');
+    expect(toast.toasts().some((t) => t.kind === 'error')).toBe(false);
+    expect(store.successOpen()).toBe(false);
+    // Spec 125 (FR-008): la selección no se limpia ante un error — el cajero
+    // puede reintentar sin volver a elegir el pedido ni reescribir el cobro.
+    expect(store.selectedOrderId()).toBe('o1');
   });
 });
 

@@ -139,6 +139,14 @@ export class NotificationCenterService {
     const eraNueva = this.merge([item]);
     if (!eraNueva) return;
 
+    // Spec 125 (FR-007): la terminal que originó este pago ya mostró su
+    // propia confirmación (el modal "Pago registrado") — este aviso solo se
+    // silencia ahí, nunca en las demás terminales del tenant. El ítem igual
+    // queda en la lista/campanita arriba, solo se omite el toast + sonido.
+    const esOrigenPropio =
+      ev.origin_client_id != null && ev.origin_client_id === this.realtime.clientId;
+    if (esOrigenPropio) return;
+
     // FR-003: aviso visual + sonoro solo con la pestaña enfocada. Sin foco,
     // el canal push (US3) es quien avisa — evita el doble aviso.
     if (typeof document !== 'undefined' && document.hasFocus()) {

@@ -115,6 +115,10 @@ export interface NotificationCreatedEvent extends RealtimeBase {
   readonly related_entity_type: string;
   readonly related_entity_id: string;
   readonly summary: string;
+  /** Spec 125 (FR-007): id de la terminal que originó el evento, si lo mandó
+   * (hoy, `payment.completed`). Se compara contra `RealtimeService.clientId`
+   * para silenciar el aviso solo en esa misma terminal. */
+  readonly origin_client_id?: string | null;
 }
 
 export type RealtimeEvent =

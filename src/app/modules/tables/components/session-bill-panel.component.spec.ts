@@ -9,6 +9,8 @@ import { SessionBillPanelComponent } from './session-bill-panel.component';
 import { CloseSessionPayload, SessionBill } from '../interfaces/dining.interface';
 import { PaymentMethod } from '../../sales/interfaces/sales.interface';
 import { emptyPaymentDraft } from '../services/payment-draft.util';
+import { RealtimeService } from '../../../core/realtime/realtime.service';
+import { ToastService } from '../../../shared/feedback/toast.service';
 
 const API = environment.apiBaseUrl;
 
@@ -381,6 +383,36 @@ describe('SessionBillPanelComponent', () => {
     expect((req.request.body as CloseSessionPayload).billing_mode).toBe('unified');
     req.flush({ table_session: {}, sale_ids: ['s1'] });
     await done;
+  });
+
+  // ── spec 125: identificador de terminal de origen, y un único mensaje de error ──
+
+  it('spec 125 (FR-007): manda origin_client_id (RealtimeService.clientId) en el cuerpo del cierre', async () => {
+    await chooseMethod('pm1');
+    await fill(amounts()[0], '12000');
+
+    const realtime = TestBed.inject(RealtimeService);
+    expect((await charge()).origin_client_id).toBe(realtime.clientId);
+  });
+
+  it('spec 125 (FR-008, ya correcto hoy): ante un error del cobro, un único mensaje inline, nunca un toast, y el draft de pago no se reinicia', async () => {
+    await chooseMethod('pm1');
+    await fill(amounts()[0], '12000');
+    const toast = TestBed.inject(ToastService);
+    const toastErrorSpy = vi.spyOn(toast, 'error');
+
+    const done = panel.charge();
+    const req = http.expectOne(`${API}/table-sessions/ts1/close`);
+    req.flush({ detail: 'Hay ítems sin terminar en cocina' }, { status: 409, statusText: 'Conflict' });
+    await done;
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Hay ítems sin terminar en cocina');
+    expect(toastErrorSpy).not.toHaveBeenCalled();
+    // El draft de pago sigue con el método y el monto ya ingresados — el
+    // cajero puede reintentar sin volver a escribir el cobro.
+    expect(selects()[0].value).toBe('pm1');
+    expect(amounts()[0].value).toBe('12.000');
   });
 });
 

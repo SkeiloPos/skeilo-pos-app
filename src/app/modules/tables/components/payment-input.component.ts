@@ -79,9 +79,11 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
             />
 
             @if (isCash(line.methodId) && pendingBalance(i) > 0) {
-              <!-- Spec 124 (FR-001 a FR-005, FR-012): hasta 5 botones con los montos más
-                   probables -- el monto exacto más redondeos a billetes comunes -- para llenar
-                   "Con cuánto paga" con un toque, sin digitar. -->
+              <!-- Spec 124 (FR-001 a FR-005): botones con redondeos a billetes comunes, para
+                   cuando el cliente paga con uno de esos billetes -- el monto exacto ya NO es uno
+                   de ellos (A-135 revertida a pedido del usuario): el campo ya nace con el saldo
+                   pendiente precargado (ver setMethod), así que ofrecerlo también aquí como botón
+                   sería redundante. -->
               <div class="flex flex-wrap gap-2 mt-2">
                 @for (sugerencia of suggestions(i); track sugerencia) {
                   <button
@@ -95,7 +97,7 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
                         : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                     "
                   >
-                    {{ sugerencia === pendingBalance(i) ? 'Exacto' : money(sugerencia) }}
+                    {{ money(sugerencia) }}
                   </button>
                 }
               </div>
@@ -175,32 +177,30 @@ export class PaymentInputComponent implements OnChanges {
   }
 
   /** Hasta 5 montos sugeridos para esa línea en efectivo (spec 124, FR-001 a
-   * FR-004), calculados sobre `pendingBalance(index)` -- nunca sobre el
-   * total cuando hay otras líneas (FR-009). */
+   * FR-004; FR-012 revertido, ver `setMethod`), calculados sobre
+   * `pendingBalance(index)` -- nunca sobre el total cuando hay otras líneas
+   * (FR-009). El monto exacto se excluye si coincide con alguno: el campo ya
+   * nace con él precargado, repetirlo como botón sería redundante. */
   suggestions(index: number): number[] {
-    return roundingSuggestions(this.pendingBalance(index));
+    const saldo = this.pendingBalance(index);
+    return roundingSuggestions(saldo).filter((s) => s !== saldo);
   }
 
-  /** Al elegir un método no efectivo en una línea nueva y vacía se precarga
-   * el importe justo (FR-014, sin cambios): el caso de un solo método sigue
-   * exactamente igual. Las líneas agregadas con "Agregar otro método" ya
-   * llegan precargadas con el saldo pendiente (`addLine`), así que elegir su
-   * método no les toca el importe.
-   *
-   * Si el método elegido es Efectivo, el campo nace vacío en cualquier caso
-   * (spec 124, FR-010, decisión de negocio `A-135`): precargarlo volvía
-   * redundante la sugerencia "Exacto" y ocultaba la verificación real del
-   * monto recibido -- esto anula, solo para efectivo, el precargado que
-   * `addLine` ya le haya puesto a la línea. */
+  /** Al elegir un método, la línea se precarga con el importe justo (saldo
+   * pendiente) en cualquier caso -- efectivo incluido (spec 124, FR-010/
+   * FR-012, revierte la decisión de negocio `A-135` a pedido del usuario:
+   * antes el campo nacía vacío a propósito para forzar al cajero a teclear
+   * el monto recibido; ahora se asume que paga exacto y el cajero solo lo
+   * cambia si el cliente de verdad entrega otro billete). Las líneas
+   * agregadas con "Agregar otro método" ya llegan precargadas con el saldo
+   * pendiente (`addLine`), así que elegir su método no les toca el
+   * importe si ya traían uno. */
   setMethod(index: number, methodId: string): void {
-    this.patchLine(index, (line) => {
-      if (this.isCash(methodId)) return { ...line, methodId, amount: 0 };
-      return {
-        ...line,
-        methodId,
-        amount: this.draft().length === 1 && line.amount === 0 ? this.total : line.amount,
-      };
-    });
+    this.patchLine(index, (line) => ({
+      ...line,
+      methodId,
+      amount: line.amount === 0 ? this.pendingBalance(index) : line.amount,
+    }));
   }
 
   setAmount(index: number, value: string | number): void {

@@ -17,6 +17,11 @@ interface TicketResponse {
   expires_in: number;
 }
 
+/** Spec 125 (FR-007): una pestaña/dispositivo distinto cuenta como otra
+ * terminal, aunque sea el mismo cajero — por eso vive en `sessionStorage`
+ * (por pestaña) y no en `localStorage` (compartido entre pestañas). */
+const CLIENT_ID_KEY = 'pos.realtime.clientId';
+
 /**
  * Punto único de acceso al stream de tiempo real.
  *
@@ -33,6 +38,31 @@ export class RealtimeService {
 
   private client: SseClient | null = null;
   private readonly handlers = new Map<string, Set<Handler>>();
+
+  /**
+   * Id estable de esta pestaña, generado una sola vez (spec 125, FR-007).
+   * Viaja en las peticiones de cobro para que esta misma terminal pueda
+   * silenciar su propio aviso de pago en tiempo real sin afectar a las
+   * demás. No es un identificador de autenticación — es solo una marca de
+   * correlación, opaca para el backend.
+   */
+  readonly clientId: string = this.resolveClientId();
+
+  private resolveClientId(): string {
+    try {
+      const existing = sessionStorage.getItem(CLIENT_ID_KEY);
+      if (existing) return existing;
+      const id = crypto.randomUUID();
+      sessionStorage.setItem(CLIENT_ID_KEY, id);
+      return id;
+    } catch {
+      // Navegación privada u otro bloqueo de almacenamiento: sigue
+      // funcionando dentro de esta carga de página, solo que no sobrevive
+      // a un refresh — el peor caso es volver a notificarse en la propia
+      // terminal tras recargar, no un error.
+      return crypto.randomUUID();
+    }
+  }
 
   /** Comensal: el token de sesión viaja en la query (EventSource no manda cabeceras). */
   connectDiner(token: string): void {

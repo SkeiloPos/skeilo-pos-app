@@ -77,11 +77,11 @@ describe('PaymentInputComponent', () => {
     expect(removeLineBtns().length).toBe(0);
   });
 
-  it('con efectivo elegido, el campo "Con cuánto paga" nace vacío (spec 124, FR-010/A-135: ya no se precarga con el total)', async () => {
+  it('con efectivo elegido, el campo "Con cuánto paga" nace precargado con el total (spec 124, FR-010/FR-012: revierte A-135 a pedido del usuario)', async () => {
     await chooseMethod('pm-cash');
 
-    expect(amountEls()[0].value).toBe('');
-    expect(component.draft()[0].amount).toBe(0);
+    expect(amountEls()[0].value).toBe('12.000');
+    expect(component.draft()[0].amount).toBe(12000);
   });
 
   it('con un método no efectivo elegido, el importe también se precarga con el total (ahora editable, no fijo)', async () => {
@@ -210,12 +210,13 @@ describe('PaymentInputComponent', () => {
     expect(textos).toEqual(['$ 48.000', '$ 50.000', '$ 60.000', '$ 100.000']);
   });
 
-  it('con saldo $100.000, etiqueta "Exacto" el botón que coincide con el saldo pendiente (FR-012)', async () => {
+  it('con saldo $100.000, no ofrece un botón para el monto exacto -- ya está precargado en el campo (FR-012, revierte A-135)', async () => {
     await setTotal(100000);
     await chooseMethod('pm-cash');
 
+    expect(amountEls()[0].value).toBe('100.000');
     const textos = suggestionBtns().map((b) => b.textContent?.trim());
-    expect(textos).toEqual(['Exacto', '$ 104.000']);
+    expect(textos).toEqual(['$ 104.000']);
   });
 
   it('tocar una sugerencia llena "Con cuánto paga" y muestra el Cambio correspondiente (FR-005/006)', async () => {

@@ -439,6 +439,8 @@ export interface CheckoutAndSendPayload {
   tip?: number;
   /** A nombre de quién se factura; por defecto "Consumidor Final". */
   billing_customer_name?: string;
+  /** Spec 125 (FR-007): `RealtimeService.clientId` de esta terminal. */
+  origin_client_id?: string | null;
 }
 
 /**
@@ -553,6 +555,8 @@ export interface CloseSessionPayload {
   customer_name?: string;
   /** Solo en `split`: uno por **cada** comensal con consumo. */
   splits?: SplitPayment[];
+  /** Spec 125 (FR-007): `RealtimeService.clientId` de esta terminal. */
+  origin_client_id?: string | null;
 }
 
 /** Respuesta del cierre (`CloseSessionResponse`). */

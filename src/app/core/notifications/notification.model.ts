@@ -1,3 +1,5 @@
+import { formatMoney } from '../../shared/money';
+
 /** Espejo de `contracts/notifications-api.md`. */
 export interface NotificationItem {
   readonly id: string;
@@ -35,7 +37,9 @@ export function summarize(item: NotificationItem): string {
     return partes.length ? partes.join(' · ') : 'Pedido nuevo';
   }
   if (item.event_type === 'payment.completed') {
-    return p['total'] != null ? `Pago recibido · $${p['total']}` : 'Pago recibido';
+    return p['total'] != null
+      ? `Pago recibido · ${formatMoney(Number(p['total']))}`
+      : 'Pago recibido';
   }
   return item.event_type;
 }
