@@ -1173,4 +1173,39 @@ describe('PublicMenuComponent', () => {
       expect(component.view()).toBe('closed');
     });
   });
+
+  // ── spec 128 (US3, FR-009): refrescar el menú al vivo cuando un admin cambia la visibilidad en QR ──
+
+  describe('evento menu.updated (spec 128, US3)', () => {
+    it('vuelve a pedir el menú y refleja una categoría que desapareció', async () => {
+      const cat1: MenuCategory = { id: 'c1', name: 'Con licor', products: [] };
+      const cat2: MenuCategory = { id: 'c2', name: 'Postres', products: [] };
+      const { component, fixture } = await createComponent('tok-1', [cat1, cat2], { withSession: true });
+      const diner = TestBed.inject(DinerService) as unknown as FakeDinerService;
+      const rt = TestBed.inject(RealtimeService) as unknown as FakeRealtimeService;
+      expect(component.categories()).toEqual([cat1, cat2]);
+
+      diner.categories = [cat2]; // el administrador ocultó "Con licor" entre tanto
+      rt.emit('menu.updated');
+      await new Promise((r) => setTimeout(r, 30));
+      fixture.detectChanges();
+
+      expect(component.categories()).toEqual([cat2]);
+    });
+
+    it('un 401 de sesión cerrada al refrescar lleva a la pantalla de gracias, no revienta', async () => {
+      const { component, fixture } = await createComponent('tok-1', [], { withSession: true });
+      const diner = TestBed.inject(DinerService) as unknown as FakeDinerService;
+      const rt = TestBed.inject(RealtimeService) as unknown as FakeRealtimeService;
+      diner.resolveByToken = async () => {
+        throw new DinerSessionExpiredError('Sesión no activa', true);
+      };
+
+      rt.emit('menu.updated');
+      await new Promise((r) => setTimeout(r, 30));
+      fixture.detectChanges();
+
+      expect(component.view()).toBe('closed');
+    });
+  });
 });

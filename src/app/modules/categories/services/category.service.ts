@@ -29,6 +29,9 @@ export class CategoryService {
   readonly size = signal(20);
   readonly search = signal('');
   readonly activeFilter = signal<'' | 'active' | 'inactive'>('');
+  /** spec 128 (FR-011): además de activo/inactivo, encontrar rápido las
+   *  categorías ocultas en el menú QR. */
+  readonly visibleQrFilter = signal<'' | 'hidden'>('');
   private readonly wantsPage = signal(false);
   private readonly wantsAll = signal(false);
 
@@ -37,9 +40,15 @@ export class CategoryService {
     queryKey: () => [
       'categories',
       'page',
-      { page: this.page(), size: this.size(), search: this.search().trim(), active: this.activeFilter() },
+      {
+        page: this.page(), size: this.size(), search: this.search().trim(),
+        active: this.activeFilter(), visibleQr: this.visibleQrFilter(),
+      },
     ],
-    queryFn: () => this.fetchCategoriesPage(this.page(), this.size(), this.search().trim(), this.activeFilter()),
+    queryFn: () =>
+      this.fetchCategoriesPage(
+        this.page(), this.size(), this.search().trim(), this.activeFilter(), this.visibleQrFilter(),
+      ),
     enabled: () => this.wantsPage(),
   });
 
@@ -70,11 +79,14 @@ export class CategoryService {
     size: number,
     search: string,
     activeFilter: '' | 'active' | 'inactive',
+    visibleQrFilter: '' | 'hidden' = '',
   ): Promise<Page<Category>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (search) params = params.set('search', search);
     if (activeFilter === 'active') params = params.set('active', 'true');
     if (activeFilter === 'inactive') params = params.set('active', 'false');
+    // spec 128 (FR-011): "Ocultas en QR" -> visible_en_qr=false.
+    if (visibleQrFilter === 'hidden') params = params.set('visible_en_qr', 'false');
     return firstValueFrom(this.http.get<Page<Category>>(this.baseUrl, { params }));
   }
 
@@ -110,6 +122,12 @@ export class CategoryService {
   /** Aplica el filtro de estado y recarga desde la página 1. */
   setActiveFilter(filter: '' | 'active' | 'inactive'): void {
     this.activeFilter.set(filter);
+    this.loadCategories(1);
+  }
+
+  /** Aplica el filtro de visibilidad en QR y recarga desde la página 1 (spec 128, FR-011). */
+  setVisibleQrFilter(filter: '' | 'hidden'): void {
+    this.visibleQrFilter.set(filter);
     this.loadCategories(1);
   }
 
@@ -163,6 +181,25 @@ export class CategoryService {
     this.otherError.set(null);
 
     const payload: CategoryUpdatePayload = { active: !current, display_order: null };
+
+    try {
+      await firstValueFrom(this.http.patch<Category>(`${this.baseUrl}/${id}`, payload));
+      await this.queryClient.invalidateQueries({ queryKey: ['categories'] });
+    } catch (err) {
+      this.otherError.set(this.extractError(err));
+    } finally {
+      this.isSubmitting.set(false);
+    }
+  }
+
+  /** spec 128 (FR-005/FR-010): toggle de un solo paso, mismo patrón que
+   *  `toggleActive()`. El backend responde 403 (rol) o 422 (categoría
+   *  inactiva) si no corresponde — el mensaje llega vía `otherError()`. */
+  async toggleVisibleQr(id: string, current: boolean): Promise<void> {
+    this.isSubmitting.set(true);
+    this.otherError.set(null);
+
+    const payload: CategoryUpdatePayload = { visible_en_qr: !current, display_order: null };
 
     try {
       await firstValueFrom(this.http.patch<Category>(`${this.baseUrl}/${id}`, payload));
