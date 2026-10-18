@@ -1037,6 +1037,50 @@ describe('PosTerminalStore.checkoutAndSend — spec 125 (confirmación única de
     ).toBe(false);
   });
 
+  it('a pedido del usuario: un pedido de mesa conserva la selección tras cobrar (no se expulsa a la grilla de la Terminal — el cajero puede cobrar el siguiente pedido de la misma mesa, A-138)', async () => {
+    store.orders.set([{ ...order('o1', 'recibida'), dining_table_id: 't1' }]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+
+    const promise = store.checkoutAndSend([{ payment_method_id: 'pm-cash', amount: 4000 }]);
+
+    const req = http.expectOne(`${API}/orders/o1/checkout-and-send`);
+    req.flush({
+      id: 's1', total: '4000', customer_name: 'Consumidor Final', items: [], payments: [],
+    } as unknown as Sale);
+    await tick();
+    http.expectOne(`${API}/orders/tables`).flush([]);
+    http
+      .expectOne((r) => r.url === `${API}/orders`)
+      .flush([{ ...order('o1', 'abierta'), paid: true, dining_table_id: 't1' }]);
+    // `selectedTableId` sigue puesta -> `reload()` también dispara, sin
+    // esperarla (`void`), la cuenta de sesión (mismo patrón que el resto de
+    // este archivo: un tick extra antes de que la petición exista).
+    await tick();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+
+    await expect(promise).resolves.toBe(true);
+    expect(store.selectedTableId()).toBe('t1');
+    expect(store.selectedOrderId()).toBe('o1');
+  });
+
+  it('un pedido sin mesa (mostrador/domicilio/para llevar) sí suelta la selección por completo tras cobrar', async () => {
+    // El pedido del describe (`o1`, sin `dining_table_id`) ya representa este caso.
+    const promise = store.checkoutAndSend([{ payment_method_id: 'pm-cash', amount: 4000 }]);
+
+    const req = http.expectOne(`${API}/orders/o1/checkout-and-send`);
+    req.flush({
+      id: 's1', total: '4000', customer_name: 'Consumidor Final', items: [], payments: [],
+    } as unknown as Sale);
+    await tick();
+    http.expectOne(`${API}/orders/tables`).flush([]);
+    http.expectOne((r) => r.url === `${API}/orders`).flush([]);
+
+    await expect(promise).resolves.toBe(true);
+    expect(store.selectedTableId()).toBeNull();
+    expect(store.selectedOrderId()).toBeNull();
+  });
+
   it('error: un único mensaje (sin toast) y conserva la selección (FR-008)', async () => {
     const promise = store.checkoutAndSend([{ payment_method_id: 'pm-cash', amount: 4000 }]);
 

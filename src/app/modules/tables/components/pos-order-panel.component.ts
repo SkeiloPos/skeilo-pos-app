@@ -124,15 +124,6 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                   }
                 </div>
               }
-              <!-- Mismo dato que ya calculaba headerStatusText() ("pago
-                   pendiente"), ahora también como insignia visible de un
-                   vistazo -- no se inventa ningún estado nuevo. -->
-              @if (headerStatusText() === 'pago pendiente') {
-                <span
-                  class="px-2.5 py-1 rounded-[6px] bg-indigo-600 text-white text-[11px] font-semibold whitespace-nowrap"
-                  >Cobro pendiente</span
-                >
-              }
             </div>
           </div>
 
@@ -605,17 +596,6 @@ export class PosOrderPanelComponent {
   selectOrderTab(orderId: string): void {
     this.store.showAllOrders.set(false);
     this.store.selectOrder(orderId);
-  }
-
-  /**
-   * Spec 029, Historia 3: "listo para cobrar" exige pago Y cocina, las dos a
-   * la vez — antes solo miraba `kitchenReady()`. `kitchenReady()` en sí no
-   * cambia: sigue controlando, sin relación con el pago, cuándo se oculta
-   * el botón "Marcar pedido listo".
-   */
-  headerStatusText(): string {
-    if (!this.store.kitchenReady()) return 'en preparación';
-    return this.store.selectedOrder()?.paid ? 'listo para cobrar' : 'pago pendiente';
   }
 
   /**

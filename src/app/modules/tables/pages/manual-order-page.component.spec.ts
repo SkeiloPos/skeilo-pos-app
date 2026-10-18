@@ -799,6 +799,53 @@ describe('ManualOrderPageComponent', () => {
     for (const req of http.match(() => true)) req.flush([]);
   });
 
+  it('a pedido del usuario: con una mesa que ya tiene otro pedido, los 3 tabs de tipo de orden y el select de mesa quedan deshabilitados (spec 126) — el cajero no puede reasignar este segundo pedido', async () => {
+    createComponent('t1');
+    tableService.tables.set([table({ id: 't1', number: 1, status: 'ocupada' })]);
+    store.orders.set([
+      {
+        id: 'o1',
+        channel: 'POS',
+        status: 'abierta',
+        dining_table_id: 't1',
+        created_at: '2026-08-21T10:00:00',
+        items: [{ id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '4000', estado_cocina: 'pendiente' }],
+      } as unknown as ReturnType<PosTerminalStore['orders']>[number],
+    ]);
+    fixture.detectChanges();
+    await Promise.resolve();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+    fixture.detectChanges();
+    for (const req of http.match(() => true)) req.flush([]);
+    fixture.detectChanges();
+    // NgModel aplica `[disabled]` sobre el ControlValueAccessor de forma
+    // asíncrona (`_updateDisabled()` encola un microtask, no sincrónico) --
+    // hace falta un tick extra antes de volver a leer el DOM.
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(botonTipoOrden('Mesa').disabled).toBe(true);
+    expect(botonTipoOrden('Para llevar').disabled).toBe(true);
+    expect(botonTipoOrden('Domicilio').disabled).toBe(true);
+    const select = fixture.nativeElement.querySelector('app-searchable-select button') as HTMLButtonElement;
+    expect(select.disabled).toBe(true);
+  });
+
+  it('con una mesa libre (sin otro pedido), los tabs y el select de mesa siguen habilitados', async () => {
+    createComponent('t1');
+    tableService.tables.set([table({ id: 't1', number: 1, status: 'libre' })]);
+    fixture.detectChanges();
+    await Promise.resolve();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+    fixture.detectChanges();
+
+    expect(botonTipoOrden('Mesa').disabled).toBe(false);
+    expect(botonTipoOrden('Para llevar').disabled).toBe(false);
+    expect(botonTipoOrden('Domicilio').disabled).toBe(false);
+    const select = fixture.nativeElement.querySelector('app-searchable-select button') as HTMLButtonElement;
+    expect(select.disabled).toBe(false);
+  });
+
   it('bugfix: cambiar la mesa asignada en "orden-manual" conserva el carrito en curso (draftLines), no lo vacía', async () => {
     createComponent('t1');
     tableService.tables.set([
