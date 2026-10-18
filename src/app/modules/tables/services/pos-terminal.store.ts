@@ -2918,18 +2918,21 @@ export class PosTerminalStore {
         cash_shift_id: shiftId,
         payments,
         billing_customer_name: this.billingCustomerName().trim() || 'Consumidor Final',
+        origin_client_id: this.realtime.clientId,
       });
       this.lastSale.set({ total: Number(sale.total), customer: sale.customer_name || 'Mostrador' });
       this.lastReceipts.set([saleToReceipt(sale, this.receiptContext())]);
       this.checkoutSaleByOrderId.update((m) => ({ ...m, [order.id]: sale }));
       this.successOpen.set(true);
-      this.toast.success('Pedido cobrado, facturado y enviado a cocina');
+      // Spec 125 (FR-001): el modal de éxito que se abre arriba ya es la única
+      // confirmación — este toast duplicaba el mismo aviso.
       await this.reload();
       this.cancelSelection();
       return true;
     } catch (err) {
+      // Spec 125 (FR-008): un solo mensaje de error — antes también disparaba
+      // un toast con el mismo texto que ya muestra el panel (`store.error()`).
       this.error.set(this.api.extractError(err, 'No se pudo cobrar el pedido.'));
-      this.toast.error(this.error()!);
       return false;
     } finally {
       this.checkoutSubmitting.set(false);
@@ -3056,6 +3059,13 @@ export class PosTerminalStore {
   // ─── Helpers ─────────────────────────────────────────────────────────────────
   fmt(n: number): string {
     return formatMoney(n);
+  }
+
+  /** Spec 125 (FR-002): nombre(s) del/los método(s) de pago de un recibo, para
+   * el modal "Pago registrado" — varios métodos (cobro mixto, spec 112) se
+   * muestran unidos con " + ". */
+  paymentMethodLabel(receipt: ReceiptData): string {
+    return receipt.payments.map((p) => p.name).join(' + ');
   }
 
   private methodName(id: string): string {
