@@ -32,7 +32,7 @@ import {
   SessionBill,
 } from '../interfaces/dining.interface';
 import { KITCHEN_NOT_READY, hasPendingKitchenWork } from '../../orders/order-status.util';
-import { ChosenMenuOption, ProductSelection } from '../components/product-select.component';
+import { ChosenMenuOption, ChosenMenuTopping, ProductSelection } from '../components/product-select.component';
 import { buildMenuLookup, formatQuantifiedLabel, MenuLookup } from './menu-lookup';
 import { TableService } from './table.service';
 import { DiningSessionService } from './dining-session.service';
@@ -56,12 +56,17 @@ interface ProductDraftLine {
   product: MenuProduct;
   variant: MenuVariant;
   options: ChosenMenuOption[];
+  /** spec 129 (FR-009): adiciones (productos-topping) elegidas para esta línea.
+   *  Opcional (mismo criterio que `ProductSelection.toppings`): no obliga a los
+   *  fixtures de test ya existentes a declararlo -- ausente se trata como `[]`. */
+  toppings?: ChosenMenuTopping[];
   quantity: number;
   notes: string | null;
   unitPrice: number;
   /** spec 117 (A-126): Σ(extra × cantidad) de las opciones de grupos "cantidad" --
    *  nunca multiplicadas por `quantity`, a diferencia de `unitPrice` (presentación +
-   *  opciones "conteo"). */
+   *  opciones "conteo"). spec 129: suma también el precio de catálogo de cada
+   *  adición-producto elegida (FR-007/FR-017), siempre por línea. */
   addonsTotal: number;
 }
 
@@ -1086,20 +1091,37 @@ export class PosTerminalStore {
         // spec 123: para abrir el selector de "Agregar adición" con las
         // opciones de la variante correcta.
         variantId: first.product_variant_id,
-        // spec 123: `true` si alguna fila de la línea tiene una adición
-        // agregada después de facturar -- pinta el badge "Modificada".
-        modificada: rows.some((r) => (r.options ?? []).some((o) => o.added_after_sale)),
+        // spec 123/129: `true` si alguna fila de la línea tiene una adición
+        // (opción o topping) agregada después de facturar -- pinta el badge
+        // "Modificada".
+        modificada: rows.some(
+          (r) =>
+            (r.options ?? []).some((o) => o.added_after_sale) ||
+            (r.toppings ?? []).some((t) => t.added_after_sale),
+        ),
         qty: rows.reduce((s, r) => s + r.quantity, 0),
         name: lk.variantLabel(first.product_variant_id),
-        options: (first.options ?? [])
-          .map((o) => ({ o, name: lk.optionLabel(o.option_id) || o.name || '' }))
-          .filter(({ name }) => !!name)
-          .map(
-            ({ o, name }): CartOptionLine => ({
-              groupLabel: lk.optionGroupLabel(o.option_id) ?? o.group_name ?? null,
-              text: formatQuantifiedLabel(name, o.quantity ?? 1),
-            }),
-          ),
+        options: [
+          ...(first.options ?? [])
+            .map((o) => ({ o, name: lk.optionLabel(o.option_id) || o.name || '' }))
+            .filter(({ name }) => !!name)
+            .map(
+              ({ o, name }): CartOptionLine => ({
+                groupLabel: lk.optionGroupLabel(o.option_id) ?? o.group_name ?? null,
+                text: formatQuantifiedLabel(name, o.quantity ?? 1),
+              }),
+            ),
+          // spec 129: adiciones-producto (toppings) de la línea -- traen su
+          // propio `name` del backend, no se resuelven contra el menú.
+          ...(first.toppings ?? [])
+            .filter((t) => !!(t.name ?? '').trim())
+            .map(
+              (t): CartOptionLine => ({
+                groupLabel: 'Toppings',
+                text: formatQuantifiedLabel(t.name!, t.quantity),
+              }),
+            ),
+        ],
         notes: first.notes || null,
         unitPrice: this.itemUnitPrice(first),
         addonsTotal: rows.reduce((s, r) => s + Number(r.addons_total ?? 0), 0),
@@ -1219,12 +1241,24 @@ export class PosTerminalStore {
         name: (l.product.variants?.length ?? 0) > 1
           ? `${l.product.name} · ${l.variant.name}`
           : l.product.name,
-        options: l.options.map(
-          (c): CartOptionLine => ({
-            groupLabel: c.groupName,
-            text: formatQuantifiedLabel(c.option.name, c.quantity),
-          }),
-        ),
+        options: [
+          ...l.options.map(
+            (c): CartOptionLine => ({
+              groupLabel: c.groupName,
+              text: formatQuantifiedLabel(c.option.name, c.quantity),
+            }),
+          ),
+          // spec 129: adiciones-producto elegidas para esta línea -- mismo
+          // `groupLabel: 'Toppings'` que `persistedItemsView()` usa para una
+          // línea ya guardada, para que el draft sin guardar también las
+          // muestre (y no solo el "+ $X adicionales" del total).
+          ...(l.toppings ?? []).map(
+            (t): CartOptionLine => ({
+              groupLabel: 'Toppings',
+              text: formatQuantifiedLabel(t.topping.name, t.quantity),
+            }),
+          ),
+        ],
         notes: l.notes || null,
         unitPrice,
         // spec 117 (A-126): los extras de un grupo "cantidad" ya se separaron en
@@ -1250,6 +1284,31 @@ export class PosTerminalStore {
   readonly combosSubtotal = computed(() =>
     this.cartView().filter((r) => !!r.comboId).reduce((s, r) => s + r.subtotal, 0),
   );
+
+  /**
+   * spec 129: suma del precio de catálogo de las adiciones-producto (guardadas +
+   * borrador), a sumar aparte sobre `draftPreview()` -- mismo motivo que
+   * `combosSubtotal` (D13): `OrderItemIn`/`DraftPreviewIn` no aceptan `toppings`
+   * (son líneas ya persistidas, vía `POST /orders/items/{id}/toppings`, no el
+   * payload del borrador), así que el backend las omite al recalcular el
+   * subtotal/total del borrador. Sin esto, "Subtotal"/"TOTAL ORDEN" no
+   * coinciden con el "Costo" por línea que sí las incluye (`cartView().subtotal`).
+   */
+  readonly toppingsSubtotal = computed(() => {
+    const guardadas = (this.selectedOrder()?.items ?? [])
+      .filter((i) => i.estado_cocina !== 'anulado' && !i.combo_id)
+      .reduce(
+        (s, i) => s + (i.toppings ?? []).reduce((ss, t) => ss + Number(t.unit_price) * t.quantity, 0),
+        0,
+      );
+    const borrador = this.draftLines()
+      .filter((l): l is ProductDraftLine => l.kind === 'product')
+      .reduce(
+        (s, l) => s + (l.toppings ?? []).reduce((ss, t) => ss + t.topping.unit_price * t.quantity, 0),
+        0,
+      );
+    return guardadas + borrador;
+  });
 
   readonly cartEmpty = computed(() => this.cartView().length === 0);
   readonly hasDraft = computed(() => this.draftLines().length > 0);
@@ -1730,6 +1789,12 @@ export class PosTerminalStore {
               product_variant_id: l.variant.id,
               quantity: l.quantity,
               options: l.options.map((c) => ({ option_id: c.option.id, quantity: c.quantity })),
+              // spec 129: `OrderItemIn` acepta `toppings` -- se resuelven en la MISMA
+              // transacción que crea el pedido, sin una llamada aparte por adición
+              // después de crearlo (evita el N+1 de escrituras).
+              ...((l.toppings ?? []).length > 0
+                ? { toppings: (l.toppings ?? []).map((c) => ({ topping_product_id: c.topping.id, quantity: c.quantity })) }
+                : {}),
               notes: l.notes,
             },
       );
@@ -1852,6 +1917,7 @@ export class PosTerminalStore {
       product: line.product,
       variant: line.variant,
       options: line.options,
+      toppings: line.toppings,
       quantity: line.quantity,
       notes: line.notes,
     };
@@ -1865,13 +1931,20 @@ export class PosTerminalStore {
     variantId: string,
     options: ChosenMenuOption[],
     notes: string | null,
+    toppings: ChosenMenuTopping[] = [],
   ): string {
     return (
       variantId +
       '|' +
       options.map((c) => `${c.option.id}:${c.quantity}`).sort().join(',') +
       '|' +
-      (notes ?? '')
+      (notes ?? '') +
+      '|' +
+      // spec 129: dos selecciones con las mismas opciones pero distintas adiciones
+      // NO son la misma línea -- sin esto, fusionarlas (abajo) descartaría en
+      // silencio los toppings de la selección nueva (solo se conservan los de
+      // `existing`).
+      toppings.map((t) => `${t.topping.id}:${t.quantity}`).sort().join(',')
     );
   }
 
@@ -1887,6 +1960,7 @@ export class PosTerminalStore {
   }
 
   addDraftFromSelection(sel: ProductSelection): void {
+    const toppings = sel.toppings ?? [];
     // spec 117 (A-126): una opción de un grupo "cantidad" se cobra por línea, no por
     // unidad de producto -- separada de `unitPrice` (presentación + opciones "conteo")
     // en su propio `addonsTotal`, igual que ya hace el backend (`compute_unit_price`/
@@ -1895,16 +1969,21 @@ export class PosTerminalStore {
       sel.variant.price + sel.options.reduce(
         (s, c) => s + (c.selectionMode === 'cantidad' ? 0 : c.option.extra_price * c.quantity), 0,
       );
-    const addonsTotal = sel.options.reduce(
-      (s, c) => s + (c.selectionMode === 'cantidad' ? c.option.extra_price * c.quantity : 0), 0,
-    );
-    const key = this.productIdentityKey(sel.variant.id, sel.options, sel.notes);
+    // spec 129 (FR-007/FR-017): cada adición-producto se cobra una vez por línea, a
+    // su precio de catálogo -- misma columna `addonsTotal` que ya usan las opciones
+    // "cantidad", nunca multiplicada por `quantity`.
+    const addonsTotal =
+      sel.options.reduce(
+        (s, c) => s + (c.selectionMode === 'cantidad' ? c.option.extra_price * c.quantity : 0), 0,
+      ) + toppings.reduce((s, c) => s + c.topping.unit_price * c.quantity, 0);
+    const key = this.productIdentityKey(sel.variant.id, sel.options, sel.notes, toppings);
     const line: ProductDraftLine = {
       kind: 'product',
       key,
       product: sel.product,
       variant: sel.variant,
       options: sel.options,
+      toppings,
       quantity: sel.quantity,
       notes: sel.notes,
       unitPrice,
@@ -1933,7 +2012,7 @@ export class PosTerminalStore {
         let lastIdx = -1;
         for (let i = lines.length - 1; i >= 0; i--) {
           const l = lines[i];
-          if (l.kind === 'product' && this.productIdentityKey(l.variant.id, l.options, l.notes) === key) {
+          if (l.kind === 'product' && this.productIdentityKey(l.variant.id, l.options, l.notes, l.toppings) === key) {
             lastIdx = i;
             break;
           }
@@ -2015,7 +2094,15 @@ export class PosTerminalStore {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([id, qty]) => `${id}:${qty}`)
         .join(',');
-      const key = `${it.product_variant_id}|${it.notes ?? ''}|${firma}`;
+      // spec 129: los toppings (adiciones-producto) también distinguen la
+      // línea -- dos agregados sucesivos de la misma presentación con
+      // distintos toppings no deben fusionarse en una sola card.
+      const firmaToppings = (it.toppings ?? [])
+        .map((t) => [t.id, t.quantity] as const)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([id, qty]) => `${id}:${qty}`)
+        .join(',');
+      const key = `${it.product_variant_id}|${it.notes ?? ''}|${firma}|${firmaToppings}`;
       const arr = groups.get(key) ?? [];
       arr.push(it);
       groups.set(key, arr);
@@ -2058,7 +2145,9 @@ export class PosTerminalStore {
       if (!(minQty > 1 && target.quantity % minQty === 0)) {
         return lines.map((x) => (x.key === key ? { ...x, quantity: x.quantity + 1 } : x));
       }
-      const baseKey = this.productIdentityKey(target.variant.id, target.options, target.notes);
+      const baseKey = this.productIdentityKey(
+        target.variant.id, target.options, target.notes, target.toppings,
+      );
       const sibling: ProductDraftLine = {
         ...target,
         quantity: 1,
@@ -2145,9 +2234,16 @@ export class PosTerminalStore {
         .filter((c) => c.quantity > 0 || !adjusted.has(c.option.id));
     }
 
-    const addonsTotal = options.reduce(
-      (s, c) => s + (c.selectionMode === 'cantidad' ? c.option.extra_price * c.quantity : 0), 0,
-    );
+    // Bugfix: antes solo sumaba las opciones "cantidad" ya reescaladas arriba, perdiendo en
+    // silencio el aporte de `x.toppings` (adiciones-producto, spec 129) -- `unitPrice*quantity +
+    // addonsTotal` (cartView()) terminaba cobrando $0 por las adiciones en cuanto el cajero movía
+    // el "-" de la línea, aunque siguieran listadas en el carrito. Las adiciones no dependen de
+    // `quantity` (se cobran una vez por línea, igual que las opciones "cantidad" antes de
+    // reescalarse), así que su aporte es el mismo de siempre.
+    const addonsTotal =
+      options.reduce(
+        (s, c) => s + (c.selectionMode === 'cantidad' ? c.option.extra_price * c.quantity : 0), 0,
+      ) + (x.toppings ?? []).reduce((s, c) => s + c.topping.unit_price * c.quantity, 0);
     return { ...x, quantity, options, addonsTotal };
   }
   removeDraft(key: string): void {
@@ -2191,6 +2287,9 @@ export class PosTerminalStore {
     try {
       let order: DiningOrder | null = null;
       for (const l of lines) {
+        // spec 129: `OrderItemIn` acepta `toppings` -- se resuelven en la MISMA
+        // transacción que crea la línea (sin llamada aparte por adición después).
+        const toppings = l.kind === 'product' ? (l.toppings ?? []) : [];
         order = await this.api.addOrderItems(
           orderId,
           l.kind === 'combo'
@@ -2199,6 +2298,9 @@ export class PosTerminalStore {
                 product_variant_id: l.variant.id,
                 quantity: l.quantity,
                 options: l.options.map((c) => ({ option_id: c.option.id, quantity: c.quantity })),
+                ...(toppings.length > 0
+                  ? { toppings: toppings.map((c) => ({ topping_product_id: c.topping.id, quantity: c.quantity })) }
+                  : {}),
                 notes: l.notes,
               },
         );

@@ -97,6 +97,28 @@ describe('DinerService', () => {
     expect(promo?.min_qty).toBe(2);
   });
 
+  it('mapea las adiciones del producto (spec 129, FR-009) -- sin esto el modal del menú QR no mostraba "Adiciones disponibles"', async () => {
+    const promise = service.resolveByToken('signed.jwt');
+    const req = http.expectOne(`${API}/menu/qr-token/signed.jwt`);
+    req.flush({
+      table: { id: 't1', number: 5, name: 'Terraza' },
+      business: { name: 'Heladería', logo_url: null },
+      menu: [{
+        id: 'c1', name: 'Helados',
+        products: [{
+          id: 'p1', name: 'Ojo de Diablo', description: null, image_url: null,
+          variants: [{ id: 'v1', presentation_id: 'pr1', presentation_name: '8 onz', price: '8000.00' }],
+          toppings: [{ id: 't1', name: 'Gomitas', unit_price: '2000.00', available: true }],
+        }],
+      }],
+    });
+
+    const product = (await promise).categories[0].products[0];
+    expect(product.toppings).toEqual([
+      { id: 't1', name: 'Gomitas', unit_price: 2000, available: true },
+    ]);
+  });
+
   it('el nombre de la variante sale de `presentation_name` (spec 084 A-79; spec 087, FR-014) -- sin él el modal solo mostraba la promoción', async () => {
     const promise = service.resolveByToken('signed.jwt');
     const req = http.expectOne(`${API}/menu/qr-token/signed.jwt`);

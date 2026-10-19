@@ -319,7 +319,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                           >
                             Agregar adición
                           </button>
-                        } @else if (it.ready) {
+                        }
+                        @if (it.ready) {
                           <!-- FR-003: texto de ayuda cuando la acción no está
                              disponible por el estado de la línea. -->
                           <span class="text-[11px] text-gray-400" title="Producto ya preparado: agrega un producto nuevo">

@@ -5,6 +5,7 @@ import { environment } from '../../../../environments/environment';
 import {
   MenuCategory,
   MenuOptionGroup,
+  MenuTopping,
   MenuVariantPromotion,
 } from '../../products/interfaces/product.interface';
 import { DiningOrder } from '../interfaces/dining.interface';
@@ -65,6 +66,16 @@ function mapGroups(raw: unknown): MenuOptionGroup[] {
       extra_price: Number(o['extra_price']),
       available: (o['available'] as boolean) ?? true,
     })),
+  }));
+}
+
+/** spec 129 (FR-009): adiciones disponibles de un producto, a nivel de producto. */
+function mapToppings(raw: unknown): MenuTopping[] {
+  return ((raw as Record<string, unknown>[]) ?? []).map((t) => ({
+    id: t['id'] as string,
+    name: t['name'] as string,
+    unit_price: Number(t['unit_price']),
+    available: (t['available'] as boolean) ?? true,
   }));
 }
 
@@ -415,6 +426,7 @@ export class DinerService {
         // spec 093: marcado manual de "Agotado" (Cajero/Admin).
         sold_out: (p['sold_out'] as boolean) ?? false,
         option_groups: mapGroups(p['option_groups']),
+        toppings: mapToppings(p['toppings']),
       })),
     };
   }

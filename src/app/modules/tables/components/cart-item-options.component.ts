@@ -28,7 +28,7 @@ import { CartOptionLine } from '../services/pos-terminal.store';
     @if (grupos.length > 0) {
       <div class="border border-gray-200 rounded-[8px] px-2.5 py-2 space-y-1.5">
         @for (g of grupos; track g.label ?? $index) {
-          <div class="text-[12px] text-gray-600">
+          <div class="text-[13px] text-gray-600">
             @if (g.label) {
               <span class="font-semibold text-gray-700">{{ g.label }}:</span>
             }

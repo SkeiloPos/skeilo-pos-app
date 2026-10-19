@@ -31,6 +31,16 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
         </div>
 
         <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="p-6 space-y-4">
+          @if (!group) {
+            <!-- spec 129 (FR-004): los grupos de opciones quedan reservados para sabores --
+                 una adición (topping) nueva se marca como tal en el formulario del producto,
+                 donde se asocia a nivel de producto y aplica a todas sus variantes. -->
+            <p class="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+              Para sabores (ej. de helado). Para agregar un topping nuevo, márcalo como
+              "adición" en el formulario de ese producto -- ahí se configura una sola vez
+              para todas sus presentaciones.
+            </p>
+          }
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
             <input formControlName="name" type="text" placeholder="Ej. Sabores"
@@ -72,7 +82,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                   class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
               </div>
             </div>
-            <p class="text-xs text-gray-400">Ej. Sabores 1–3, Toppings 0–5. El mínimo obliga a elegir; el máximo limita.</p>
+            <p class="text-xs text-gray-400">Ej. Sabores 1–3. El mínimo obliga a elegir; el máximo limita.</p>
           } @else {
             <div class="grid grid-cols-2 gap-4">
               <div>
@@ -105,7 +115,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 <input type="radio" formControlName="pricing_type" value="con_recargo" class="mt-0.5">
                 <span>
                   <span class="block font-medium text-gray-800">Con recargo</span>
-                  <span class="block text-xs text-gray-500">Cada opción cobra su propio precio (un topping).</span>
+                  <span class="block text-xs text-gray-500">Cada opción cobra su propio precio (ej. un sabor premium con costo extra).</span>
                 </span>
               </label>
             </div>

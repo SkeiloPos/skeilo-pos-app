@@ -1642,4 +1642,149 @@ describe('ProductFormComponent', () => {
     expect(boton.textContent).toContain('QUESO MOZARELA BLOQUE X 2500 GRAMOS');
   });
 
+  // ── Spec 129: adiciones a nivel de producto ─────────────────────────────
+
+  const isToppingSwitch = (): HTMLButtonElement | null =>
+    (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find(
+      (b) => b.getAttribute('title')?.includes('adición de otros productos'),
+    ) ?? null;
+
+  const visibleEnQrSwitch = (): HTMLButtonElement | null =>
+    (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find(
+      (b) => b.getAttribute('title')?.includes('Apágalo para ocultar'),
+    ) ?? null;
+
+  it('un producto nuevo abre con "Es una adición" y "Visible en menú QR" en sus defaults (false/true)', async () => {
+    await createNew();
+    expect(component.draft().is_topping).toBe(false);
+    expect(component.draft().visible_en_qr).toBe(true);
+    expect(isToppingSwitch()?.getAttribute('aria-checked')).toBe('false');
+    expect(visibleEnQrSwitch()?.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('activar "Es una adición" se refleja en el switch y viaja en el guardado', async () => {
+    await createNew();
+    component.setField('name', 'Gomitas');
+    component.setField('category_id', 'c1');
+    component.toggleIsTopping();
+    fixture.detectChanges();
+
+    expect(isToppingSwitch()?.getAttribute('aria-checked')).toBe('true');
+
+    const savePromise = component.save();
+    const created = http.expectOne(PRODUCTS);
+    expect(created.request.body.is_topping).toBe(true);
+    created.flush({
+      id: 'p-gomitas', category_id: 'c1', name: 'Gomitas', description: null,
+      preparation_type: 'prepared', image_url: null, active: true, available: true,
+      tracks_inventory: false, is_topping: true, visible_en_qr: false,
+      created_at: '2026-10-19T00:00:00', variants: [],
+    });
+    await savePromise;
+    expect(component.service.error()).toBeNull();
+  });
+
+  it('activar "Es una adición" limpia cualquier adición ya elegida (no puede tener adiciones propias)', async () => {
+    await createNew();
+    component.addTopping({ id: 't1', label: 'Crema' });
+    fixture.detectChanges();
+    expect(component.draft().topping_ids).toEqual(['t1']);
+
+    component.toggleIsTopping();
+    fixture.detectChanges();
+
+    expect(component.draft().topping_ids).toEqual([]);
+  });
+
+  it('apagar "Visible en menú QR" se refleja en el switch', async () => {
+    await createNew();
+    expect(visibleEnQrSwitch()?.getAttribute('aria-checked')).toBe('true');
+    component.toggleVisibleEnQr();
+    fixture.detectChanges();
+    expect(visibleEnQrSwitch()?.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('elegir una adición por búsqueda la agrega a la lista, con su nombre, y limpia el picker', async () => {
+    await createNew();
+    const picker = fixture.debugElement
+      .queryAll(By.directive(SearchableSelectComponent))
+      .find((el) => el.componentInstance.placeholder === '+ Agregar adición…')!;
+
+    picker.componentInstance.selectOption({ id: 't1', label: 'Gomitas' });
+    fixture.detectChanges();
+
+    expect(component.draft().topping_ids).toEqual(['t1']);
+    expect(component.toppingLabel('t1')).toBe('Gomitas');
+    expect(component.toppingPickerValue()).toBe('');
+    expect(fixture.nativeElement.textContent).toContain('Gomitas');
+  });
+
+  it('quitar una adición ya elegida la retira de la lista', async () => {
+    await createNew();
+    component.addTopping({ id: 't1', label: 'Gomitas' });
+    fixture.detectChanges();
+
+    component.removeTopping('t1');
+    fixture.detectChanges();
+
+    expect(component.draft().topping_ids).toEqual([]);
+  });
+
+  it('en edición, el detalle carga `topping_ids`/`toppings` del backend en el draft', async () => {
+    await createEditWithToppings('p-granizado', ['t1'], [{ id: 't1', name: 'Gomitas' }]);
+
+    expect(component.draft().topping_ids).toEqual(['t1']);
+    expect(component.toppingLabel('t1')).toBe('Gomitas');
+    expect(fixture.nativeElement.textContent).toContain('Gomitas');
+  });
+
+  /** Como `createEdit`, pero con `topping_ids`/`toppings` en la respuesta del detalle. */
+  async function createEditWithToppings(
+    id: string,
+    toppingIds: string[],
+    toppings: { id: string; name: string }[],
+  ): Promise<void> {
+    navigate = vi.fn().mockResolvedValue(true);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ProductFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+        { provide: CategoryService, useClass: FakeCategoryService },
+        { provide: InventoryService, useClass: FakeInventoryService },
+        { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
+        { provide: OptionGroupService, useClass: FakeOptionGroupService },
+        { provide: PresentationService, useClass: FakePresentationService },
+        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ id }) } },
+        },
+        { provide: Router, useValue: { navigate } },
+      ],
+    });
+    fixture = TestBed.createComponent(ProductFormComponent);
+    component = fixture.componentInstance;
+    http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+    await tick();
+
+    http.expectOne(`${PRODUCTS}/${id}`).flush({
+      id, category_id: 'c1', name: 'Granizado', description: null,
+      preparation_type: 'prepared', image_url: null, active: true, available: true,
+      tracks_inventory: false, is_topping: false, visible_en_qr: true,
+      created_at: '2026-10-19T00:00:00',
+      variants: [], deactivated: [] as unknown[],
+      topping_ids: toppingIds, toppings,
+    });
+    await tick();
+    fixture.detectChanges();
+    await tick();
+    fixture.detectChanges();
+  }
+
 });

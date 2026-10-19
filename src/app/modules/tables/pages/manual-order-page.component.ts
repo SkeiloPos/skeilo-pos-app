@@ -550,38 +550,37 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                   <div
                     class="hidden sm:grid grid-cols-12 items-center py-3 gap-1"
                     [class]="
-                      it.promo ? 'bg-amber-50/40 -mx-2 px-2 border-l-2 border-amber-500' : ''
+                      it.promo ? 'promo-line-highlight bg-amber-50/40 -mx-2 px-2 border-l-2 border-amber-500' : ''
                     "
                   >
-                    <div class="col-span-5 flex flex-col min-w-0 pr-1">
+                    <div class="col-span-5 flex flex-col gap-1 min-w-0 pr-1">
                       <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
                         <span
-                          class="text-[13px] font-semibold text-gray-900 truncate leading-tight"
+                          class="text-[14px] font-semibold text-gray-900 truncate leading-tight"
                           >{{ partsDesktop.product }}</span
                         >
                         @if (partsDesktop.variant) {
                           <span
-                            class="bg-gray-100 text-gray-600 text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                            class="bg-gray-100 text-gray-600 text-[11px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
                             >{{ partsDesktop.variant }}</span
                           >
                         }
                         @if (it.promo; as promo) {
                           <span
-                            class="bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
+                            class="promo-line-badge bg-amber-50 text-amber-700 border border-amber-100 text-[11px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
                             >{{ promo.badge }}</span
                           >
+                          <span class="line-through text-[12px] text-gray-500 font-mono shrink-0">{{
+                            store.fmt(promo.originalAmount)
+                          }}</span>
                         }
                       </div>
                       <app-cart-item-options [options]="it.options" [notes]="it.notes" />
-                      @if (it.promo; as promo) {
-                        <div class="flex items-center gap-1.5 mt-0.5">
-                          <span class="line-through text-[11px] text-gray-500 font-mono">{{
-                            store.fmt(promo.originalAmount)
-                          }}</span>
-                          <span class="text-[11px] text-green-700 font-semibold font-mono"
-                            >Ahorras {{ store.fmt(promo.savings) }}</span
-                          >
-                        </div>
+                      @if (it.addonsTotal > 0) {
+                        <!-- spec 129: desglose del "+ $X adicionales" oculto en el total --
+                             sin esto, el cajero veía sumar el precio de las adiciones al
+                             Subtotal/Total sin saber de dónde salía la diferencia. -->
+                        <div class="text-[12px] text-gray-400">+ {{ store.fmt(it.addonsTotal) }} adicionales</div>
                       }
                     </div>
                     <div class="col-span-2 flex items-center justify-center gap-1">
@@ -592,7 +591,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                         −
                       </button>
                       <span
-                        class="font-mono font-medium text-[13px] text-gray-900 tabular-nums min-w-[12px] text-center"
+                        class="font-mono font-medium text-[14px] text-gray-900 tabular-nums min-w-[12px] text-center"
                         >{{ it.qty }}</span
                       >
                       <button
@@ -605,13 +604,13 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     <div class="col-span-3 text-right pr-3">
                       @if (it.promo; as promo) {
                         <div
-                          class="font-semibold text-[15px] text-indigo-600 tabular-nums font-mono"
+                          class="font-semibold text-[16px] text-indigo-600 tabular-nums font-mono"
                         >
                           {{ store.fmt(promo.discountedAmount) }}
                         </div>
                       } @else {
                         <div
-                          class="font-semibold text-[15px] text-gray-900 tabular-nums font-mono"
+                          class="font-semibold text-[16px] text-gray-900 tabular-nums font-mono"
                         >
                           {{ store.fmt(it.subtotal) }}
                         </div>
@@ -652,51 +651,47 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                   <div
                     class="flex sm:hidden flex-col gap-2 py-3"
                     [class]="
-                      it.promo ? 'bg-amber-50/40 -mx-2 px-2 border-l-2 border-amber-500' : ''
+                      it.promo ? 'promo-line-highlight bg-amber-50/40 -mx-2 px-2 border-l-2 border-amber-500' : ''
                     "
                   >
                     @let partsMobile = splitVariantLabel(it.name);
                     <div class="flex items-start justify-between gap-2">
-                      <div class="min-w-0 flex-1">
+                      <div class="min-w-0 flex-1 flex flex-col gap-1">
                         <div class="flex items-center gap-1.5 flex-wrap">
-                          <span class="text-[13px] font-semibold text-gray-900 leading-tight">{{
+                          <span class="text-[14px] font-semibold text-gray-900 leading-tight">{{
                             partsMobile.product
                           }}</span>
                           @if (partsMobile.variant) {
                             <span
-                              class="bg-gray-100 text-gray-600 text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                              class="bg-gray-100 text-gray-600 text-[11px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
                               >{{ partsMobile.variant }}</span
                             >
                           }
                           @if (it.promo; as promo) {
                             <span
-                              class="bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
+                              class="promo-line-badge bg-amber-50 text-amber-700 border border-amber-100 text-[11px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
                               >{{ promo.badge }}</span
                             >
+                            <span class="line-through text-[12px] text-gray-500 font-mono shrink-0">{{
+                              store.fmt(promo.originalAmount)
+                            }}</span>
                           }
                         </div>
                         <app-cart-item-options [options]="it.options" [notes]="it.notes" />
-                        @if (it.promo; as promo) {
-                          <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            <span class="line-through text-[11px] text-gray-500 font-mono">{{
-                              store.fmt(promo.originalAmount)
-                            }}</span>
-                            <span class="text-[11px] text-green-700 font-semibold font-mono"
-                              >Ahorras {{ store.fmt(promo.savings) }}</span
-                            >
-                          </div>
+                        @if (it.addonsTotal > 0) {
+                          <div class="text-[12px] text-gray-400">+ {{ store.fmt(it.addonsTotal) }} adicionales</div>
                         }
                       </div>
                       <div class="text-right shrink-0">
                         @if (it.promo; as promo) {
                           <div
-                            class="font-semibold text-[15px] text-indigo-600 tabular-nums font-mono"
+                            class="font-semibold text-[16px] text-indigo-600 tabular-nums font-mono"
                           >
                             {{ store.fmt(promo.discountedAmount) }}
                           </div>
                         } @else {
                           <div
-                            class="font-semibold text-[15px] text-gray-900 tabular-nums font-mono"
+                            class="font-semibold text-[16px] text-gray-900 tabular-nums font-mono"
                           >
                             {{ store.fmt(it.subtotal) }}
                           </div>
@@ -712,7 +707,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                           −
                         </button>
                         <span
-                          class="font-mono font-medium text-[13px] text-gray-900 tabular-nums min-w-[12px] text-center"
+                          class="font-mono font-medium text-[14px] text-gray-900 tabular-nums min-w-[12px] text-center"
                           >{{ it.qty }}</span
                         >
                         <button
@@ -775,11 +770,11 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                      sin la fila "Descuento" (A-125), un Subtotal bruto se veía
                      inconsistente con las líneas y con el Total. -->
                 <app-bill-summary
-                  [subtotal]="+p.subtotal - +p.discount + store.combosSubtotal()"
+                  [subtotal]="+p.subtotal - +p.discount + store.combosSubtotal() + store.toppingsSubtotal()"
                   [deliveryFee]="+p.delivery_fee"
                   deliveryFeeLabel="Costo de domicilio"
                   [showDeliveryIcon]="true"
-                  [total]="+p.total + store.combosSubtotal()"
+                  [total]="+p.total + store.combosSubtotal() + store.toppingsSubtotal()"
                   totalLabel="TOTAL ORDEN"
                   size="lg"
                 />

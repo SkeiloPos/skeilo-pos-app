@@ -50,11 +50,20 @@ export interface OptionSelectionPayload {
   quantity?: number;
 }
 
+/** spec 129 (FR-009): una adición elegida junto con cuántas unidades
+ *  (`ToppingSelectionIn`) -- hermano de `OptionSelectionPayload`, para
+ *  productos marcados `is_topping=true` en vez de opciones de un grupo. */
+export interface ToppingSelectionPayload {
+  topping_product_id: string;
+  quantity?: number;
+}
+
 /** Body de `POST /cart/items` (`CartItemIn`). */
 export interface CartItemPayload {
   product_variant_id: string;
   quantity?: number;
   options?: OptionSelectionPayload[];
+  toppings?: ToppingSelectionPayload[];
   notes?: string | null;
 }
 
@@ -62,6 +71,7 @@ export interface CartItemPayload {
 export interface CartItemUpdatePayload {
   quantity?: number;
   options?: OptionSelectionPayload[];
+  toppings?: ToppingSelectionPayload[];
   notes?: string | null;
 }
 
@@ -72,6 +82,15 @@ export interface CartItemOption {
   quantity: number;
   /** spec 089 (A-94): adicional cobrado y consumido una vez por línea. */
   per_line?: boolean;
+}
+
+/** spec 129: adición (producto-topping) elegida en una línea del carrito
+ *  (`CartItemToppingResponse`). `id` es el del producto-adición, no el de la
+ *  fila ni el de su variante. */
+export interface CartItemTopping {
+  id: string;
+  quantity: number;
+  unit_price: string;
 }
 
 /** Spec 117 (A-126, D5): una adición "Por cantidad" que el backend redujo
@@ -103,6 +122,8 @@ export interface CartItemResponse {
   discounted_line_total?: string | null;
   notes: string | null;
   options: CartItemOption[];
+  /** spec 129: adiciones (productos-topping) elegidas para esta línea. */
+  toppings?: CartItemTopping[];
   /** Spec 117 (A-126, D5): poblado SOLO en la respuesta del `PATCH` que disparó el
    *  ajuste automático -- `[]`/ausente en toda otra lectura (`GET /cart`, que nunca
    *  lo repite). */

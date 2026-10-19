@@ -642,7 +642,7 @@ describe('ManualOrderPageComponent', () => {
   });
 
   // ── Descuento por línea del carrito (rediseño create-order/code.html) ──────
-  it('una línea cuya promoción ya califica (cantidad ≥ min_qty) muestra insignia, tachado y "Ahorras $X"', async () => {
+  it('una línea cuya promoción ya califica (cantidad ≥ min_qty) muestra insignia y tachado', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -669,7 +669,6 @@ describe('ManualOrderPageComponent', () => {
 
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(texto).toContain('-21%');
-    expect(texto).toContain('Ahorras');
     // $ 14.000 tachado (2 x $7.000 sin descuento) y $ 11.000 con descuento (2 x $5.500).
     expect(texto).toContain('14.000');
     expect(texto).toContain('11.000');
@@ -698,10 +697,9 @@ describe('ManualOrderPageComponent', () => {
 
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(texto).not.toContain('2x1 Promo');
-    expect(texto).not.toContain('Ahorras');
   });
 
-  it('spec 115 (A-125): una línea con promoción de precio de paquete (min_qty > 1, sin discounted_price) también muestra insignia, tachado y "Ahorras $X"', async () => {
+  it('spec 115 (A-125): una línea con promoción de precio de paquete (min_qty > 1, sin discounted_price) también muestra insignia y tachado', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -725,7 +723,6 @@ describe('ManualOrderPageComponent', () => {
 
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(texto).toContain('2 x $15.000');
-    expect(texto).toContain('Ahorras');
     // $ 16.000 tachado (2 x $8.000 sin descuento) y $ 15.000 con descuento de paquete.
     expect(texto).toContain('16.000');
     expect(texto).toContain('15.000');
