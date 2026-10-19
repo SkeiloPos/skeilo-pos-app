@@ -4,6 +4,7 @@ import {
   MenuOption,
   MenuOptionGroup,
   MenuProduct,
+  MenuTopping,
   MenuVariant,
   MenuVariantPromotion,
 } from '../../products/interfaces/product.interface';
@@ -34,6 +35,10 @@ function makeProduct(partial: Partial<MenuProduct> = {}): MenuProduct {
     variants: [makeVariant()], option_groups: [], available: true,
     ...partial,
   };
+}
+
+function makeTopping(partial: Partial<MenuTopping> = {}): MenuTopping {
+  return { id: 't1', name: 'Gomitas', unit_price: 2000, available: true, ...partial };
 }
 
 describe('ProductSelectComponent', () => {
@@ -950,6 +955,100 @@ describe('ProductSelectComponent — [fromPromotions]/[existingQtyFor] (spec 081
 
       expect(el.querySelector('[data-testid="error-externo"]')?.textContent).toContain('Selección de opciones inválida');
       expect(el.querySelector('[data-testid="adicionales-retirados"]')?.textContent).toContain('se quitará');
+    });
+  });
+
+  describe('Adiciones disponibles (spec 129, FR-009)', () => {
+    function toppingButtons(toppingName: string): { minus: HTMLButtonElement; plus: HTMLButtonElement; qty: string } {
+      const rows = Array.from(fixture.nativeElement.querySelectorAll('[data-testid="topping-row"]')) as HTMLElement[];
+      const row = rows.find((r) => r.textContent?.includes(toppingName));
+      if (!row) throw new Error(`No se encontró la fila de la adición "${toppingName}"`);
+      return {
+        minus: row.querySelector('[data-testid="topping-minus"]') as HTMLButtonElement,
+        plus: row.querySelector('[data-testid="topping-plus"]') as HTMLButtonElement,
+        qty: (row.querySelector('[data-testid="topping-qty-value"]') as HTMLElement).textContent!.trim(),
+      };
+    }
+
+    it('un producto sin adiciones asociadas no muestra la sección', () => {
+      create(makeProduct({ toppings: [] }));
+      expect(fixture.nativeElement.querySelector('[data-testid="topping-row"]')).toBeNull();
+    });
+
+    it('elegir una adición sube su cantidad y el total de la línea, sin multiplicar por la cantidad del producto', () => {
+      create(makeProduct({ toppings: [makeTopping({ unit_price: 2000 })] }));
+      let { plus } = toppingButtons('Gomitas');
+      plus.click();
+      fixture.detectChanges();
+      expect(toppingButtons('Gomitas').qty).toBe('1');
+      expect(component.lineTotal()).toBe(15000 + 2000);
+
+      component.quantity.set(3);
+      fixture.detectChanges();
+      // FR-007/Assumptions: la adición no se multiplica por la cantidad de producto.
+      expect(component.lineTotal()).toBe(15000 * 3 + 2000);
+
+      ({ plus } = toppingButtons('Gomitas'));
+      plus.click();
+      fixture.detectChanges();
+      expect(toppingButtons('Gomitas').qty).toBe('2');
+      expect(component.lineTotal()).toBe(15000 * 3 + 2000 * 2);
+    });
+
+    it('bajar la cantidad a 0 la quita de la selección confirmada', () => {
+      create(makeProduct({ toppings: [makeTopping()] }));
+      const { plus } = toppingButtons('Gomitas');
+      plus.click();
+      fixture.detectChanges();
+      const { minus } = toppingButtons('Gomitas');
+      minus.click();
+      fixture.detectChanges();
+
+      expect(toppingButtons('Gomitas').qty).toBe('0');
+      component.quantity.set(1);
+      let emitted: ProductSelection | undefined;
+      component.added.subscribe((e) => (emitted = e));
+      component.confirm();
+      expect(emitted?.toppings).toEqual([]);
+    });
+
+    it('una adición agotada no se puede incrementar y se marca "Agotado"', () => {
+      create(makeProduct({ toppings: [makeTopping({ available: false })] }));
+      const { plus } = toppingButtons('Gomitas');
+      expect(plus.disabled).toBe(true);
+      expect(fixture.nativeElement.textContent).toContain('Agotado');
+    });
+
+    it('confirm() emite las adiciones elegidas junto con las opciones de sabor', () => {
+      create(makeProduct({ toppings: [makeTopping({ id: 't1', name: 'Gomitas', unit_price: 2000 })] }));
+      toppingButtons('Gomitas').plus.click();
+      fixture.detectChanges();
+
+      let emitted: ProductSelection | undefined;
+      component.added.subscribe((e) => (emitted = e));
+      component.confirm();
+
+      expect(emitted?.toppings).toEqual([
+        { topping: makeTopping({ id: 't1', name: 'Gomitas', unit_price: 2000 }), quantity: 1 },
+      ]);
+    });
+
+    it('en modo edición, precarga la adición ya elegida', () => {
+      const topping = makeTopping();
+      const product = makeProduct({ toppings: [topping] });
+      const variant = product.variants[0];
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({ imports: [ProductSelectComponent] });
+      fixture = TestBed.createComponent(ProductSelectComponent);
+      component = fixture.componentInstance;
+      component.product = product;
+      component.initialSelection = {
+        product, variant, options: [], toppings: [{ topping, quantity: 2 }],
+        quantity: 1, notes: null,
+      };
+      fixture.detectChanges();
+
+      expect(toppingButtons('Gomitas').qty).toBe('2');
     });
   });
 });

@@ -345,7 +345,7 @@ describe('DiningCartService', () => {
     const promise = cart.updateItem('i1', [{ option: tocino, quantity: 2, groupName: 'Adicionales', selectionMode: 'conteo' }], 'sin sal');
     const req = http.expectOne(`${API}/cart/items/i1`);
     expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual({ options: [{ option_id: 'toc', quantity: 2 }], notes: 'sin sal' });
+    expect(req.request.body).toEqual({ options: [{ option_id: 'toc', quantity: 2 }], toppings: [], notes: 'sin sal' });
     req.flush({
       ...emptyCart('Ana'),
       total: '36000',
@@ -375,7 +375,7 @@ describe('DiningCartService', () => {
 
     const promise = cart.updateItem('i1', [], null);
     const req = http.expectOne(`${API}/cart/items/i1`);
-    expect(req.request.body).toEqual({ options: [], notes: null });
+    expect(req.request.body).toEqual({ options: [], toppings: [], notes: null });
     req.flush({
       ...emptyCart('Ana'),
       total: '30000',

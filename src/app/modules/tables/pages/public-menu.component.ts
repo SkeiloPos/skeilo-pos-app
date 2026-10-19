@@ -45,6 +45,7 @@ import { IconComponent } from '../../../shared/icon/icon.component';
 import { normalizeText } from '../../../shared/normalize-text';
 import {
   ChosenMenuOption,
+  ChosenMenuTopping,
   ProductSelectComponent,
   ProductSelection,
 } from '../components/product-select.component';
@@ -843,11 +844,26 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
       if (match) options.push({ ...match, quantity: sel.quantity });
       else missing += 1;
     }
-    const stale = missing === 0 ? [] : [missing === 1 ? 'Un adicional' : `${missing} adicionales`];
+    // spec 129: adiciones-producto ya elegidas, resueltas contra `product.toppings`
+    // (a nivel de producto, no de variante) -- una desasociada después no se puede
+    // preseleccionar, mismo criterio "stale" que los sabores arriba.
+    const toppings: ChosenMenuTopping[] = [];
+    let missingToppings = 0;
+    for (const sel of line.toppingSelections ?? []) {
+      const topping = (product.toppings ?? []).find((t) => t.id === sel.toppingProductId);
+      if (topping) toppings.push({ topping, quantity: sel.quantity });
+      else missingToppings += 1;
+    }
+    const stale = [
+      ...(missing === 0 ? [] : [missing === 1 ? 'Un adicional' : `${missing} adicionales`]),
+      ...(missingToppings === 0
+        ? []
+        : [missingToppings === 1 ? 'Una adición' : `${missingToppings} adiciones`]),
+    ];
     return {
       product,
       stale,
-      selection: { product, variant, options, quantity: line.quantity, notes: line.notes },
+      selection: { product, variant, options, toppings, quantity: line.quantity, notes: line.notes },
     };
   });
 
@@ -870,7 +886,7 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     if (!line) return;
     this.editError.set(null);
     try {
-      await this.cart.updateItem(line.id, selection.options, selection.notes);
+      await this.cart.updateItem(line.id, selection.options, selection.notes, selection.toppings);
       this.closeEdit();
     } catch (err) {
       if (err instanceof DinerSessionExpiredError) {
@@ -1226,6 +1242,7 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
         selection.quantity,
         selection.notes,
         selection.stepQuantity,
+        selection.toppings,
       );
     } catch (err) {
       this.showCartError(err);
