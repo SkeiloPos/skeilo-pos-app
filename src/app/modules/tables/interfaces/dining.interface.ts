@@ -278,6 +278,14 @@ export interface CurrentPaymentAttemptSummary {
   payment_method_name: string;
   is_cash: boolean;
   receipt_file_url: string | null;
+  /**
+   * Pago mixto (spec 130, FR-008) — `null`/ausente en cualquier intento no
+   * mixto. Opcionales por el mismo motivo que en `DinerPaymentAttempt`: no
+   * forzar a tocar cada literal ya escrito antes de esta spec.
+   */
+  cash_amount?: number | null;
+  transfer_amount?: number | null;
+  cash_confirmed_at?: string | null;
 }
 
 /** Vista de cajero de un intento de pago (`PaymentAttemptResponse`). */
@@ -295,6 +303,16 @@ export interface PaymentAttempt {
   resolved_by_user_id: string | null;
   resolved_at: string | null;
   created_at: string;
+  /**
+   * Pago mixto (spec 130, FR-008) — `null` en cualquier intento no mixto.
+   * `cash_amount != null` es el mismo discriminador "este intento es mixto"
+   * que usa el backend y el lado del comensal (`CurrentPaymentAttemptSummary`
+   * arriba, `public-menu.component.ts`).
+   */
+  cash_amount: string | null;
+  transfer_amount: string | null;
+  transfer_method_id: string | null;
+  cash_confirmed_at: string | null;
 }
 
 /** Body de `POST /orders/payment-attempts/{id}/reject` (`PaymentAttemptRejectIn`). */

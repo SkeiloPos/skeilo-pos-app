@@ -3,8 +3,10 @@
 /**
  * Clasificación del método de pago (`PaymentMethodType`). Es lo que agrupa el
  * desglose del arqueo, y solo `cash` entra en el efectivo esperado del cajón.
+ * `'mixed'` (spec 130, FR-004): "Pago mixto" (efectivo + transferencia) —
+ * se copia al `PaymentMethod` del tenant al activarse, igual que los demás.
  */
-export type PaymentMethodType = 'cash' | 'card' | 'transfer' | 'other';
+export type PaymentMethodType = 'cash' | 'card' | 'transfer' | 'other' | 'mixed';
 
 /** `PaymentMethodResponse`. */
 export interface PaymentMethod {

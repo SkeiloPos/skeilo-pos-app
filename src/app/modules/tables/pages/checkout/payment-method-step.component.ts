@@ -22,7 +22,7 @@ import { CheckoutProgressStore } from './checkout-progress.store';
     <div class="min-h-screen bg-gray-50 flex flex-col">
       <div class="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <button (click)="back()" aria-label="Volver" class="p-1 -ml-1 text-gray-500 hover:text-indigo-600 transition-colors">
+          <button (click)="back()" aria-label="Volver" class="p-1 -ml-1 text-gray-500 hover:text-violet-600 transition-colors">
             <span class="w-5 h-5 block"><app-icon name="back" /></span>
           </button>
           <app-checkout-step-indicator [step]="2" [total]="3" label="Método de pago" />
@@ -50,7 +50,7 @@ import { CheckoutProgressStore } from './checkout-progress.store';
                 class="w-full flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-40 transition-colors text-left"
               >
                 <span class="w-5 h-5 shrink-0 text-emerald-600">
-                  <app-icon [name]="m.is_cash ? 'cash' : 'transfer'" />
+                  <app-icon [name]="m.is_cash || m.type === 'mixed' ? 'cash' : 'transfer'" />
                 </span>
                 {{ m.name }}
               </button>
@@ -99,7 +99,16 @@ export class PaymentMethodStepComponent implements OnInit {
       step: method.is_cash ? 'method' : 'transfer',
       payment_method_id: method.id,
       receipt_file_url: null,
+      cash_amount: null,
+      transfer_method_id: null,
     });
+
+    // Spec 130: "Pago mixto" no envía ni va directo a transferencia — pasa
+    // primero por el monto en efectivo (`cash-amount-step`).
+    if (method.type === 'mixed') {
+      this.router.navigate(['/menu/t', this.token, 'checkout', 'cash']);
+      return;
+    }
 
     if (!method.is_cash) {
       this.router.navigate(['/menu/t', this.token, 'checkout', 'transfer']);

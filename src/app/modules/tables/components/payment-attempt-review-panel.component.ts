@@ -33,6 +33,17 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
  * Decisión D5 de spec 028 (que había dejado "Rechazar" con un único
  * significado: el del intento de pago, con reintento). La transferencia con
  * comprobante ya subido conserva su "Rechazar" de siempre, sin cambios.
+ *
+ * Bugfix (gap de spec 130, "Pago mixto"): un intento mixto es un único row
+ * con dos señales independientes (`status` para la transferencia,
+ * `cash_confirmed_at` para el efectivo) — el backend solo deja avanzar el
+ * pedido cuando AMBAS están presentes. Este panel antes solo sabía resolver
+ * la transferencia (spec 130 dejó la UI de la pata en efectivo
+ * explícitamente fuera de alcance, remitida a una "spec 112" que terminó
+ * siendo otra cosa y nunca cubrió este flujo) — un pedido mixto con la
+ * transferencia ya aprobada se quedaba atascado en `status='recibida'` para
+ * siempre, sin ningún control visible para confirmar el efectivo. Ver
+ * `isMixed()`/`cashLegPending()`/`confirmMixedCash()`.
  */
 @Component({
   selector: 'app-payment-attempt-review-panel',
@@ -114,7 +125,149 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           </div>
         }
 
-        @if (attempt.is_cash) {
+        @if (isMixed(attempt)) {
+          <!--
+            Pago mixto (spec 130): un único intento con dos señales
+            independientes — transferencia (status) y efectivo
+            (cash_confirmed_at). Antes este panel solo sabía resolver la
+            transferencia (is_cash es false para el método "Pago mixto"),
+            así que la pata de efectivo quedaba huérfana para siempre y el
+            pedido nunca salía de 'recibida'.
+          -->
+          @if (attempt.status === 'pendiente') {
+            @if (attempt.receipt_file_url) {
+              <div class="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  (click)="receiptPreviewOpen.set(true)"
+                  class="text-sm font-medium text-indigo-600 hover:underline"
+                >
+                  Ver comprobante
+                </button>
+                <button
+                  (click)="approve(attempt)"
+                  [disabled]="busy() || !cashShiftId || actionsBlocked()"
+                  class="min-h-11 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition-colors"
+                >
+                  Aprobar transferencia
+                </button>
+                <button
+                  (click)="showReject.set(!showReject())"
+                  [disabled]="busy()"
+                  class="min-h-11 px-4 py-2 text-sm font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-colors"
+                >
+                  Rechazar
+                </button>
+              </div>
+              @if (!cashShiftId) {
+                <p class="text-sm text-red-600">Abre un turno de caja para poder aprobar el pago.</p>
+              }
+              @if (showReject()) {
+                <div class="flex items-center gap-2 pt-1 flex-wrap">
+                  <input
+                    type="text"
+                    [(ngModel)]="rejectReason"
+                    placeholder="Motivo del rechazo (obligatorio)"
+                    class="flex-1 min-h-11 px-2 py-1 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-300"
+                  />
+                  <button
+                    (click)="reject(attempt)"
+                    [disabled]="busy() || !rejectReason.trim()"
+                    class="min-h-11 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors"
+                  >
+                    Confirmar rechazo
+                  </button>
+                </div>
+              }
+            } @else {
+              <p class="text-sm text-amber-700">Esperando que el comensal suba el comprobante de la transferencia…</p>
+            }
+          } @else {
+            <p class="text-sm text-emerald-700 font-medium inline-flex items-center gap-1.5">
+              <app-mi-icon name="check" [size]="16" />
+              Transferencia verificada ({{ money(attempt.transfer_amount) }})
+            </p>
+          }
+
+          @if (cashLegPending(attempt)) {
+            <!-- Misma mecánica que la rama de efectivo puro (monto + sugerencias +
+                 vuelto en vivo), pero contra cash_amount (la porción fija de este
+                 intento mixto, congelada desde submit_cart), no contra el Total. -->
+            <div class="rounded-lg border border-gray-200 bg-white px-3 py-2 space-y-2">
+              <p class="text-sm text-gray-700">
+                Efectivo a confirmar: <strong>{{ money(attempt.cash_amount) }}</strong>
+              </p>
+              <app-money-input
+                class="block w-full"
+                [(ngModel)]="amountReceived"
+                placeholder="Monto recibido"
+                sizeClass="w-full min-h-11 px-3 py-2 text-base rounded-lg"
+              />
+              <div class="flex flex-wrap gap-2">
+                @for (sugerencia of mixedCashSuggestions(attempt); track sugerencia) {
+                  <button
+                    type="button"
+                    data-testid="sugerencia-monto"
+                    (click)="amountReceived = sugerencia"
+                    class="min-h-9 px-3 py-1.5 rounded-md text-sm font-medium border"
+                    [class]="
+                      sugerencia === amountReceived
+                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    "
+                  >
+                    {{ sugerencia === +attempt.cash_amount! ? 'Exacto' : money(sugerencia) }}
+                  </button>
+                }
+              </div>
+              @let cambioMixto = mixedCashChangePreview(attempt);
+              @if (cambioMixto !== null) {
+                <div
+                  class="flex items-center justify-between rounded-lg px-3 py-2"
+                  [class]="cambioMixto < 0 ? 'bg-red-50' : 'bg-emerald-50'"
+                >
+                  <span
+                    class="text-sm font-medium"
+                    [class]="cambioMixto < 0 ? 'text-red-800' : 'text-emerald-800'"
+                  >
+                    Cambio
+                  </span>
+                  <span
+                    class="text-lg font-bold"
+                    [class]="cambioMixto < 0 ? 'text-red-700' : 'text-emerald-700'"
+                  >
+                    {{ money(cambioMixto) }}
+                  </span>
+                </div>
+              }
+              <button
+                (click)="confirmMixedCash(attempt)"
+                [disabled]="busy() || cambioMixto === null || cambioMixto < 0 || !cashShiftId || actionsBlocked()"
+                class="w-full min-h-11 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition-colors"
+              >
+                {{ busy() ? 'Confirmando…' : 'Confirmar efectivo' }}
+              </button>
+            </div>
+            @if (!cashShiftId) {
+              <p class="text-sm text-red-600">Abre un turno de caja para poder confirmar el efectivo.</p>
+            }
+          } @else {
+            <p class="text-sm text-emerald-700 font-medium inline-flex items-center gap-1.5">
+              <app-mi-icon name="check" [size]="16" />
+              Efectivo confirmado ({{ money(attempt.cash_amount) }})
+            </p>
+          }
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <button
+              (click)="showRejectOrder.set(!showRejectOrder())"
+              [disabled]="busy()"
+              class="min-h-11 px-4 py-2 text-sm font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-colors"
+            >
+              Rechazar pedido
+            </button>
+          </div>
+        } @else if (attempt.is_cash) {
           <!-- Efectivo: el cajero registra el monto, el backend calcula el cambio. -->
           <div class="space-y-2">
             <app-money-input
@@ -286,6 +439,11 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             Recibido: {{ money(last.amount_received) }} · Cambio: {{ money(last.change_amount) }}
           </p>
         }
+        @if (isMixed(last)) {
+          <p class="text-sm text-emerald-700">
+            {{ money(last.cash_amount) }} en efectivo · {{ money(last.transfer_amount) }} por transferencia
+          </p>
+        }
       } @else {
         <p class="text-sm text-gray-400">Sin pago confirmado — el último intento fue rechazado.</p>
       }
@@ -416,10 +574,37 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
     }
   }
 
-  /** El intento vigente si sigue `pendiente` — es el único sobre el que el
-   *  cajero puede actuar ahora mismo. */
+  /** Pago mixto (spec 130): `cash_amount != null` es el discriminador "este
+   *  intento es mixto" — mismo criterio que usa el backend y
+   *  `public-menu.component.ts` del lado del comensal. */
+  isMixed(a: PaymentAttempt): boolean {
+    return a.cash_amount != null;
+  }
+
+  /** Pago mixto: la pata en efectivo todavía no la confirmó el cajero. */
+  cashLegPending(a: PaymentAttempt): boolean {
+    return this.isMixed(a) && !a.cash_confirmed_at;
+  }
+
+  /**
+   * El intento vigente sobre el que el cajero puede actuar ahora mismo.
+   *
+   * Bugfix (gap de spec 130): para un intento normal basta con
+   * `status === 'pendiente'`. Para uno **mixto**, `status` solo representa
+   * la pata de transferencia — antes, en cuanto el cajero la aprobaba
+   * (`status` pasaba a `'confirmado'`), este método dejaba de devolverlo y
+   * el panel caía en `lastResolved()`, mostrando "Pago confirmado" sin que
+   * existiera ningún control para confirmar la pata en efectivo
+   * (`cash_confirmed_at` se quedaba `null` para siempre, y con él el pedido
+   * entero atascado en `status='recibida'`). Ahora sigue "vigente" mientras
+   * falte cualquiera de las dos señales.
+   */
   current(): PaymentAttempt | null {
-    return this.attempts().find((a) => a.status === 'pendiente') ?? null;
+    return (
+      this.attempts().find(
+        (a) => a.status === 'pendiente' || (a.status !== 'rechazado' && this.cashLegPending(a)),
+      ) ?? null
+    );
   }
 
   /** Si no hay ninguno pendiente, el más reciente resuelto (para mostrar
@@ -448,9 +633,10 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
   }
 
   /** Hasta 5 montos sugeridos para el monto recibido en efectivo (spec 124,
-   *  FR-013), calculados sobre el total autoritativo de este pedido -- este
-   *  panel no tiene pago mixto, así que no hay saldo pendiente que restar
-   *  (research.md D5). Vacío mientras no haya un total verificado. */
+   *  FR-013), calculados sobre el total autoritativo de este pedido -- para
+   *  un intento **mixto** (pago mixto, ver `mixedCashSuggestions()` abajo)
+   *  las sugerencias se calculan sobre `cash_amount`, no sobre este total.
+   *  Vacío mientras no haya un total verificado. */
   suggestions(): number[] {
     const total = this.orderTotal();
     return total !== null ? roundingSuggestions(total) : [];
@@ -468,6 +654,26 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
     const total = this.orderTotal();
     if (total == null || amount == null) return null;
     return amount - total;
+  }
+
+  /** Mismas sugerencias de monto (spec 124, FR-013) que `suggestions()`,
+   *  pero para la pata en efectivo de un intento **mixto** (spec 130):
+   *  calculadas sobre `cash_amount` (la porción fija de este intento), no
+   *  sobre el Total del pedido — el cajero solo recibe esa porción en
+   *  efectivo, el resto ya llegó por transferencia. */
+  mixedCashSuggestions(attempt: PaymentAttempt): number[] {
+    return roundingSuggestions(Number(attempt.cash_amount));
+  }
+
+  /** Vista previa del vuelto para la pata en efectivo de un intento mixto —
+   *  mismo cálculo que `cashChangePreview()`, pero contra `cash_amount` en
+   *  vez de `orderTotal()`. Puramente informativo para el cajero mientras
+   *  cuenta el efectivo: el backend no valida ni guarda este monto para un
+   *  intento mixto (`cash_amount` ya quedó fijo desde `submit_cart`). */
+  mixedCashChangePreview(attempt: PaymentAttempt): number | null {
+    const amount = this.amountReceived;
+    if (amount == null) return null;
+    return amount - Number(attempt.cash_amount);
   }
 
   async load(): Promise<void> {
@@ -576,6 +782,40 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
       this.resolved.emit();
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo confirmar el pago.'));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /**
+   * Confirma la pata en efectivo de un intento **mixto** (spec 130). A
+   * pedido del usuario: el cajero escribe cuánto le dio el cliente para esta
+   * porción y ve el vuelto en vivo (`mixedCashChangePreview()`), igual que
+   * en el flujo de efectivo puro -- a diferencia de ese flujo, el monto
+   * escrito es solo para que el cajero calcule el cambio: el backend no lo
+   * valida ni lo guarda para un intento mixto (`cash_amount` ya quedó fijo
+   * desde `submit_cart`, FR-006; `_confirm_cash_portion_of_mixed_attempt`
+   * ignora `amount_received`), el endpoint solo exige un valor `> 0` por
+   * schema -- de ahí el chequeo local contra `cash_amount` (no contra el
+   * Total del pedido).
+   */
+  async confirmMixedCash(attempt: PaymentAttempt): Promise<void> {
+    const amount = this.amountReceived;
+    if (!amount || amount < Number(attempt.cash_amount)) return;
+    if (!this.cashShiftId) {
+      this.toast.error('No hay un turno de caja abierto.');
+      return;
+    }
+    if (this.actionsBlocked() || !(await this.reconfirmIfTotalChanged())) return;
+    this.busy.set(true);
+    try {
+      await this.api.confirmCashPaymentAttempt(attempt.id, amount, this.cashShiftId);
+      this.toast.success('Efectivo confirmado');
+      this.amountReceived = null;
+      await this.load();
+      this.resolved.emit();
+    } catch (err) {
+      this.toast.error(this.api.extractError(err, 'No se pudo confirmar el efectivo.'));
     } finally {
       this.busy.set(false);
     }

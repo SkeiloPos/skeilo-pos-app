@@ -5,7 +5,7 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { environment } from '../../../../environments/environment';
-import { DinerService, DinerSessionExpiredError } from './diner.service';
+import { DinerService, DinerSessionExpiredError, PendingPaymentExitError } from './diner.service';
 import { DinerTokenStore } from './diner-token.store';
 
 const API = environment.apiBaseUrl;
@@ -202,6 +202,8 @@ describe('DinerService', () => {
     expect(req.request.body).toEqual({
       payment_method_id: 'pm-efectivo',
       receipt_file_url: null,
+      cash_amount: null,
+      transfer_method_id: null,
     });
 
     req.flush({ id: 'o1', status: 'recibida', channel: 'QR_MENU', created_at: '2026-07-28T10:00:00' });
@@ -217,6 +219,24 @@ describe('DinerService', () => {
     expect(req.request.body).toEqual({
       payment_method_id: 'pm-nequi',
       receipt_file_url: 'https://example.invalid/a.jpg',
+      cash_amount: null,
+      transfer_method_id: null,
+    });
+
+    req.flush({ id: 'o1', status: 'recibida', channel: 'QR_MENU', created_at: '2026-07-28T10:00:00' });
+    await promise;
+  });
+
+  it('envía cash_amount y transfer_method_id para un pago mixto (spec 130)', async () => {
+    const promise = service.submitCart(
+      'pm-mixto', 'https://example.invalid/a.jpg', 3000, 'pm-nequi',
+    );
+    const req = http.expectOne(`${API}/cart/submit`);
+    expect(req.request.body).toEqual({
+      payment_method_id: 'pm-mixto',
+      receipt_file_url: 'https://example.invalid/a.jpg',
+      cash_amount: 3000,
+      transfer_method_id: 'pm-nequi',
     });
 
     req.flush({ id: 'o1', status: 'recibida', channel: 'QR_MENU', created_at: '2026-07-28T10:00:00' });
@@ -336,6 +356,25 @@ describe('DinerService', () => {
     expect(result instanceof DinerSessionExpiredError).toBe(false);
     // Pase lo que pase, el token local se descarta.
     expect(tokens.token()).toBeNull();
+  });
+
+  /** Spec 130 (A-139): un 409 ya no se traga en silencio ni descarta el token. */
+  it('un 409 al salir lanza PendingPaymentExitError y conserva el token', async () => {
+    tokens.set('tok-123');
+
+    const promise = service.leave().then(
+      () => 'ok',
+      (e: unknown) => e,
+    );
+    http.expectOne(`${API}/cart/leave`).flush(
+      { detail: { error: 'pago_pendiente', message: 'Tienes un pago pendiente.' } },
+      { status: 409, statusText: 'Conflict' },
+    );
+
+    const result = await promise;
+    expect(result instanceof PendingPaymentExitError).toBe(true);
+    expect((result as PendingPaymentExitError).message).toBe('Tienes un pago pendiente.');
+    expect(tokens.token()).toBe('tok-123');
   });
 
   // ── Los dos formatos de "sin stock" ───────────────────────────────────────

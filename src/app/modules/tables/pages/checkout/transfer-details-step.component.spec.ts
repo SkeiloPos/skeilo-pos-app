@@ -393,20 +393,21 @@ describe('TransferDetailsStepComponent', () => {
   const totalBlock = (): HTMLElement =>
     fixture.nativeElement.querySelector('[data-testid="payment-total"]');
 
-  it('muestra el total a pagar con el formato de moneda del proyecto y el conteo en unidades (FR-003, FR-004)', async () => {
+  it('muestra el total a pagar con el formato de moneda del proyecto (FR-003, FR-004)', async () => {
     await createComponent(nequi(), { lines: buildLines(2), total: 23500, count: 5 });
 
     expect(totalBlock()).toBeTruthy();
     expect(totalBlock().textContent).toContain('Total a pagar');
     expect(totalBlock().textContent).toContain('$ 23.500');
-    expect(totalBlock().textContent).toContain('5 productos');
   });
 
-  it('usa el singular cuando el pedido tiene una sola unidad (research.md D11)', async () => {
-    await createComponent(nequi(), { lines: buildLines(1), total: 15000, count: 1 });
+  it('rediseño: el conteo de unidades ya no se repite en el bloque de total, solo vive en el resumen (RN-004)', async () => {
+    await createComponent(nequi(), { lines: buildLines(2), total: 23500, count: 5 });
 
-    expect(totalBlock().textContent).toContain('1 producto');
-    expect(totalBlock().textContent).not.toContain('1 productos');
+    expect(totalBlock().textContent).not.toContain('productos');
+    expect(
+      fixture.nativeElement.querySelector('summary [data-testid="summary-count"]')!.textContent!.trim(),
+    ).toBe('5 productos');
   });
 
   it('pinta el total ANTES del <h1> con el nombre del método en el orden del documento (FR-001)', async () => {
@@ -433,6 +434,19 @@ describe('TransferDetailsStepComponent', () => {
     expect((fixture.nativeElement.querySelector('h1') as HTMLElement).className).toContain('text-lg');
   });
 
+  it('rediseño: en un pago mixto, el bloque de total muestra solo la porción a transferir y la rotula por el método', async () => {
+    await createComponent(nequi(), { lines: buildLines(2), total: 23500, count: 5 });
+    // Simula lo que ngOnInit ya fijó a partir del `cash_amount` del record del
+    // store (CheckoutProgressStore) — se escribe directo en la señal pública
+    // que la plantilla lee, sin rehacer todo el harness de creación.
+    component.mixedCashAmount.set(8500);
+    fixture.detectChanges();
+
+    expect(totalBlock().textContent).toContain('Transfiere por Nequi');
+    expect(totalBlock().textContent).toContain('$ 15.000');
+    expect(totalBlock().textContent).toContain('Más $ 8.500 en efectivo al recibir el pedido');
+  });
+
   it('el total NUNCA queda dentro de una zona colapsable (FR-002)', async () => {
     await createComponent(nequi(), { lines: buildLines(6), total: 23500, count: 6 });
 
@@ -448,7 +462,6 @@ describe('TransferDetailsStepComponent', () => {
     expect(component.method()).toBeNull();
     expect(totalBlock()).toBeTruthy();
     expect(totalBlock().textContent).toContain('$ 23.500');
-    expect(totalBlock().textContent).toContain('5 productos');
   });
 
   it('no introduce ninguna fila de impuestos ni de subtotal en el bloque de total (FR-013, SC-007)', async () => {
@@ -479,12 +492,12 @@ describe('TransferDetailsStepComponent', () => {
       }),
       { lines: buildLines(2), total: 23500, count: 5 },
     );
-    const indigo = fixture.nativeElement.querySelector('.bg-indigo-50') as HTMLElement;
+    const bankInfo = fixture.nativeElement.querySelector('[data-testid="bank-info"]') as HTMLElement;
     const comprobante = Array.from(
-      fixture.nativeElement.querySelectorAll('label') as NodeListOf<HTMLElement>,
-    ).find((l) => l.textContent?.includes('Sube tu comprobante'))!;
+      fixture.nativeElement.querySelectorAll('p') as NodeListOf<HTMLElement>,
+    ).find((p) => p.textContent?.trim() === 'Sube tu comprobante')!;
 
-    expect(indigo.compareDocumentPosition(summaryEl()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bankInfo.compareDocumentPosition(summaryEl()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(summaryEl().compareDocumentPosition(comprobante) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -534,29 +547,25 @@ describe('TransferDetailsStepComponent', () => {
     expect(summaryEl().textContent).not.toContain('Ahorro');
   });
 
-  it('el conteo del bloque de total y el del <summary> son idénticos carácter por carácter, con 5 unidades (FR-006, RN-004)', async () => {
-    // Es el único test que verifica en UNA sola pantalla lo que FR-006 prohíbe:
-    // dos conteos distintos del mismo pedido. Que los dos salgan de
-    // `formatProductCount` lo hace probable; esto lo hace verificado.
+  it('rediseño: el único conteo de la pantalla vive en el <summary>, en plural (RN-004)', async () => {
+    // Desde el rediseño, el bloque de total ya no repite el conteo (ver test
+    // más arriba): el único lugar que lo muestra es el <summary>, así que no
+    // hay nada más con lo que pueda divergir.
     await createComponent(nequi(), { lines: buildLines(2), total: 23500, count: 5 });
-    const enTotal = totalBlock().querySelector('p.text-gray-400')!.textContent!.trim();
     const enSummary = fixture.nativeElement
       .querySelector('summary [data-testid="summary-count"]')!
       .textContent!.trim();
 
-    expect(enTotal).toBe('5 productos');
-    expect(enSummary).toBe(enTotal);
+    expect(enSummary).toBe('5 productos');
   });
 
-  it('el conteo del bloque de total y el del <summary> son idénticos también en singular (FR-006, RN-004)', async () => {
+  it('rediseño: el conteo del <summary> usa el singular con una sola unidad (RN-004)', async () => {
     await createComponent(nequi(), { lines: buildLines(1), total: 15000, count: 1 });
-    const enTotal = totalBlock().querySelector('p.text-gray-400')!.textContent!.trim();
     const enSummary = fixture.nativeElement
       .querySelector('summary [data-testid="summary-count"]')!
       .textContent!.trim();
 
-    expect(enTotal).toBe('1 producto');
-    expect(enSummary).toBe(enTotal);
+    expect(enSummary).toBe('1 producto');
   });
 
   it('el resumen no introduce impuestos ni subtotal en esta pantalla (FR-013, SC-007)', async () => {

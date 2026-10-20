@@ -99,6 +99,15 @@ export const routes: Routes = [
               ),
           },
           {
+            // Spec 130 (FR-005/FR-006): monto en efectivo de "Pago mixto" —
+            // entre 'method' y 'transfer', solo para ese método.
+            path: 'cash',
+            loadComponent: () =>
+              import('./modules/tables/pages/checkout/cash-amount-step.component').then(
+                m => m.CashAmountStepComponent,
+              ),
+          },
+          {
             path: 'transfer',
             loadComponent: () =>
               import('./modules/tables/pages/checkout/transfer-details-step.component').then(

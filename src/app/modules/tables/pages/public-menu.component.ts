@@ -12,6 +12,7 @@ import {
   DinerService,
   DinerSessionExpiredError,
   MenuPromotionAnnouncement,
+  PendingPaymentExitError,
 } from '../services/diner.service';
 import { DinerTokenStore } from '../services/diner-token.store';
 import { CartLine, DiningCartService } from '../services/dining-cart.service';
@@ -96,7 +97,7 @@ const REFRESH_DEBOUNCE_MS = 250;
       <!-- Loading -->
       @if (view() === 'loading') {
         <div class="flex items-center justify-center min-h-screen">
-          <div class="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+          <div class="w-10 h-10 border-4 border-violet-600 border-t-transparent rounded-full animate-spin"></div>
         </div>
       }
 
@@ -115,17 +116,19 @@ const REFRESH_DEBOUNCE_MS = 250;
            QR físico de la mesa. Pantalla estática: sin campo de nombre, menú, botón ni enlace hacia
            confirmName()/openSession() a propósito. -->
       @if (view() === 'exited') {
-        <div data-testid="vista-acceso-denegado" class="flex flex-col items-center justify-center min-h-screen px-4 text-center">
-          @if (businessLogo()) {
-            <img
-              [src]="businessLogo()"
-              [alt]="businessName() ?? ''"
-              class="w-20 h-20 rounded-2xl object-cover mx-auto mb-4 border border-gray-100"
-            />
-          }
-          <h1 class="text-xl font-bold text-gray-800">
-            Por favor, escanea nuevamente el código QR de la mesa para ingresar al menú
-          </h1>
+        <div data-testid="vista-acceso-denegado" class="flex flex-col items-center justify-center min-h-screen px-4 py-12 text-center" style="background:#F4F6F9">
+          <div class="w-full max-w-md bg-white border border-gray-200 rounded-2xl shadow-lg p-8 flex flex-col items-center gap-5">
+            @if (businessLogo()) {
+              <img
+                [src]="businessLogo()"
+                [alt]="businessName() ?? ''"
+                class="w-24 h-20 rounded-xl object-contain"
+              />
+            }
+            <h1 class="font-sora text-xl font-semibold text-gray-900 tracking-tight">
+              Por favor, escanea nuevamente el código QR de la mesa para ingresar al menú
+            </h1>
+          </div>
         </div>
       }
 
@@ -133,90 +136,109 @@ const REFRESH_DEBOUNCE_MS = 250;
            vacía). SIEMPRE esta pantalla, sin historial, recibo ni botón alguno: la sesión quedó
            invalidada y solo un nuevo escaneo del QR crea una nueva. -->
       @if (view() === 'closed') {
-        <div data-testid="vista-cerrada" class="flex flex-col items-center justify-center min-h-screen px-4 text-center">
-          @if (businessLogo()) {
-            <img
-              [src]="businessLogo()"
-              [alt]="businessName() ?? ''"
-              class="w-20 h-20 rounded-2xl object-cover mx-auto mb-4 border border-gray-100"
-            />
-          }
-          @if (businessName()) {
-            <p class="text-sm font-semibold text-gray-500 mb-1">{{ businessName() }}</p>
-          }
-          <h1 class="text-xl font-bold text-gray-800">¡Gracias por tu visita! Esperamos verte pronto.</h1>
+        <div data-testid="vista-cerrada" class="flex flex-col items-center justify-center min-h-screen px-4 py-12 text-center" style="background:#F4F6F9">
+          <div class="w-full max-w-md bg-white border border-gray-200 rounded-2xl shadow-lg p-8 flex flex-col items-center gap-5">
+            @if (businessLogo()) {
+              <img
+                [src]="businessLogo()"
+                [alt]="businessName() ?? ''"
+                class="w-24 h-20 rounded-xl object-contain"
+              />
+            }
+            <span class="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 grid place-items-center">
+              <span class="w-8 h-8 block"><app-icon name="check-circle" /></span>
+            </span>
+            <div class="flex flex-col items-center gap-1.5">
+              @if (businessName()) {
+                <p class="text-sm font-semibold text-gray-500">{{ businessName() }}</p>
+              }
+              <h1 class="font-sora text-2xl font-semibold text-gray-900 tracking-tight">¡Gracias por tu visita! Esperamos verte pronto.</h1>
+            </div>
+          </div>
         </div>
       }
 
       <!-- Name screen -->
       @if (view() === 'name') {
-        <div class="min-h-screen flex items-center justify-center px-4">
-          <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-8 text-center">
+        <div class="relative min-h-screen flex items-center justify-center px-4 pt-12 pb-16" style="background:#F4F6F9">
+          <div class="w-full max-w-md bg-white rounded-2xl shadow-lg border border-gray-200 p-8 flex flex-col items-center gap-6 text-center">
             @if (businessLogo()) {
               <img
                 [src]="businessLogo()"
                 [alt]="businessName() ?? ''"
-                class="w-20 h-20 rounded-2xl object-cover mx-auto mb-4 border border-gray-100"
+                class="w-24 h-20 rounded-xl object-contain"
               />
             } @else {
-              <div class="text-5xl mb-4">🍦</div>
+              <div class="text-5xl">🍦</div>
             }
-            <h1 class="text-2xl font-bold text-gray-900 mb-1">
-              {{ businessName() ? '¡Bienvenido a ' + businessName() + '!' : '¡Bienvenido!' }}
-            </h1>
-            @if (tableLabel()) {
-              <p class="text-indigo-600 font-medium">{{ tableLabel() }}</p>
-            }
-            <p class="text-sm text-gray-400 mb-6">Ingresa tu nombre para ver el menú</p>
+            <div class="flex flex-col items-center gap-2.5">
+              <h1 class="font-sora text-2xl font-semibold text-gray-900 tracking-tight">
+                {{ businessName() ? 'Te damos la bienvenida a ' + businessName() + '.' : 'Te damos la bienvenida.' }}
+              </h1>
+              @if (tableLabel()) {
+                <span class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
+                  <span class="w-3.5 h-3.5 block"><app-icon name="qr-code" /></span>
+                  {{ tableLabel() }}
+                </span>
+              }
+              <p class="text-gray-400">Escribe tu nombre para ver el menú.</p>
+            </div>
 
-            <div class="space-y-4 text-left">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1.5">¿Cuál es tu nombre?</label>
+            <div class="w-full flex flex-col gap-4 text-left">
+              <div class="flex flex-col gap-2">
+                <label class="text-sm font-semibold text-gray-600">¿Cuál es tu nombre?</label>
                 <input
                   type="text"
                   [value]="nameInput()"
                   (input)="nameInput.set($any($event.target).value)"
                   (keyup.enter)="confirmName()"
                   placeholder="Tu nombre"
-                  class="w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-colors"
+                  class="h-12 w-full px-3.5 bg-gray-50 border rounded-lg text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-500 transition-colors"
                   [class.border-red-400]="nameError()"
-                  [class.border-gray-200]="!nameError()"
+                  [class.border-gray-300]="!nameError()"
                 />
                 @if (nameError()) {
-                  <p class="text-red-500 text-xs mt-1">Por favor ingresa tu nombre para continuar</p>
+                  <p class="flex items-center gap-1.5 text-sm font-semibold text-red-600">
+                    <span class="w-4 h-4 block"><app-icon name="triangle-alert" /></span>
+                    Escribe tu nombre para continuar.
+                  </p>
                 }
               </div>
               @if (errorMessage()) {
-                <p class="text-red-500 text-xs bg-red-50 px-3 py-2 rounded-lg">{{ errorMessage() }}</p>
+                <p class="text-red-600 text-sm bg-red-50 px-3 py-2 rounded-lg">{{ errorMessage() }}</p>
               }
               <button
                 (click)="confirmName()"
                 [disabled]="joining()"
-                class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
+                class="w-full h-12 bg-violet-700 hover:bg-violet-800 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
               >
                 {{ joining() ? 'Abriendo sesión...' : 'Continuar' }}
               </button>
+              <p class="text-center text-xs leading-relaxed text-gray-400">
+                Al continuar, aceptas nuestras <a href="#" class="font-semibold text-violet-700 hover:text-violet-800">Políticas de Privacidad</a> y el tratamiento de tus datos para la gestión de tu pedido.
+              </p>
             </div>
           </div>
+          <p class="absolute left-0 right-0 bottom-4 text-center text-xs text-gray-400">Todos los derechos reservados · SkeiloPOS</p>
         </div>
       }
 
       <!-- Menu -->
       @if (view() === 'menu') {
         <!-- Top bar -->
-        <div class="bg-white border-b border-gray-100 sticky top-0 z-30">
-          <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+        <div class="bg-white border-b border-gray-200 sticky top-0 z-30">
+          <div class="max-w-2xl mx-auto px-5 py-3 flex items-center justify-between gap-3">
             <div class="flex items-center gap-2.5 min-w-0">
               @if (businessLogo()) {
                 <img
                   [src]="businessLogo()"
                   [alt]="businessName() ?? ''"
-                  class="w-9 h-9 rounded-lg object-cover border border-gray-100 shrink-0"
+                  class="w-9 h-9 rounded-lg object-cover border border-gray-200 shrink-0"
                 />
               }
               <div class="min-w-0">
-                <p class="font-bold text-gray-900 truncate">{{ tableLabel() }}</p>
-                <p class="text-xs text-gray-400 truncate">Hola, {{ customerName() }} 👋</p>
+                <p class="font-sora font-semibold text-lg text-gray-900 tracking-tight truncate">{{ tableLabel() }}</p>
+                <p class="text-sm text-gray-400 truncate">Hola, {{ customerName() }}</p>
               </div>
             </div>
           </div>
@@ -232,11 +254,14 @@ const REFRESH_DEBOUNCE_MS = 250;
                "Mis pedidos" (no es la carta) -- se sigue viendo en cualquier
                categoría y en resultados de búsqueda. -->
           @if (section() !== 'pedidos' && promotionAnnouncements().length > 0) {
-            <div class="max-w-5xl mx-auto px-4 pb-3 space-y-2">
+            <div class="max-w-2xl mx-auto px-5 pb-3 space-y-2">
               @for (promo of promotionAnnouncements(); track promo.promotion_id) {
-                <div class="rounded-xl bg-teal-50 border border-teal-100 px-4 py-3">
-                  <p class="text-sm font-semibold text-teal-900">🎉 {{ promo.promotion_name }}</p>
-                  <ul class="mt-1 text-xs text-teal-700 space-y-0.5">
+                <div class="rounded-xl bg-violet-50 border border-violet-200 px-4 py-3 flex flex-col gap-1">
+                  <p class="flex items-center gap-2 font-sora font-semibold text-violet-700">
+                    <span class="w-4.5 h-4.5 block"><app-icon name="promotions" /></span>
+                    {{ promo.promotion_name }}
+                  </p>
+                  <ul class="text-sm text-gray-600 space-y-0.5">
                     @for (rule of promo.rules; track $index) {
                       <li>{{ rule.text }}</li>
                     }
@@ -250,11 +275,11 @@ const REFRESH_DEBOUNCE_MS = 250;
                para compartir su sticky top-0 en vez de calcular un desplazamiento.
                Las pestañas son de la carta; en "Mis pedidos" van el título de sección. -->
           @if (section() === 'pedidos') {
-            <div class="max-w-5xl mx-auto px-4 py-2.5 border-t border-gray-50">
-              <h1 class="text-sm font-bold text-gray-900">Mis pedidos</h1>
+            <div class="max-w-2xl mx-auto px-5 py-3 border-t border-gray-200">
+              <h1 class="font-sora text-lg font-semibold text-gray-900 tracking-tight">Mis pedidos</h1>
             </div>
           } @else if (categories().length > 0) {
-            <div class="max-w-5xl mx-auto px-4 flex items-center gap-2 border-t border-gray-50">
+            <div class="max-w-2xl mx-auto px-3 flex items-center gap-1 border-t border-b border-gray-200 overflow-x-auto">
               @if (searchOpen()) {
                 <div class="flex items-center gap-2 w-full py-2">
                   <span class="w-5 h-5 block text-gray-400 shrink-0"><app-icon name="search" /></span>
@@ -269,13 +294,15 @@ const REFRESH_DEBOUNCE_MS = 250;
                     placeholder="Buscar producto…"
                     class="flex-1 min-w-0 py-1.5 text-sm bg-transparent focus:outline-none"
                   />
-                  <button (click)="closeSearch()" class="shrink-0 text-gray-400 hover:text-gray-600 px-1">✕</button>
+                  <button (click)="closeSearch()" aria-label="Cerrar búsqueda" class="shrink-0 text-gray-400 hover:text-gray-600 w-8 h-8 grid place-items-center">
+                    <span class="w-4 h-4 block"><app-icon name="close" /></span>
+                  </button>
                 </div>
               } @else {
                 <button
                   (click)="openSearch()"
                   aria-label="Buscar producto"
-                  class="shrink-0 p-2 -ml-1 text-gray-500 hover:text-indigo-600 transition-colors"
+                  class="shrink-0 w-11 h-12 grid place-items-center text-gray-500 hover:text-violet-700 transition-colors"
                 >
                   <span class="w-5 h-5 block"><app-icon name="search" /></span>
                 </button>
@@ -285,9 +312,9 @@ const REFRESH_DEBOUNCE_MS = 250;
                          (FR-008) — categoría virtual, no reemplaza las de abajo. -->
                     <button
                       (click)="selectCategory(promotionsTabId)"
-                      class="px-3 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors"
+                      class="px-4 h-12 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors"
                       [class]="activeCategoryId() === promotionsTabId
-                        ? 'border-indigo-600 text-indigo-700'
+                        ? 'border-violet-700 text-violet-700'
                         : 'border-transparent text-gray-500 hover:text-gray-700'"
                     >
                       Promociones
@@ -295,9 +322,9 @@ const REFRESH_DEBOUNCE_MS = 250;
                     @for (category of categories(); track category.id) {
                       <button
                         (click)="selectCategory(category.id)"
-                        class="px-3 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors"
+                        class="px-4 h-12 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors"
                         [class]="activeCategory()?.id === category.id
-                          ? 'border-indigo-600 text-indigo-700'
+                          ? 'border-violet-700 text-violet-700'
                           : 'border-transparent text-gray-500 hover:text-gray-700'"
                       >
                         {{ category.name }}
@@ -311,27 +338,28 @@ const REFRESH_DEBOUNCE_MS = 250;
         </div>
 
         <!-- pb-24: deja sitio a la barra inferior fija, o taparía la última fila. -->
-        <div class="max-w-5xl mx-auto px-4 py-6 pb-24 md:flex md:gap-6 md:items-start">
+        <div class="max-w-2xl mx-auto px-4 py-5 pb-24 md:flex md:gap-6 md:items-start">
           <!-- Menu column -->
           <div class="flex-1 min-w-0">
             @if (section() === 'pedidos') {
-              <div class="space-y-3">
+              <div class="space-y-4">
                 @for (order of myOrders(); track order.id) {
-                  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                    <div class="flex items-center justify-between mb-2">
-                      <span class="text-xs font-semibold px-2 py-0.5 rounded-full" [class]="statusClass(order)">
+                  <div class="bg-white rounded-2xl border border-gray-200 p-4.5 flex flex-col gap-3.5">
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" [class]="statusClass(order)">
+                        <span class="w-3.5 h-3.5 block"><app-icon name="clock" /></span>
                         {{ statusLabel(order) }}
                       </span>
-                      <span class="text-xs text-gray-400">{{ orderTime(order) }}</span>
+                      <span class="text-sm text-gray-400 tabular-nums">{{ orderTime(order) }}</span>
                     </div>
 
                     @if (esperaConfirmacion(order)) {
-                      <p class="text-xs text-violet-600 mb-2">
+                      <p class="text-sm text-violet-600">
                         Esperando a que el personal lo acepte.
                       </p>
                     }
 
-                    <ul class="space-y-3">
+                    <ul class="flex flex-col divide-y divide-gray-200">
                       @for (item of order.items ?? []; track item.id) {
                         <!-- Misma fila que la terminal del mesero
                              (pos-order-panel.component.ts): insignia de
@@ -343,9 +371,9 @@ const REFRESH_DEBOUNCE_MS = 250;
                              esta pantalla. -->
                         @let parts = splitVariantLabel(variantLabel(item.product_variant_id));
                         @let promo = itemPromo(item);
-                        <li class="flex items-start gap-3">
+                        <li class="flex items-start gap-3 py-3.5 first:pt-0">
                           <div
-                            class="shrink-0 w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[13px] font-bold"
+                            class="shrink-0 w-11 h-11 rounded-xl bg-violet-50 text-violet-700 flex items-center justify-center text-sm font-bold"
                           >
                             {{ item.quantity }}x
                           </div>
@@ -353,9 +381,9 @@ const REFRESH_DEBOUNCE_MS = 250;
                             <div class="flex items-start justify-between gap-2">
                               <div class="min-w-0">
                                 <div class="flex items-center gap-1.5 flex-wrap">
-                                  <span class="font-bold text-gray-900 text-sm">{{ parts.product }}</span>
+                                  <span class="font-semibold text-gray-900 text-base">{{ parts.product }}</span>
                                   @if (parts.variant) {
-                                    <span class="bg-gray-100 text-gray-600 text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
+                                    <span class="bg-gray-100 text-gray-600 text-xs font-semibold px-2 py-0.5 rounded-md">
                                       {{ parts.variant }}
                                     </span>
                                   }
@@ -369,24 +397,25 @@ const REFRESH_DEBOUNCE_MS = 250;
                               </div>
                               <div class="text-right shrink-0">
                                 @if (promo) {
-                                  <div class="font-bold text-red-600 text-sm">{{ itemLineTotal(item) | money }}</div>
+                                  <div class="font-sora font-bold text-red-600 text-base tabular-nums">{{ itemLineTotal(item) | money }}</div>
                                 } @else {
-                                  <div class="font-medium text-gray-900 text-sm">{{ itemLineTotal(item) | money }}</div>
+                                  <div class="font-sora font-semibold text-gray-900 text-base tabular-nums">{{ itemLineTotal(item) | money }}</div>
                                 }
-                                <div class="text-xs text-gray-400">{{ item.quantity }} × {{ item.unit_price | money }}</div>
+                                <div class="text-xs text-gray-400 tabular-nums">{{ item.quantity }} × {{ item.unit_price | money }}</div>
                                 @if (itemAddons(item) > 0) {
                                   <!-- spec 089 (A-94): los adicionales se cobran una vez por línea. -->
-                                  <div class="text-xs text-gray-400">+ {{ itemAddons(item) | money }} adicionales</div>
+                                  <div class="text-xs text-gray-400 tabular-nums">+ {{ itemAddons(item) | money }} adicionales</div>
                                 }
                               </div>
                             </div>
                             @if (promo) {
                               <div class="flex items-center gap-1.5 flex-wrap">
-                                <span class="line-through text-xs text-gray-400">{{ itemOriginalLineTotal(item) | money }}</span>
+                                <span class="line-through text-xs text-gray-400 tabular-nums">{{ itemOriginalLineTotal(item) | money }}</span>
                                 <span
                                   class="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold px-2 py-0.5 rounded-full"
                                 >
-                                  ✓ Ahorras {{ promo.savings | money }}
+                                  <span class="w-3.5 h-3.5 block"><app-icon name="check" /></span>
+                                  Ahorras {{ promo.savings | money }}
                                 </span>
                               </div>
                             }
@@ -401,9 +430,9 @@ const REFRESH_DEBOUNCE_MS = 250;
                       }
                     </ul>
 
-                    <div class="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 text-sm">
+                    <div class="flex items-center justify-between pt-3 border-t border-gray-200">
                       <span class="font-semibold text-gray-900">Total</span>
-                      <span class="font-bold text-gray-900">{{ orderTotal(order) | money }}</span>
+                      <span class="font-sora font-bold text-xl text-gray-900 tabular-nums">{{ orderTotal(order) | money }}</span>
                     </div>
 
                     <!-- Pago (spec 024/025): solo aplica mientras la orden sigue
@@ -413,37 +442,87 @@ const REFRESH_DEBOUNCE_MS = 250;
                          este cambio (research.md spec 025, Decisión 7), que no
                          tiene ningún camino de UI para resolverlo aquí. -->
                     @if (order.status === 'recibida' && order.current_payment_attempt) {
-                      <div class="mt-3 pt-3 border-t border-gray-100">
-                        @if (order.current_payment_attempt.status === 'confirmado') {
-                          <p class="text-xs text-emerald-700 font-medium text-center">
-                            ✓ Pago confirmado — {{ order.current_payment_attempt.payment_method_name }}
+                      <div class="pt-3 border-t border-gray-200">
+                        @if (order.current_payment_attempt.cash_amount != null) {
+                          <!-- spec 130 (FR-008): desglose de pago mixto — cada
+                               porción confirma por su lado; "Pago confirmado"
+                               solo aplica cuando AMBAS ya están resueltas. -->
+                          @if (order.current_payment_attempt.status === 'confirmado' && order.current_payment_attempt.cash_confirmed_at) {
+                            <p class="flex items-center justify-center gap-1.5 text-sm text-emerald-700 font-medium text-center">
+                              <span class="w-4 h-4 block"><app-icon name="check-circle" /></span>
+                              Pago confirmado — Pago mixto
+                            </p>
+                          } @else if (order.current_payment_attempt.status === 'rechazado') {
+                            <div class="text-center">
+                              <p class="text-sm text-red-600 mb-2">
+                                Tu comprobante fue rechazado. Puedes intentar de nuevo.
+                              </p>
+                              <button
+                                (click)="openPayment(order)"
+                                class="w-full h-10 text-sm font-semibold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-colors"
+                              >
+                                Reintentar pago
+                              </button>
+                            </div>
+                          } @else {
+                            <div class="flex flex-col gap-1.5">
+                              @if (order.current_payment_attempt.cash_confirmed_at) {
+                                <p class="flex items-center justify-center gap-1.5 text-sm text-emerald-700 text-center">
+                                  <span class="w-4 h-4 block"><app-icon name="check-circle" /></span>
+                                  {{ order.current_payment_attempt.cash_amount | money }} en efectivo — confirmado
+                                </p>
+                              } @else {
+                                <p class="flex items-center justify-center gap-1.5 text-sm text-amber-700 text-center">
+                                  <span class="w-4 h-4 block"><app-icon name="wallet" /></span>
+                                  {{ order.current_payment_attempt.cash_amount | money }} en efectivo — pendiente al recibir
+                                </p>
+                              }
+                              @if (order.current_payment_attempt.status === 'confirmado') {
+                                <p class="flex items-center justify-center gap-1.5 text-sm text-emerald-700 text-center">
+                                  <span class="w-4 h-4 block"><app-icon name="check-circle" /></span>
+                                  {{ order.current_payment_attempt.transfer_amount | money }} por transferencia — verificado
+                                </p>
+                              } @else {
+                                <p class="flex items-center justify-center gap-1.5 text-sm text-amber-700 text-center">
+                                  <span class="w-4 h-4 block"><app-icon name="clock" /></span>
+                                  {{ order.current_payment_attempt.transfer_amount | money }} por transferencia — en verificación
+                                </p>
+                              }
+                            </div>
+                          }
+                        } @else if (order.current_payment_attempt.status === 'confirmado') {
+                          <p class="flex items-center justify-center gap-1.5 text-sm text-emerald-700 font-medium text-center">
+                            <span class="w-4 h-4 block"><app-icon name="check-circle" /></span>
+                            Pago confirmado — {{ order.current_payment_attempt.payment_method_name }}
                           </p>
                         } @else if (order.current_payment_attempt.status === 'rechazado') {
                           <div class="text-center">
-                            <p class="text-xs text-red-600 mb-1.5">
+                            <p class="text-sm text-red-600 mb-2">
                               Tu comprobante fue rechazado. Puedes intentar de nuevo.
                             </p>
                             <button
                               (click)="openPayment(order)"
-                              class="w-full py-2 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
+                              class="w-full h-10 text-sm font-semibold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-colors"
                             >
                               Reintentar pago
                             </button>
                           </div>
                         } @else if (order.current_payment_attempt.is_cash) {
-                          <p class="text-xs text-amber-700 text-center">
-                            💵 Vas a pagar en efectivo — el personal confirmará al recibirlo.
+                          <p class="flex items-center justify-center gap-1.5 text-sm text-amber-700 text-center">
+                            <span class="w-4 h-4 block"><app-icon name="wallet" /></span>
+                            Vas a pagar en efectivo — el personal confirmará al recibirlo.
                           </p>
                         } @else if (order.current_payment_attempt.receipt_file_url) {
-                          <p class="text-xs text-amber-700 text-center">
-                            📤 Comprobante enviado — esperando revisión del personal.
+                          <p class="flex items-center justify-center gap-1.5 text-sm text-amber-700 text-center">
+                            <span class="w-4 h-4 block"><app-icon name="upload" /></span>
+                            Comprobante enviado — esperando revisión del personal.
                           </p>
                         } @else {
                           <button
                             (click)="openPayment(order)"
-                            class="w-full py-2 text-xs font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors"
+                            class="w-full h-10 text-sm font-semibold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition-colors"
                           >
-                            📎 Subir comprobante
+                            Subir comprobante
                           </button>
                         }
                       </div>
@@ -453,7 +532,7 @@ const REFRESH_DEBOUNCE_MS = 250;
                       <button
                         (click)="cancelOrder(order)"
                         [disabled]="cancelling() === order.id"
-                        class="mt-3 w-full py-1.5 text-xs font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-colors"
+                        class="w-full h-10 text-sm font-semibold text-red-600 border border-red-200 rounded-xl hover:bg-red-50 disabled:opacity-40 transition-colors"
                       >
                         {{ cancelling() === order.id ? 'Cancelando...' : 'Cancelar pedido' }}
                       </button>
@@ -461,12 +540,11 @@ const REFRESH_DEBOUNCE_MS = 250;
                   </div>
                 } @empty {
                   <!-- Un panel se cerraba con la ✕; una página necesita su propia salida. -->
-                  <div class="text-center py-16">
-                    <div class="text-5xl mb-4">🧾</div>
-                    <p class="text-gray-600 font-medium">Aún no has enviado pedidos</p>
+                  <div class="text-center py-16 border border-dashed border-gray-300 rounded-xl text-gray-400">
+                    <p class="font-medium">Aún no has enviado pedidos</p>
                     <button
                       (click)="goToSection('carta')"
-                      class="mt-4 px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+                      class="mt-4 px-5 py-2.5 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition-colors"
                     >
                       Ver la carta
                     </button>
@@ -509,9 +587,9 @@ const REFRESH_DEBOUNCE_MS = 250;
                   <button
                     (click)="openProduct(product)"
                     [disabled]="product.sold_out"
-                    class="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:border-indigo-300 hover:shadow-md active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-100 disabled:hover:shadow-sm disabled:active:scale-100"
+                    class="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:border-violet-300 hover:shadow-md active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-100 disabled:hover:shadow-sm disabled:active:scale-100"
                   >
-                    <div class="relative w-full aspect-square bg-indigo-50 flex items-center justify-center text-4xl overflow-hidden">
+                    <div class="relative w-full aspect-square bg-violet-50 flex items-center justify-center text-4xl overflow-hidden">
                       <!-- spec 093 (escenario 6): sigue visible, atenuado, sin poder
                            agregarse al carrito. -->
                       @if (product.sold_out) {
@@ -522,9 +600,14 @@ const REFRESH_DEBOUNCE_MS = 250;
                         <!-- spec 066 (A-67, FR-013): insignia **genérica**, la misma para
                              porcentaje y para paquete. La anterior se derivaba de que
                              hubiera precio unitario con descuento, así que una promoción
-                             de paquete no producía ninguna señal en la carta. -->
-                        <span class="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">
-                          🎉 Promo
+                             de paquete no producía ninguna señal en la carta.
+                             spec 130 (rediseño): pastilla blanca con borde y texto violeta,
+                             sin emoji — mismo patrón que design/Bienvenida QR.dc.html. -->
+                        <span
+                          data-testid="promo-badge"
+                          class="absolute top-2 right-2 text-xs font-bold px-2.5 py-0.5 rounded-full bg-white text-violet-700 border border-violet-300 shadow-sm"
+                        >
+                          Promo
                         </span>
                       }
                       @if (product.image_url) {
@@ -541,14 +624,14 @@ const REFRESH_DEBOUNCE_MS = 250;
                       @if (productDiscount(product); as disc) {
                         <p class="mt-1.5 flex items-center gap-1.5 flex-wrap">
                           <span class="text-gray-400 text-xs line-through">{{ priceWithPrefix(product, disc.original) }}</span>
-                          <span class="text-indigo-600 font-bold text-sm">{{ priceWithPrefix(product, disc.discounted) }}</span>
+                          <span class="text-violet-600 font-bold text-sm">{{ priceWithPrefix(product, disc.discounted) }}</span>
                         </p>
                       } @else if (minPromoPrice(product); as promo) {
-                        <p class="text-indigo-600 font-bold text-sm mt-1.5">
+                        <p class="text-violet-600 font-bold text-sm mt-1.5">
                           {{ promo.isMinimum ? 'Desde ' : '' }}{{ promo.displayText }}
                         </p>
                       } @else {
-                        <p class="text-indigo-600 font-bold text-sm mt-1.5">{{ priceLabel(product) }}</p>
+                        <p class="text-violet-600 font-bold text-sm mt-1.5">{{ priceLabel(product) }}</p>
                       }
                     </div>
                   </button>
@@ -593,47 +676,47 @@ const REFRESH_DEBOUNCE_MS = 250;
 
         <!-- Barra inferior. z-30: por debajo de overlays (z-40) y paneles (z-50), para
              no quedar flotando sobre un panel abierto. -->
-        <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-30">
-          <div class="max-w-5xl mx-auto grid grid-cols-4 md:grid-cols-3">
+        <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-30">
+          <div class="max-w-2xl mx-auto grid grid-cols-4 md:grid-cols-3">
             <button (click)="goHome()"
-              class="flex flex-col items-center gap-0.5 py-2.5 transition-colors"
-              [class]="section() === 'carta' ? 'text-indigo-600' : 'text-gray-500 hover:text-indigo-600'">
-              <span class="w-5 h-5 block"><app-icon name="home" /></span>
-              <span class="text-[11px] font-medium">Inicio</span>
+              class="flex flex-col items-center gap-1 h-16 justify-center transition-colors"
+              [class]="section() === 'carta' ? 'text-violet-700' : 'text-gray-500 hover:text-violet-700'">
+              <span class="w-[22px] h-[22px] block"><app-icon name="home" /></span>
+              <span class="text-[11px] font-semibold">Inicio</span>
             </button>
 
             <!-- Siempre presente, con globito solo si hay pedidos: un destino de
                  navegación que aparece y desaparece desconcierta. -->
             <button (click)="goToSection('pedidos')"
-              class="relative flex flex-col items-center gap-0.5 py-2.5 transition-colors"
-              [class]="section() === 'pedidos' ? 'text-indigo-600' : 'text-gray-500 hover:text-indigo-600'">
+              class="relative flex flex-col items-center gap-1 h-16 justify-center transition-colors"
+              [class]="section() === 'pedidos' ? 'text-violet-700' : 'text-gray-500 hover:text-violet-700'">
               <span class="relative">
-                <span class="w-5 h-5 block"><app-icon name="receipt" /></span>
+                <span class="w-[22px] h-[22px] block"><app-icon name="receipt" /></span>
                 @if (myOrders().length > 0) {
-                  <span class="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 bg-indigo-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  <span class="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 bg-violet-700 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                     {{ myOrders().length }}
                   </span>
                 }
               </span>
-              <span class="text-[11px] font-medium">Mis pedidos</span>
+              <span class="text-[11px] font-semibold">Mis pedidos</span>
             </button>
 
             <!-- En md+ el carrito ya está fijo en la columna lateral. -->
-            <button (click)="cartDrawerOpen.set(true)" class="md:hidden relative flex flex-col items-center gap-0.5 py-2.5 text-gray-500 hover:text-indigo-600 transition-colors">
+            <button (click)="cartDrawerOpen.set(true)" class="md:hidden relative flex flex-col items-center gap-1 h-16 justify-center text-gray-500 hover:text-violet-700 transition-colors">
               <span class="relative">
-                <span class="w-5 h-5 block"><app-icon name="cart" /></span>
+                <span class="w-[22px] h-[22px] block"><app-icon name="cart" /></span>
                 @if (cart.count() > 0) {
-                  <span class="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  <span class="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 bg-violet-700 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                     {{ cart.count() }}
                   </span>
                 }
               </span>
-              <span class="text-[11px] font-medium">Carrito</span>
+              <span class="text-[11px] font-semibold">Carrito</span>
             </button>
 
-            <button (click)="confirmExit()" class="flex flex-col items-center gap-0.5 py-2.5 text-gray-500 hover:text-red-600 transition-colors">
-              <span class="w-5 h-5 block"><app-icon name="exit" /></span>
-              <span class="text-[11px] font-medium">Salir</span>
+            <button (click)="confirmExit()" class="flex flex-col items-center gap-1 h-16 justify-center text-gray-500 hover:text-violet-700 transition-colors">
+              <span class="w-[22px] h-[22px] block"><app-icon name="exit" /></span>
+              <span class="text-[11px] font-semibold">Salir</span>
             </button>
           </div>
         </nav>
@@ -666,6 +749,27 @@ const REFRESH_DEBOUNCE_MS = 250;
           (added)="onEditSaved($event)"
           (cancelled)="closeEdit()"
         />
+      }
+
+      <!-- Diálogo de bloqueo de salida (spec 130, A-139): único botón
+           "Entendido", sin reintento ni bypass — igual al estado "exitBlock"
+           del diseño de referencia. -->
+      @if (exitBlocked()) {
+        <div role="dialog" aria-modal="true" aria-label="Tienes un pago pendiente." class="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div class="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-sm p-6 flex flex-col items-center gap-4 text-center">
+            <span class="w-14 h-14 rounded-full bg-amber-50 text-amber-600 grid place-items-center"><span class="w-7 h-7 block"><app-icon name="wallet" /></span></span>
+            <h2 class="font-sora text-lg font-semibold text-gray-900">Tienes un pago pendiente.</h2>
+            <p class="text-sm text-gray-500">
+              Para salir, dirígete a la caja. Si no deseas llevar tu pedido, indícalo allí.
+            </p>
+            <button
+              (click)="exitBlocked.set(false)"
+              class="w-full h-12 bg-violet-700 hover:bg-violet-800 text-white font-semibold rounded-xl transition-colors"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
       }
 
       <!-- Modal de reintento de pago tras rechazo (spec 024, Historia 5 — sin
@@ -703,9 +807,9 @@ const REFRESH_DEBOUNCE_MS = 250;
               } @else if (!selectedMethod()?.is_cash) {
                 <!-- Paso 2 (transferencia): datos de pago + subir comprobante -->
                 @if (selectedMethod()?.payment_info; as info) {
-                  <div class="bg-indigo-50 rounded-xl p-3 space-y-1">
+                  <div class="bg-violet-50 rounded-xl p-3 space-y-1">
                     @for (key of objectKeys(info); track key) {
-                      <p class="text-sm text-indigo-900">
+                      <p class="text-sm text-violet-900">
                         <span class="font-medium capitalize">{{ key }}:</span> {{ info[key] }}
                       </p>
                     }
@@ -909,6 +1013,9 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
    * reconstruyen con estado local: el avance de cocina solo lo sabe el backend.
    */
   readonly myOrders = signal<DiningOrder[]>([]);
+  /** Spec 130 (A-139, contracts/bloqueo-salida.md): diálogo de "Tienes un
+   *  pago pendiente." — único botón "Entendido", sin reintento ni bypass. */
+  readonly exitBlocked = signal(false);
   /**
    * Sección visible. Sale del query param `v` para que quede en el historial: desde
    * "Mis pedidos", el botón atrás del teléfono devuelve a la carta en vez de sacar al
@@ -1223,12 +1330,40 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
    * Salir pide confirmación: en la cabecera era un botón apartado, pero en la barra
    * queda a un dedo del carrito y un toque de más cerraría la sesión y el pedido.
    * Se usa `confirm` nativo porque `app-confirm-dialog` solo vive en el dashboard.
+   *
+   * Spec 130 (A-139, contracts/bloqueo-salida.md): primero revisa los pedidos
+   * ya cargados de "Mis pedidos" — si alguno propio, no cancelado, tiene el
+   * pago sin confirmar, se muestra el diálogo de bloqueo sin llamar al
+   * backend (el comensal ya sabe que no puede salir, no hace falta la
+   * confirmación nativa de `confirm()` antes).
    */
   confirmExit(): void {
+    if (this.hasOwnPendingPayment()) {
+      this.exitBlocked.set(true);
+      return;
+    }
     const aviso = this.myOrders().length
       ? 'Vas a salir de la mesa. Tus pedidos ya enviados siguen en cocina. ¿Continuar?'
       : '¿Seguro que quieres salir de la mesa?';
     if (confirm(aviso)) this.exit();
+  }
+
+  /**
+   * FR-009/FR-011 (Clarificación Q2): mismo criterio que el backend
+   * (`_has_pending_payment`, `app/api/v1/cart/service.py`) — evaluado sobre
+   * los datos ya cargados de "Mis pedidos", solo pedidos propios (todos los
+   * de `myOrders()` lo son, el endpoint ya filtra por participante).
+   */
+  private hasOwnPendingPayment(): boolean {
+    return this.myOrders().some((order) => {
+      if (order.status === 'cancelada') return false;
+      const attempt = order.current_payment_attempt;
+      if (!attempt) return false;
+      if (attempt.cash_amount != null) {
+        return attempt.status !== 'confirmado' || !attempt.cash_confirmed_at;
+      }
+      return attempt.status !== 'confirmado';
+    });
   }
 
   async onProductAdded(selection: ProductSelection): Promise<void> {
@@ -1356,6 +1491,11 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
         status: current.status,
         receipt_file_url: current.receipt_file_url,
         created_at: '',
+        // Reintento de pago tras rechazo (spec 024) nunca es un intento mixto
+        // (spec 130) — campos sin valor por construcción, no una decisión nueva.
+        cash_amount: null,
+        transfer_amount: null,
+        cash_confirmed_at: null,
       });
     }
 
@@ -1433,15 +1573,25 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
    * (Bug 1, FR-001/FR-002), de modo que un reload/"Atrás"/"Adelante" en la misma pestaña
    * muestre el acceso denegado en vez de ofrecer el flujo de nombre. Limpiar el token también
    * cierra el stream SSE que abre `DinerShellComponent` (spec 077).
+   *
+   * Spec 130 (A-139): `POST /cart/leave` ya no es infalible — un `409`
+   * (`PendingPaymentExitError`) ya no se traga en silencio, muestra el mismo
+   * diálogo de bloqueo que la revisión client-side de `confirmExit()`, y la
+   * sesión sigue activa (no se detiene el polling/tiempo real, no se cierra
+   * nada). Cualquier otro error de red sigue el mismo best-effort de siempre.
    */
   async exit(): Promise<void> {
-    this.stopPolling();
-    this.disconnectRealtime();
     try {
       await this.api.leave();
-    } catch {
+    } catch (err) {
+      if (err instanceof PendingPaymentExitError) {
+        this.exitBlocked.set(true);
+        return;
+      }
       /* best-effort: el barrido cierra la sesión de todos modos */
     }
+    this.stopPolling();
+    this.disconnectRealtime();
     // spec 089 (A-95, FR-015a): mismo borrado que el cierre de la mesa y, como él, termina en la
     // pantalla de gracias; solo una recarga posterior muestra el acceso denegado.
     this.section.set('carta');

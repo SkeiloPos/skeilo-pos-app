@@ -3,13 +3,20 @@ import { DinerTokenStore } from '../../services/diner-token.store';
 import { DinerPaymentMethod } from '../../interfaces/diner.interface';
 import { DiningOrder } from '../../interfaces/dining.interface';
 
-/** Mismos dos pasos que ya modelaba `reviewStep` en el modal retirado. */
-export type CheckoutStep = 'method' | 'transfer';
+/**
+ * `'cash'` es el paso nuevo del monto en efectivo de un pago mixto (spec 130,
+ * entre `'method'` y `'transfer'`) — los otros dos ya modelaba `reviewStep`
+ * en el modal retirado.
+ */
+export type CheckoutStep = 'method' | 'cash' | 'transfer';
 
 interface CheckoutProgressRecord {
   step: CheckoutStep;
   payment_method_id: string | null;
   receipt_file_url: string | null;
+  /** Spec 130 (FR-005/FR-006): `null` ⇔ el pago no es mixto. */
+  cash_amount: number | null;
+  transfer_method_id: string | null;
   saved_at: string;
 }
 
@@ -59,16 +66,28 @@ export class CheckoutProgressStore {
     }
   }
 
-  /** Fusiona con lo ya guardado y refresca `saved_at`. */
+  /**
+   * Fusiona con lo ya guardado y refresca `saved_at`.
+   *
+   * Spec 130 (Clarificación Q6): si el `patch` trae un `cash_amount` distinto
+   * al ya guardado, el comprobante ya subido se invalida — cambiar el monto
+   * en efectivo cambia cuánto falta por transferir, así que el comprobante
+   * (de la porción anterior) ya no corresponde.
+   */
   write(patch: Partial<Omit<CheckoutProgressRecord, 'saved_at'>>): void {
     const key = this.key();
     if (!key) return;
     const current = this.read();
+    const cashAmountChanged =
+      'cash_amount' in patch && patch.cash_amount !== (current?.cash_amount ?? null);
     const next: CheckoutProgressRecord = {
       step: current?.step ?? 'method',
       payment_method_id: current?.payment_method_id ?? null,
       receipt_file_url: current?.receipt_file_url ?? null,
+      cash_amount: current?.cash_amount ?? null,
+      transfer_method_id: current?.transfer_method_id ?? null,
       ...patch,
+      ...(cashAmountChanged && !('receipt_file_url' in patch) ? { receipt_file_url: null } : {}),
       saved_at: new Date().toISOString(),
     };
     try {
@@ -84,7 +103,10 @@ export class CheckoutProgressStore {
    * resto del registro.
    */
   clearMethod(): void {
-    this.write({ payment_method_id: null, receipt_file_url: null });
+    this.write({
+      payment_method_id: null, receipt_file_url: null,
+      cash_amount: null, transfer_method_id: null,
+    });
   }
 
   /** Borra el registro completo — al enviar el pedido con éxito (FR-011/T011). */

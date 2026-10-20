@@ -121,6 +121,17 @@ export class DinerSessionExpiredError extends Error {
 }
 
 /**
+ * `POST /cart/leave` respondió `409` (spec 130, A-139): el comensal tiene un
+ * pago propio pendiente — la sesión sigue activa, no se tragó el error.
+ */
+export class PendingPaymentExitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PendingPaymentExitError';
+  }
+}
+
+/**
  * Transporte del flujo **público** del comensal (`/menu/qr-token`, `/cart`).
  *
  * Se autentica solo con el `session_token` firmado, que inyecta el
@@ -264,10 +275,15 @@ export class DinerService {
    * obligatorio salvo que el método sea efectivo. Queda en `recibida`: **no
    * descuenta inventario** hasta que el personal lo confirme.
    */
-  submitCart(paymentMethodId: string, receiptFileUrl?: string | null): Promise<DiningOrder> {
+  submitCart(
+    paymentMethodId: string, receiptFileUrl?: string | null,
+    cashAmount?: number | null, transferMethodId?: string | null,
+  ): Promise<DiningOrder> {
     const body: SubmitCartPayload = {
       payment_method_id: paymentMethodId,
       receipt_file_url: receiptFileUrl ?? null,
+      cash_amount: cashAmount ?? null,
+      transfer_method_id: transferMethodId ?? null,
     };
     return this.call(() => this.http.post<DiningOrder>(`${this.api}/cart/submit`, body));
   }
@@ -292,13 +308,25 @@ export class DinerService {
    * `DinerSessionExpiredError` y relanza el flujo de nombre, que es justo lo que
    * no se quiere al salir. Aquí un token caducado significa que el objetivo ya
    * está cumplido, no que haya que pedir el nombre otra vez.
+   *
+   * Spec 130 (A-139): un `409` (pago pendiente) ya no se traga en silencio —
+   * se traduce a `PendingPaymentExitError` y el token **no** se limpia (la
+   * sesión del comensal sigue activa, FR-010). Cualquier otro error de red
+   * sigue el comportamiento best-effort de siempre: se limpia el token igual,
+   * un problema de conectividad ajeno al pago no debe bloquear al comensal.
    */
   async leave(): Promise<void> {
     try {
       await firstValueFrom(this.http.post<void>(`${this.api}/cart/leave`, {}));
-    } finally {
+    } catch (err) {
+      if (err instanceof HttpErrorResponse && err.status === 409) {
+        const detail = err.error?.detail ?? err.error;
+        throw new PendingPaymentExitError(detail?.message ?? 'Tienes un pago pendiente.');
+      }
       this.tokenStore.clear();
+      return;
     }
+    this.tokenStore.clear();
   }
 
   // ── Errores ──────────────────────────────────────────────────────────────

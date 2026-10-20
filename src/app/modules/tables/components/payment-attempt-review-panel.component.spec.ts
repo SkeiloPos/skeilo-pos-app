@@ -56,6 +56,10 @@ function attempt(partial: Partial<PaymentAttempt>): PaymentAttempt {
     resolved_by_user_id: null,
     resolved_at: null,
     created_at: '2026-08-18T23:09:00',
+    cash_amount: null,
+    transfer_amount: null,
+    transfer_method_id: null,
+    cash_confirmed_at: null,
     ...partial,
   };
 }
@@ -591,5 +595,180 @@ describe('PaymentAttemptReviewPanelComponent', () => {
     expect(el.textContent).not.toContain('💳');
     const icon = el.querySelector('app-mi-icon .material-icons-outlined');
     expect(icon?.textContent?.trim()).toBe('credit_card');
+  });
+
+  // ── Pago mixto (spec 130): bugfix de la pata en efectivo huérfana ────────
+
+  const confirmarEfectivoBtn = (): HTMLButtonElement | undefined =>
+    (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find(
+      (b) => b.textContent?.trim() === 'Confirmar efectivo',
+    );
+
+  it('mixto con transferencia ya aprobada y efectivo sin confirmar: sigue "vigente" y ofrece "Confirmar efectivo" (no muestra "Pago confirmado")', async () => {
+    await renderWith(
+      [
+        attempt({
+          status: 'confirmado',
+          payment_method_name: 'Pago mixto',
+          is_cash: false,
+          receipt_file_url: 'https://example.invalid/r.jpg',
+          cash_amount: '3000',
+          transfer_amount: '5000',
+          cash_confirmed_at: null,
+        }),
+      ],
+      order('o1', [item('8000', 1)]),
+      preview({ total: '8000' }),
+    );
+
+    expect(panel.current()).toBeTruthy();
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).not.toContain('Pago confirmado (Pago mixto)');
+    expect(texto).toContain('Transferencia verificada');
+    expect(texto).toContain('Efectivo a confirmar');
+    expect(confirmarEfectivoBtn()).toBeTruthy();
+  });
+
+  it('mixto: muestra sugerencias y vuelto sobre cash_amount (no sobre el Total), y "Confirmar efectivo" manda el monto tecleado por el cajero', async () => {
+    panel.cashShiftId = 'shift-1';
+    await renderWith(
+      [
+        attempt({
+          status: 'confirmado',
+          payment_method_name: 'Pago mixto',
+          is_cash: false,
+          receipt_file_url: 'https://example.invalid/r.jpg',
+          cash_amount: '3000',
+          transfer_amount: '5000',
+          cash_confirmed_at: null,
+        }),
+      ],
+      order('o1', [item('8000', 1)]),
+      preview({ total: '8000' }),
+    );
+
+    // Sugerencias calculadas sobre cash_amount ($3.000) -- billetes que cubren esa
+    // porción, no sobre el Total ($8.000) ni "Exacto" (3.000 no es un billete).
+    const sugerencias = (
+      Array.from(fixture.nativeElement.querySelectorAll('[data-testid="sugerencia-monto"]')) as HTMLButtonElement[]
+    ).map((b) => b.textContent?.trim());
+    expect(sugerencias).toEqual(['$ 8.000', '$ 10.000', '$ 20.000', '$ 50.000', '$ 100.000']);
+
+    panel.amountReceived = 5000;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent as string).toContain('2.000'); // vuelto: 5.000 - 3.000
+
+    const done = panel.confirmMixedCash(panel.current()!);
+    http.expectOne(`${API}/orders/o1/checkout-preview`).flush(preview({ total: '8000' }));
+    await flushMicrotasks();
+    const req = http.expectOne(
+      (r) => r.url === `${API}/orders/payment-attempts/a1/confirm-cash`,
+    );
+    expect(req.request.body).toEqual({ amount_received: 5000, cash_shift_id: 'shift-1' });
+    req.flush(
+      attempt({
+        status: 'confirmado',
+        is_cash: false,
+        cash_amount: '3000',
+        transfer_amount: '5000',
+        cash_confirmed_at: '2026-08-18T23:10:00',
+      }),
+    );
+    await flushMicrotasks();
+    http.expectOne(`${API}/orders/o1/payment-attempts`).flush([
+      attempt({
+        status: 'confirmado',
+        payment_method_name: 'Pago mixto',
+        is_cash: false,
+        cash_amount: '3000',
+        transfer_amount: '5000',
+        cash_confirmed_at: '2026-08-18T23:10:00',
+      }),
+    ]);
+    await done;
+    fixture.detectChanges();
+
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).toContain('Pago confirmado (Pago mixto)');
+    expect(texto).toContain('3.000 en efectivo');
+    expect(texto).toContain('5.000 por transferencia');
+  });
+
+  it('mixto: monto en efectivo menor a cash_amount muestra vuelto negativo y deshabilita "Confirmar efectivo"', async () => {
+    panel.cashShiftId = 'shift-1';
+    await renderWith(
+      [
+        attempt({
+          status: 'confirmado',
+          payment_method_name: 'Pago mixto',
+          is_cash: false,
+          receipt_file_url: 'https://example.invalid/r.jpg',
+          cash_amount: '3000',
+          transfer_amount: '5000',
+          cash_confirmed_at: null,
+        }),
+      ],
+      order('o1', [item('8000', 1)]),
+      preview({ total: '8000' }),
+    );
+
+    panel.amountReceived = 2000;
+    fixture.detectChanges();
+
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).toContain('Cambio');
+    expect(texto).toContain('$ -1.000');
+    expect(confirmarEfectivoBtn()!.disabled).toBe(true);
+
+    await panel.confirmMixedCash(panel.current()!);
+    http.expectNone((r) => r.url.endsWith('/confirm-cash'));
+  });
+
+  it('mixto totalmente resuelto (status confirmado + cash_confirmed_at): ya no es "vigente", muestra el desglose final', async () => {
+    await renderWith(
+      [
+        attempt({
+          status: 'confirmado',
+          payment_method_name: 'Pago mixto',
+          is_cash: false,
+          cash_amount: '3000',
+          transfer_amount: '5000',
+          cash_confirmed_at: '2026-08-18T23:10:00',
+        }),
+      ],
+      order('o1', [item('8000', 1)]),
+      preview({ total: '8000' }),
+    );
+
+    expect(panel.current()).toBeNull();
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).toContain('Pago confirmado (Pago mixto)');
+    expect(texto).toContain('3.000 en efectivo');
+    expect(texto).toContain('5.000 por transferencia');
+    expect(confirmarEfectivoBtn()).toBeUndefined();
+  });
+
+  it('mixto con efectivo ya confirmado pero transferencia todavía pendiente: sigue "vigente", ofrece "Aprobar transferencia" y no "Confirmar efectivo"', async () => {
+    panel.cashShiftId = 'shift-1';
+    await renderWith(
+      [
+        attempt({
+          status: 'pendiente',
+          payment_method_name: 'Pago mixto',
+          is_cash: false,
+          receipt_file_url: 'https://example.invalid/r.jpg',
+          cash_amount: '3000',
+          transfer_amount: '5000',
+          cash_confirmed_at: '2026-08-18T23:10:00',
+        }),
+      ],
+      order('o1', [item('8000', 1)]),
+      preview({ total: '8000' }),
+    );
+
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).toContain('Aprobar transferencia');
+    expect(texto).toContain('Efectivo confirmado');
+    expect(confirmarEfectivoBtn()).toBeUndefined();
   });
 });

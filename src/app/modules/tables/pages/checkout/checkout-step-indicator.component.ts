@@ -11,7 +11,7 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <p class="text-xs font-medium text-indigo-600 mb-1">Paso {{ step }} de {{ total }}: {{ label }}</p>
+    <p class="text-sm font-semibold text-violet-700">Paso {{ step }} de {{ total }}: {{ label }}</p>
   `,
 })
 export class CheckoutStepIndicatorComponent {

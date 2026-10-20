@@ -333,6 +333,43 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
           <path d="m16 17 5-5-5-5" />
           <path d="M21 12H9" />
         }
+        <!-- spec 130 (rediseño Menú QR): mapeados desde el diseño de referencia
+             (design/Bienvenida QR v1.dc.html), mismo set artesanal de arriba.
+             "tag"→promotions, "x"→close, "smartphone"→transfer, "arrow-left"→back
+             y "circle-check"→check-circle ya existían con otro nombre semántico y
+             se reutilizan tal cual en las plantillas en vez de duplicarlos aquí. -->
+        @case ('clock') {
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 6v6l4 2" />
+        }
+        @case ('check') {
+          <path d="M20 6 9 17l-5-5" />
+        }
+        @case ('triangle-alert') {
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+          <path d="M12 9v4" />
+          <path d="M12 17h.01" />
+        }
+        @case ('message-square') {
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        }
+        @case ('info') {
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 16v-4" />
+          <path d="M12 8h.01" />
+        }
+        @case ('minus') {
+          <path d="M5 12h14" />
+        }
+        @case ('plus') {
+          <path d="M5 12h14" />
+          <path d="M12 5v14" />
+        }
+        @case ('wallet') {
+          <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+          <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+          <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+        }
         @case ('panel-left') {
           <!-- spec 116 (ajuste visual contra SkeiloPOS App.dc.html): botón de
                colapso del sidebar, reubicado dentro del propio sidebar. -->

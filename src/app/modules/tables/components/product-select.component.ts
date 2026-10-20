@@ -80,7 +80,7 @@ export interface ProductSelection {
         <header class="relative shrink-0 bg-white">
           <!-- Sin foto no se reserva alto: un emoji gigante solo restaría sitio a los sabores. -->
           @if (product.image_url) {
-            <div class="relative h-52 w-full overflow-hidden bg-indigo-50">
+            <div class="relative h-52 w-full overflow-hidden bg-violet-50">
               <img [src]="product.image_url" [alt]="product.name" class="w-full h-full object-cover object-center" />
               <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent"></div>
               <button type="button" (click)="cancelled.emit()" aria-label="Cerrar ventana"
@@ -112,9 +112,9 @@ export interface ProductSelection {
                      que muestra el botón "Agregar" más abajo. No depende de si el modal se abrió
                      desde "Promociones" -- solo de si la cantidad ya califica. -->
                 @if (product.variants.length > 1 && !packageDealActive()) {
-                  <span class="block text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">Desde</span>
+                  <span class="block text-[11px] font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded">Desde</span>
                 }
-                <p data-testid="header-price" class="text-lg font-extrabold text-indigo-600 mt-0.5">
+                <p data-testid="header-price" class="text-lg font-extrabold text-violet-600 mt-0.5">
                   {{ (packageDealActive() ? lineTotal() : startingPrice()) | money }}
                 </p>
               </div>
@@ -152,32 +152,52 @@ export interface ProductSelection {
           @if (product.variants.length > 0) {
             <section class="pt-2">
               <div class="flex items-center justify-between mb-3">
-                <div class="flex items-center gap-2">
-                  <span class="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold">1</span>
-                  <h2 class="text-base font-bold text-gray-900">Elige tu presentación</h2>
+                <div class="flex items-center gap-2.5">
+                  <span class="flex items-center justify-center w-6 h-6 rounded-full bg-violet-700 text-white text-xs font-bold shrink-0">1</span>
+                  <h2 class="text-base font-semibold text-gray-900">Elige tu presentación</h2>
                 </div>
-                <span class="text-[11px] font-bold tracking-wide uppercase px-2 py-0.5 rounded bg-gray-200 text-gray-700">Obligatorio</span>
+                <span class="text-[11px] font-bold tracking-wide uppercase px-2 py-1 rounded bg-gray-100 text-gray-600">Obligatorio</span>
               </div>
 
-              <div class="space-y-2.5" role="radiogroup" aria-label="Presentación">
+              <div class="flex flex-col gap-2.5" role="radiogroup" aria-label="Presentación">
                 @for (v of product.variants; track v.id) {
                   <label
-                    class="relative flex items-start justify-between gap-3 p-3.5 rounded-2xl border-2 transition-colors"
+                    class="relative flex items-start gap-3 min-h-14 p-3.5 rounded-2xl border-2 transition-colors"
                     [class]="v.available === false
-                      ? 'border-gray-100 bg-gray-50 cursor-not-allowed'
+                      ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
                       : variantId() === v.id
-                        ? 'border-indigo-600 bg-indigo-50/50 cursor-pointer'
+                        ? 'border-violet-700 bg-violet-50 cursor-pointer'
                         : 'border-gray-200 bg-white hover:border-gray-300 cursor-pointer'"
                   >
-                    <span class="flex items-start gap-3 min-w-0">
-                      <input type="radio" name="variant" class="w-4 h-4 mt-0.5 text-indigo-600 border-gray-300 focus:ring-indigo-500 shrink-0"
-                        [checked]="variantId() === v.id" [disabled]="v.available === false"
-                        (change)="selectVariant(v)" />
+                    <!-- Radio visual propio (aro + punto), para que el aspecto coincida con el
+                         diseño de referencia; el <input> real sigue gobernando la selección. -->
+                    <span class="w-5 h-5 mt-0.5 rounded-full border-2 grid place-items-center shrink-0"
+                      [class]="variantId() === v.id ? 'border-violet-700' : 'border-gray-300'">
+                      <span class="w-2.5 h-2.5 rounded-full bg-violet-700" [class.opacity-0]="variantId() !== v.id"></span>
+                    </span>
+                    <input type="radio" name="variant" class="sr-only"
+                      [checked]="variantId() === v.id" [disabled]="v.available === false"
+                      (change)="selectVariant(v)" />
+                    <span class="flex-1 min-w-0 flex items-start justify-between gap-3">
                       <span class="min-w-0">
                         <!-- spec 087 (FR-014): el nombre de la presentación se ajusta en varias
                              líneas, nunca se trunca con "…" — la promoción es una etiqueta
                              secundaria en su propia línea. -->
-                        <span data-testid="variant-name" class="block text-sm font-semibold text-gray-900 break-words">{{ v.name }}</span>
+                        <!--
+                          Bugfix (modo oscuro del panel, .panel-theme[data-theme='dark']
+                          en styles.css): violet-* queda fuera del remapeo a propósito, así
+                          que el fondo de la fila seleccionada (bg-violet-50) nunca se
+                          oscurece -- pero text-gray-900 sí se remapea a un gris casi blanco,
+                          quedando casi ilegible sobre ese fondo claro que nunca cambia. La
+                          fila sin seleccionar usa bg-white (sí remapeado a superficie
+                          oscura), con lo que el mismo gris-casi-blanco combina bien ahí; por
+                          eso solo la seleccionada se veía mal. Mismo patrón ya usado en
+                          selects de método de pago (payment-attempt-review-panel.component.ts,
+                          payment-input.component.ts): texto fijo en la familia del fondo
+                          (violet-900), no gray-900, cuando está seleccionada.
+                        -->
+                        <span data-testid="variant-name" class="block font-semibold break-words"
+                          [class]="variantId() === v.id ? 'text-violet-900' : 'text-gray-900'">{{ v.name }}</span>
                         <!-- spec 066 (FR-008): condición corta + equivalente por unidad, en
                              tono discreto para no competir con el precio. Texto ya compuesto
                              por el backend. spec 081 (FR-016, corregido): en cuanto la cantidad
@@ -186,48 +206,49 @@ export interface ProductSelection {
                              del paquete, justo al lado. No depende de si se llegó desde
                              "Promociones". -->
                         @if (v.promotion) {
-                          <span data-testid="variant-promo" class="block w-fit max-w-full whitespace-normal break-words text-[11px] font-medium text-indigo-700 bg-indigo-100/70 px-1.5 py-0.5 rounded mt-0.5">
+                          <span data-testid="variant-promo" class="block w-fit max-w-full whitespace-normal break-words text-xs font-medium text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded mt-1">
                             {{ rowPackagePromo(v) ? v.promotion.short_condition : v.promotion.display_text }}
                           </span>
                         }
                       </span>
-                    </span>
-                    <span class="shrink-0">
-                      @if (v.available === false) {
-                        <span class="text-xs font-semibold text-gray-400">Agotado</span>
-                      } @else if (discountFor(v); as disc) {
-                        <span class="flex items-center gap-1.5">
-                          <!-- spec 066 (research.md D-13): la insignia de porcentaje se
-                               acota al tipo 'percent'. Con un precio de paquete de
-                               cantidad mínima 1 ($8.000 -> $6.000) el frontend fabricaría
-                               un -25% que la regla nunca enuncia, y FR-007 lo prohíbe.
-                               La guarda mira el campo crudo de la presentación, no
-                               disc.kind: discountInfo colapsa a 'percent' todo lo que no
-                               sea 'fixed', así que ahí el tipo real ya se perdió. -->
-                          @if (disc.kind === 'fixed' || v.discount_kind === 'percent') {
-                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">
-                              @if (disc.kind === 'fixed') {
-                                -{{ disc.amountOff | money }}
-                              } @else {
-                                -{{ disc.percent }}%
-                              }
-                            </span>
-                          }
-                          <span class="text-gray-400 text-xs line-through">{{ disc.original | money }}</span>
-                          <span class="text-sm font-bold text-indigo-600">{{ disc.discounted | money }}</span>
-                        </span>
-                      } @else if (rowPackagePromo(v); as promo) {
-                        <!-- spec 081 (FR-016, corregido): min_qty > 1 nunca puebla
-                             discounted_price (discountFor arriba da null); en cuanto la cantidad
-                             configurada para ESTA variante ya satisface min_qty, se tacha el
-                             precio de lista y se muestra el total de un paquete completo. -->
-                        <span class="flex items-center gap-1.5">
-                          <span class="text-gray-400 text-xs line-through">{{ v.price | money }}</span>
-                          <span class="text-sm font-bold text-indigo-600">{{ packageTotal(v, promo) | money }}</span>
-                        </span>
-                      } @else {
-                        <span class="text-sm font-bold text-gray-700">{{ variantPrice(v) | money }}</span>
-                      }
+                      <span class="shrink-0 text-right">
+                        @if (v.available === false) {
+                          <span class="text-xs font-semibold text-gray-400">Agotado</span>
+                        } @else if (discountFor(v); as disc) {
+                          <span class="flex items-baseline gap-1.5 whitespace-nowrap">
+                            <!-- spec 066 (research.md D-13): la insignia de porcentaje se
+                                 acota al tipo 'percent'. Con un precio de paquete de
+                                 cantidad mínima 1 ($8.000 -> $6.000) el frontend fabricaría
+                                 un -25% que la regla nunca enuncia, y FR-007 lo prohíbe.
+                                 La guarda mira el campo crudo de la presentación, no
+                                 disc.kind: discountInfo colapsa a 'percent' todo lo que no
+                                 sea 'fixed', así que ahí el tipo real ya se perdió. -->
+                            @if (disc.kind === 'fixed' || v.discount_kind === 'percent') {
+                              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">
+                                @if (disc.kind === 'fixed') {
+                                  -{{ disc.amountOff | money }}
+                                } @else {
+                                  -{{ disc.percent }}%
+                                }
+                              </span>
+                            }
+                            <span class="text-xs line-through" [class]="variantId() === v.id ? 'text-violet-400' : 'text-gray-400'">{{ disc.original | money }}</span>
+                            <span class="font-sora text-sm font-bold text-violet-700 tabular-nums">{{ disc.discounted | money }}</span>
+                          </span>
+                        } @else if (rowPackagePromo(v); as promo) {
+                          <!-- spec 081 (FR-016, corregido): min_qty > 1 nunca puebla
+                               discounted_price (discountFor arriba da null); en cuanto la cantidad
+                               configurada para ESTA variante ya satisface min_qty, se tacha el
+                               precio de lista y se muestra el total de un paquete completo. -->
+                          <span class="flex items-baseline gap-1.5 whitespace-nowrap">
+                            <span class="text-xs line-through" [class]="variantId() === v.id ? 'text-violet-400' : 'text-gray-400'">{{ v.price | money }}</span>
+                            <span class="font-sora text-sm font-bold text-violet-700 tabular-nums">{{ packageTotal(v, promo) | money }}</span>
+                          </span>
+                        } @else {
+                          <span class="font-sora text-sm font-bold tabular-nums"
+                            [class]="variantId() === v.id ? 'text-violet-900' : 'text-gray-900'">{{ variantPrice(v) | money }}</span>
+                        }
+                      </span>
                     </span>
                   </label>
                 }
@@ -251,17 +272,17 @@ export interface ProductSelection {
                 <button type="button" (click)="toggleGroup(group.id)"
                   class="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-gray-50 transition-colors">
                   <span class="flex items-center gap-2 min-w-0">
-                    <span class="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold shrink-0">{{ i + 2 }}</span>
+                    <span class="flex items-center justify-center w-6 h-6 rounded-full bg-violet-600 text-white text-xs font-bold shrink-0">{{ i + 2 }}</span>
                     <span class="min-w-0">
                       <span class="block text-sm font-bold text-gray-900 truncate">{{ group.name }}</span>
                       @if (!isExpanded(group.id) && chosenCount(group) > 0) {
-                        <span class="block text-xs text-indigo-600 truncate">{{ chosenNames(group) }}</span>
+                        <span class="block text-xs text-violet-600 truncate">{{ chosenNames(group) }}</span>
                       }
                     </span>
                   </span>
                   <span class="flex items-center gap-2 shrink-0">
                     <span class="text-[11px] font-bold tracking-wide uppercase px-2 py-0.5 rounded"
-                      [class]="requiredCount(group) > 0 ? 'bg-gray-200 text-gray-700' : 'bg-indigo-100 text-indigo-700'">
+                      [class]="requiredCount(group) > 0 ? 'bg-gray-200 text-gray-700' : 'bg-violet-100 text-violet-700'">
                       {{ requiredCount(group) > 0 ? 'Obligatorio' : 'Opcional' }}
                     </span>
                     <span class="text-xs font-medium"
@@ -273,12 +294,12 @@ export interface ProductSelection {
                 </button>
 
                 @if (isExpanded(group.id)) {
-                  <div class="px-4 pb-4 space-y-3 bg-gradient-to-br from-indigo-50/40 via-white to-white">
+                  <div class="px-4 pb-4 space-y-3 bg-gradient-to-br from-violet-50/40 via-white to-white">
                     @if (showSearch(group)) {
                       <input type="search" [value]="filterValue(group.id)"
                         (input)="setFilter(group.id, $any($event.target).value)"
                         [placeholder]="'Buscar en ' + group.name + '…'"
-                        class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                        class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400" />
                     }
 
                     @if (group.selection_mode === 'cantidad') {
@@ -302,7 +323,7 @@ export interface ProductSelection {
                               <button type="button" data-testid="qty-plus" (click)="incrementOption(group, opt)"
                                 [disabled]="!canIncrement(group, opt)"
                                 aria-label="Añadir una unidad"
-                                class="w-7 h-7 rounded-full bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:scale-95 text-base font-bold leading-none flex items-center justify-center transition disabled:opacity-40"
+                                class="w-7 h-7 rounded-full bg-violet-600 text-white shadow-sm hover:bg-violet-700 active:scale-95 text-base font-bold leading-none flex items-center justify-center transition disabled:opacity-40"
                               >+</button>
                             </div>
                           </div>
@@ -315,16 +336,16 @@ export interface ProductSelection {
                         @for (opt of visibleOptions(group); track opt.id) {
                           <label data-testid="conteo-option"
                             class="flex items-center justify-between gap-2 p-3 bg-white rounded-xl border-2 shadow-sm cursor-pointer transition-colors"
-                            [class]="isSelected(opt.id) ? 'border-indigo-500' : 'border-gray-100 hover:border-gray-300'"
+                            [class]="isSelected(opt.id) ? 'border-violet-500' : 'border-gray-100 hover:border-gray-300'"
                           >
                             <span class="flex items-center gap-2.5 min-w-0">
-                              <input type="checkbox" class="w-4 h-4 rounded text-indigo-600 border-gray-300 focus:ring-indigo-500 shrink-0"
+                              <input type="checkbox" class="w-4 h-4 rounded text-violet-600 border-gray-300 focus:ring-violet-500 shrink-0"
                                 [checked]="isSelected(opt.id)"
                                 [disabled]="!isSelected(opt.id) && group.max_select > 0 && chosenCount(group) >= group.max_select"
                                 (change)="toggleOption(group, opt)" />
                               <span class="text-xs font-semibold text-gray-800 truncate">{{ opt.name }}</span>
                               @if (isSelected(opt.id) && group.max_select > 1) {
-                                <span class="shrink-0 w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center">
+                                <span class="shrink-0 w-4 h-4 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center">
                                   {{ selectionOrder(group, opt.id) }}
                                 </span>
                               }
@@ -393,7 +414,7 @@ export interface ProductSelection {
                         <button type="button" data-testid="topping-plus" (click)="incrementTopping(topping)"
                           [disabled]="!topping.available"
                           aria-label="Añadir una unidad"
-                          class="w-7 h-7 rounded-full bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:scale-95 text-base font-bold leading-none flex items-center justify-center transition disabled:opacity-40"
+                          class="w-7 h-7 rounded-full bg-violet-600 text-white shadow-sm hover:bg-violet-700 active:scale-95 text-base font-bold leading-none flex items-center justify-center transition disabled:opacity-40"
                         >+</button>
                       </div>
                     </div>
@@ -406,7 +427,7 @@ export interface ProductSelection {
           <!-- Notas -->
           <section class="pt-2 pb-2">
             <div class="flex items-center gap-2 mb-2">
-              <span class="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold">{{ activeGroups().length + 2 }}</span>
+              <span class="flex items-center justify-center w-6 h-6 rounded-full bg-violet-600 text-white text-xs font-bold">{{ activeGroups().length + 2 }}</span>
               <h2 class="text-base font-bold text-gray-900">Instrucciones especiales</h2>
             </div>
             <div class="ml-8">
@@ -416,7 +437,7 @@ export interface ProductSelection {
                 placeholder="Ej: sin azúcar, poco hielo…"
                 maxlength="500"
                 rows="2"
-                class="w-full text-sm rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 placeholder:text-gray-400 p-3 transition"
+                class="w-full text-sm rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:border-violet-500 focus:ring-2 focus:ring-violet-200 placeholder:text-gray-400 p-3 transition"
               ></textarea>
             </div>
           </section>
@@ -444,7 +465,7 @@ export interface ProductSelection {
                 type="button"
                 (click)="inc()"
                 aria-label="Añadir uno"
-                class="w-11 h-11 rounded-full bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:scale-95 text-xl font-bold leading-none flex items-center justify-center transition"
+                class="w-11 h-11 rounded-full bg-violet-600 text-white shadow-sm hover:bg-violet-700 active:scale-95 text-xl font-bold leading-none flex items-center justify-center transition"
               >+</button>
             </div>
             }
@@ -457,7 +478,7 @@ export interface ProductSelection {
             type="button"
             (click)="confirm()"
             [disabled]="!canConfirm()"
-            class="w-full h-12 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm sm:text-base"
+            class="w-full h-12 bg-violet-600 hover:bg-violet-700 active:scale-[0.99] text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm sm:text-base"
           >
             @if (blockingLabel(); as falta) {
               {{ falta }}

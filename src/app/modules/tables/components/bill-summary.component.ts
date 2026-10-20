@@ -35,13 +35,11 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
       <div class="flex justify-between items-center text-[13px] text-gray-500 pt-0.5">
         <span class="flex items-center gap-1" [class]="showDeliveryIcon ? 'text-gray-900 font-medium' : ''">
           @if (showDeliveryIcon) {
-            <app-mi-icon name="delivery_dining" [size]="15" class="text-indigo-600" />
+            <app-mi-icon name="delivery_dining" [size]="15" class="text-violet-600" />
           }
           {{ deliveryFeeLabel }}
         </span>
-        <span
-          class="font-mono font-semibold tabular-nums"
-          [class]="showDeliveryIcon ? 'text-indigo-600' : 'text-gray-900'"
+        <span class="font-mono font-semibold tabular-nums text-gray-900"
           >{{ showDeliveryIcon ? '+' : '' }}{{ money(deliveryFee) }}</span
         >
       </div>

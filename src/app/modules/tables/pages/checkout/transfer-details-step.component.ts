@@ -10,7 +10,6 @@ import { ToastService } from '../../../../shared/feedback/toast.service';
 import { ToastContainerComponent } from '../../../../shared/feedback/toast-container.component';
 import { CheckoutStepIndicatorComponent } from './checkout-step-indicator.component';
 import { CheckoutProgressStore } from './checkout-progress.store';
-import { formatProductCount } from './checkout-product-count';
 import { CheckoutOrderSummaryComponent } from './checkout-order-summary.component';
 
 /**
@@ -38,7 +37,7 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
             (click)="back()"
             [disabled]="uploading() || submitting()"
             aria-label="Volver"
-            class="p-1 -ml-1 text-gray-500 hover:text-indigo-600 disabled:opacity-40 transition-colors"
+            class="p-1 -ml-1 text-gray-500 hover:text-violet-600 disabled:opacity-40 transition-colors"
           >
             <span class="w-5 h-5 block"><app-icon name="back" /></span>
           </button>
@@ -59,21 +58,34 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
           <p class="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-3">{{ error() }}</p>
         }
 
-        <!-- spec 092 (FR-001, FR-002, FR-003) — el total a pagar, el dato sin el
-             cual esta pantalla no cumple su función. Va FUERA de la rama que
-             espera el método a propósito: no depende de que el método haya
-             cargado, así que está visible sin ninguna interacción ni ninguna
-             espera de red (SC-001). Y fuera de toda zona colapsable, para que
-             contraer el resumen nunca lo esconda (FR-002). La cifra es text-3xl
-             y el h1 del método es text-lg: eso la deja siendo el texto más
-             grande de la vista (FR-001). -->
+        <!-- spec 092 (FR-001, FR-002) / spec 130 (rediseño) — el monto a pagar
+             por este medio, el dato sin el cual esta pantalla no cumple su
+             función. Va FUERA de la rama que espera el método a propósito: no
+             depende de que el método haya cargado, así que está visible sin
+             ninguna interacción ni ninguna espera de red (SC-001). Y fuera de
+             toda zona colapsable, para que contraer el resumen nunca lo
+             esconda (FR-002). La cifra es text-3xl y el h1 del método es
+             text-lg: eso la deja siendo el texto más grande de la vista
+             (FR-001).
+
+             spec 130: en un pago mixto, la cifra destacada es SOLO la porción
+             a transferir (transferAmount), no el total del pedido — el rótulo
+             pasa a "Transfiere por <método>" y la porción en efectivo se
+             aclara debajo. El conteo de unidades ya no se repite aquí: vive
+             una sola vez, en el encabezado del resumen colapsable de abajo. -->
         <div
           data-testid="payment-total"
-          class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 text-center"
+          class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4 text-center"
         >
-          <p class="text-xs font-medium text-gray-500">Total a pagar</p>
-          <p class="text-3xl font-bold text-gray-900 leading-tight">{{ cart.total() | money }}</p>
-          <p class="text-xs text-gray-400">{{ productCountLabel() }}</p>
+          <p class="text-sm text-gray-500">{{ totalLabel() }}</p>
+          <p class="text-3xl font-bold text-gray-900 leading-tight mt-1">
+            {{ transferAmount() | money }}
+          </p>
+          @if (mixedCashAmount() !== null) {
+            <p class="text-sm text-gray-600 mt-1">
+              Más {{ mixedCashAmount() | money }} en efectivo al recibir el pedido
+            </p>
+          }
         </div>
 
         @if (!method()) {
@@ -82,48 +94,61 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
           <!-- spec 092 (FR-001, FR-016, research.md D9) — el nombre del método
                queda DEBAJO del bloque de total y ENCIMA del bloque de datos
                bancarios. Hasta esta spec era lo primero bajo el encabezado;
-               moverlo no es una libertad de diseño, lo exige FR-001. -->
+               moverlo no es una libertad de diseño, lo exige FR-001.
+               spec 130: en un pago mixto, este es el método de transferencia
+               REAL elegido para el resto ('transfer_method_id'), no "Pago
+               mixto" en sí (data-model.md: ese no tiene cuenta propia). -->
           <h1 class="text-lg font-bold text-gray-900 mb-1">{{ method()!.name }}</h1>
           <p class="text-sm text-gray-500 mb-4">
-            Transfiere y sube tu comprobante para enviar el pedido.
+            Transfiere el valor exacto y sube tu comprobante para enviar el pedido.
           </p>
 
-          <div class="bg-indigo-50 rounded-xl p-4 space-y-3">
+          <div
+            data-testid="bank-info"
+            class="bg-white rounded-2xl border border-gray-100 p-4 space-y-4"
+          >
             @for (f of textFields(); track f.key) {
-              <p class="text-sm text-indigo-900 flex items-center gap-2">
-                <span>
-                  <span class="font-medium">{{ f.label ?? f.key }}:</span>
-                  {{ method()!.payment_info?.[f.key] }}
-                </span>
+              <div class="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                    {{ f.label ?? f.key }}
+                  </p>
+                  <p class="text-xl font-bold text-gray-900 tabular-nums">
+                    {{ method()!.payment_info?.[f.key] }}
+                  </p>
+                </div>
                 <button
                   type="button"
-                  (click)="copyField(method()!.payment_info?.[f.key] ?? '')"
+                  (click)="copyField(f.key, method()!.payment_info?.[f.key] ?? '')"
                   title="Copiar"
                   aria-label="Copiar"
-                  class="text-indigo-500 hover:text-indigo-700 transition-colors shrink-0"
+                  class="h-11 px-3.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 shrink-0"
                 >
                   <span class="w-4 h-4 block"><app-icon name="copy" /></span>
+                  {{ copiedKey() === f.key ? 'Copiado' : 'Copiar' }}
                 </button>
-              </p>
+              </div>
             }
             @for (f of imageFields(); track f.key) {
-              <div>
-                <p class="text-xs font-medium text-indigo-900 mb-1 flex items-center gap-2">
-                  {{ f.label ?? f.key }}
+              <div class="space-y-2">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                    O escanea el código QR
+                  </p>
                   <button
                     type="button"
                     (click)="downloadImage(method()!.payment_info?.[f.key] ?? '', qrFilename(f))"
                     title="Descargar"
                     aria-label="Descargar"
-                    class="text-indigo-500 hover:text-indigo-700 transition-colors shrink-0"
+                    class="text-violet-600 hover:text-violet-700 transition-colors shrink-0"
                   >
                     <span class="w-4 h-4 block"><app-icon name="download" /></span>
                   </button>
-                </p>
+                </div>
                 <img
                   [src]="method()!.payment_info?.[f.key]"
                   [alt]="f.label ?? f.key"
-                  class="w-full max-w-[220px] rounded-lg border border-indigo-100 mx-auto"
+                  class="w-full max-w-[240px] rounded-xl border border-gray-200 mx-auto"
                 />
               </div>
             }
@@ -145,43 +170,60 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
             />
           </div>
 
-          <div class="mt-4">
+          <div class="mt-4 space-y-2.5">
+            <div class="flex items-center gap-2.5">
+              <span
+                class="w-6 h-6 rounded-full bg-violet-600 text-white text-xs font-bold flex items-center justify-center shrink-0"
+              >
+                1
+              </span>
+              <p class="text-base font-semibold text-gray-900">Sube tu comprobante</p>
+            </div>
+
             @if (previewUrl(); as preview) {
-              <div class="space-y-2 text-center">
-                <p class="text-xs font-medium text-gray-700 text-left">Tu comprobante</p>
+              <div class="flex items-center gap-3 p-3 border border-emerald-500 rounded-2xl bg-white">
                 <img
                   [src]="preview"
                   alt="Comprobante de pago"
-                  class="w-full max-w-[220px] rounded-lg border border-gray-200 mx-auto"
+                  class="w-16 h-16 rounded-lg object-cover shrink-0"
                 />
-                <div class="flex items-center justify-center gap-4 text-xs">
-                  <label class="text-indigo-600 hover:text-indigo-700 font-medium cursor-pointer">
-                    {{ uploading() ? 'Subiendo…' : 'Cambiar imagen' }}
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
-                      (change)="onFileSelected($event)"
-                      [disabled]="uploading() || submitting()"
-                      class="hidden"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    (click)="removeReceipt()"
-                    [disabled]="uploading() || submitting()"
-                    class="text-red-600 hover:text-red-700 font-medium disabled:opacity-40 flex items-center gap-1"
-                  >
-                    <span class="w-3.5 h-3.5"><app-icon name="close" /></span> Quitar
-                  </button>
+                <div class="flex-1 min-w-0">
+                  <p class="flex items-center gap-1.5 text-sm font-semibold text-emerald-600">
+                    <span class="w-4 h-4"><app-icon name="check-circle" /></span>
+                    Comprobante cargado
+                  </p>
+                  <p class="text-xs text-gray-400 truncate">{{ receiptFileName() }}</p>
                 </div>
+                <label
+                  class="px-1 text-sm font-semibold text-violet-600 hover:text-violet-700 cursor-pointer shrink-0"
+                >
+                  {{ uploading() ? 'Subiendo…' : 'Cambiar' }}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    (change)="onFileSelected($event)"
+                    [disabled]="uploading() || submitting()"
+                    class="hidden"
+                  />
+                </label>
+                <button
+                  type="button"
+                  (click)="removeReceipt()"
+                  [disabled]="uploading() || submitting()"
+                  aria-label="Quitar comprobante"
+                  title="Quitar comprobante"
+                  class="w-10 h-10 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+                >
+                  <span class="w-4 h-4"><app-icon name="close" /></span>
+                </button>
               </div>
             } @else {
-              <label class="block cursor-pointer">
-                <span class="text-xs font-medium text-gray-700">Sube tu comprobante</span>
-                <div class="mt-1 flex items-center gap-2 text-xs text-gray-500">
-                  <span class="w-4 h-4 text-emerald-600 shrink-0"><app-icon name="upload" /></span>
-                  Elige una imagen del comprobante
-                </div>
+              <label
+                class="min-h-[96px] p-4 border-2 border-dashed border-gray-300 rounded-2xl cursor-pointer flex flex-col items-center justify-center gap-1.5 text-center hover:border-violet-400 hover:bg-violet-50 transition-colors"
+              >
+                <span class="w-6 h-6 text-violet-600"><app-icon name="upload" /></span>
+                <span class="text-sm font-semibold text-gray-900">Elige una imagen del comprobante</span>
+                <span class="text-xs text-gray-400">Foto o captura de pantalla · JPG o PNG</span>
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif"
@@ -192,19 +234,24 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
             }
           </div>
 
-          <button
-            (click)="confirmSend()"
-            [disabled]="!previewUrl() || uploading() || submitting()"
-            class="mt-4 w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
-          >
-            @if (uploading()) {
-              Subiendo comprobante…
-            } @else if (submitting()) {
-              Enviando pedido…
-            } @else {
-              Enviar pedido
-            }
-          </button>
+          <div class="mt-4 space-y-2">
+            <button
+              (click)="confirmSend()"
+              [disabled]="!previewUrl() || uploading() || submitting()"
+              class="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl transition-colors disabled:bg-gray-200 disabled:text-gray-400"
+            >
+              @if (uploading()) {
+                Subiendo comprobante…
+              } @else if (submitting()) {
+                Enviando pedido…
+              } @else {
+                Enviar pedido
+              }
+            </button>
+            <p class="text-center text-xs text-gray-400">
+              {{ previewUrl() ? 'Listo para enviar.' : 'Sube el comprobante para enviar el pedido.' }}
+            </p>
+          </div>
         }
       </div>
     </div>
@@ -235,6 +282,19 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
   readonly uploading = signal(false);
   readonly submitting = signal(false);
   readonly error = signal<string | null>(null);
+  /** Spec 130 (FR-007): monto en efectivo del pago mixto — `null` ⇔ no es mixto. */
+  readonly mixedCashAmount = signal<number | null>(null);
+  /** `key` del campo cuyo botón "Copiar" muestra "Copiado" ahora mismo — `null`
+   *  fuera de esa ventana de ~2 s (rediseño, imita el estado del botón en
+   *  `design/Bienvenida QR.dc.html`). Puramente visual: el toast (abajo) sigue
+   *  siendo la notificación accesible de verdad. */
+  readonly copiedKey = signal<string | null>(null);
+  /** `payment_method_id` real a mandar a `submitCart` — "Pago mixto" en un
+   *  pago mixto, el método de transferencia elegido en los demás casos (son
+   *  el mismo valor salvo en el mixto, donde `method()` muestra otra cosa). */
+  private submitPaymentMethodId: string | null = null;
+  /** `transfer_method_id` a mandar a `submitCart` — solo con valor en un pago mixto. */
+  private submitTransferMethodId: string | null = null;
 
   /** Solo los campos con valor en `payment_info`: un `field` sin valor capturado no se pinta. */
   readonly textFields = computed(() =>
@@ -250,13 +310,40 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
   );
 
   /**
-   * spec 092 (FR-003, FR-006): conteo en **unidades** que acompaña al total.
+   * spec 130 (rediseño): la cifra destacada del bloque de total.
    *
-   * Sale de `formatProductCount`, la misma composición que lee el `<summary>`
-   * del resumen. Que los dos salgan de ahí es lo que garantiza que el comensal
-   * no vea dos conteos distintos del mismo pedido en esta pantalla (RN-004).
+   * En un pago mixto es SOLO la porción a transferir (`cart.total() -
+   * mixedCashAmount()`), no el total del pedido — el total completo con
+   * desglose sigue disponible en el resumen colapsable de abajo. Fuera de un
+   * pago mixto, sigue siendo el total completo, igual que antes.
    */
-  readonly productCountLabel = computed(() => formatProductCount(this.cart.count()));
+  readonly transferAmount = computed(() => {
+    const cash = this.mixedCashAmount();
+    return cash !== null ? this.cart.total() - cash : this.cart.total();
+  });
+  /** Rótulo del bloque de total: "Transfiere por <método>" en un pago mixto
+   *  (una vez el método de transferencia real ya cargó), "Total a pagar" en
+   *  cualquier otro caso — incluido el instante en que `method()` aún es `null`. */
+  readonly totalLabel = computed(() => {
+    const method = this.method();
+    return this.mixedCashAmount() !== null && method ? `Transfiere por ${method.name}` : 'Total a pagar';
+  });
+  /** Nombre a mostrar junto al comprobante ya cargado: el del archivo recién
+   *  elegido, o el de la URL ya subida cuando se hidrata desde el store (sin
+   *  `File` disponible). */
+  readonly receiptFileName = computed(() => {
+    const file = this.pendingImage();
+    if (file) return file.name;
+    const url = this.uploadedReceiptUrl();
+    if (!url) return '';
+    const path = url.split('?')[0];
+    const last = path.substring(path.lastIndexOf('/') + 1);
+    try {
+      return decodeURIComponent(last);
+    } catch {
+      return last;
+    }
+  });
 
   async ngOnInit(): Promise<void> {
     const record = this.progress.read();
@@ -285,7 +372,18 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
       this.router.navigate(['/menu/t', this.token, 'checkout', 'method']);
       return;
     }
-    this.method.set(found);
+
+    // Spec 130: en un pago mixto, los datos bancarios a mostrar (FR-007) son
+    // los del método de transferencia REAL elegido (`transfer_method_id`),
+    // no los de "Pago mixto" en sí — ese no tiene cuenta propia
+    // (data-model.md § OrderPaymentAttempt).
+    this.mixedCashAmount.set(record?.cash_amount ?? null);
+    this.submitPaymentMethodId = methodId;
+    this.submitTransferMethodId = record?.transfer_method_id ?? null;
+    const displayMethod = this.submitTransferMethodId
+      ? methods.find((m) => m.id === this.submitTransferMethodId) ?? found
+      : found;
+    this.method.set(displayMethod);
 
     // Comprobante ya subido antes de esta entrada (recarga, o volver del
     // paso anterior sin haber enviado) — se hidrata la vista previa; nunca se
@@ -375,7 +473,10 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
 
     this.submitting.set(true);
     try {
-      await this.submit(method.id, receiptUrl);
+      // spec 130: el `payment_method_id` a enviar es "Pago mixto" en un pago
+      // mixto (`submitPaymentMethodId`), no el método de transferencia que
+      // `method()` muestra para los datos bancarios.
+      await this.submit(this.submitPaymentMethodId ?? method.id, receiptUrl);
     } finally {
       this.submitting.set(false);
     }
@@ -383,7 +484,9 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
 
   private async submit(methodId: string, receiptFileUrl: string): Promise<void> {
     try {
-      const order = await this.api.submitCart(methodId, receiptFileUrl);
+      const order = await this.api.submitCart(
+        methodId, receiptFileUrl, this.mixedCashAmount(), this.submitTransferMethodId,
+      );
       this.progress.clear();
       this.progress.activeOrder.set(order);
       this.cart.clear();
@@ -408,11 +511,18 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
   }
 
   /** Copia un valor de texto ya mostrado (p. ej. número de cuenta/celular) al
-   *  portapapeles del dispositivo (spec 060, FR-001/FR-003, research.md D1). */
-  async copyField(value: string): Promise<void> {
+   *  portapapeles del dispositivo (spec 060, FR-001/FR-003, research.md D1).
+   *  `key` identifica el campo solo para el estado visual del botón ("Copiar"
+   *  → "Copiado" por 2 s, rediseño) — el toast sigue siendo independiente de
+   *  ese estado y es lo único que verifican los tests de accesibilidad. */
+  async copyField(key: string, value: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(value);
       this.toast.success('Copiado al portapapeles', 5000);
+      this.copiedKey.set(key);
+      setTimeout(() => {
+        if (this.copiedKey() === key) this.copiedKey.set(null);
+      }, 2000);
     } catch {
       this.toast.error('No se pudo copiar', 5000);
     }

@@ -49,30 +49,30 @@ export const UMBRAL_EXPANDIDO_POR_DEFECTO = 3;
            atributo y cerraría de golpe el panel que el comensal acaba de abrir
            (research.md D2, FR-009). -->
       <details
-        class="group bg-white rounded-2xl border border-gray-100 shadow-sm"
+        class="group bg-white rounded-2xl border border-gray-200"
         [attr.open]="initiallyOpen ? '' : null"
       >
         <summary
-          class="flex items-center justify-between gap-2 p-4 cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+          class="flex items-center justify-between gap-2 min-h-14 px-4 cursor-pointer list-none [&::-webkit-details-marker]:hidden"
         >
-          <span class="text-sm font-semibold text-gray-700">Resumen del pedido</span>
+          <span class="font-sora text-base font-semibold text-gray-900">Resumen del pedido</span>
           <span class="flex items-center gap-2 shrink-0">
             <!-- FR-006: el mismo número y la misma palabra que el bloque de
                  total del paso 3, porque los dos salen de formatProductCount. -->
-            <span data-testid="summary-count" class="text-xs text-gray-400">{{ countLabel }}</span>
-            <span class="w-4 h-4 block text-gray-400 transition-transform group-open:rotate-180">
+            <span data-testid="summary-count" class="text-sm text-gray-400">{{ countLabel }}</span>
+            <span class="w-4.5 h-4.5 block text-gray-400 transition-transform group-open:rotate-180">
               <app-icon name="chevron-down" />
             </span>
           </span>
         </summary>
-        <div class="px-4 pb-4 space-y-2">
+        <div class="px-4 pb-4 space-y-2.5">
           <ng-container [ngTemplateOutlet]="contenido"></ng-container>
         </div>
       </details>
     } @else {
       <!-- FR-022: el paso de revisión lo muestra plano, sin <details>, sin
            <summary>, sin chevron y sin control de colapso. -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-2">
+      <div class="bg-white rounded-2xl border border-gray-200 p-5 space-y-2.5">
         <ng-container [ngTemplateOutlet]="contenido"></ng-container>
       </div>
     }
@@ -83,7 +83,7 @@ export const UMBRAL_EXPANDIDO_POR_DEFECTO = 3;
          corregiría el formato en una rama y no en la otra. -->
     <ng-template #contenido>
       @for (line of lines; track line.id) {
-        <div class="flex items-start justify-between gap-2 text-sm">
+        <div class="flex items-start justify-between gap-2">
           <!-- min-w-0 + truncate: los textos largos se recortan en vez de
                ensanchar la caja, desde 320 px (FR-019, SC-009). -->
           <div class="min-w-0">
@@ -101,22 +101,22 @@ export const UMBRAL_EXPANDIDO_POR_DEFECTO = 3;
               <p class="text-xs text-gray-400 italic truncate">"{{ line.notes }}"</p>
             }
           </div>
-          <span class="text-gray-700 font-medium shrink-0">{{ line.lineTotal | money }}</span>
+          <span class="font-sora text-[15px] font-semibold text-gray-900 shrink-0 tabular-nums">{{ line.lineTotal | money }}</span>
         </div>
       }
-      <div class="border-t border-gray-100 pt-3 mt-1 space-y-1">
+      <div class="border-t border-gray-200 pt-3.5 mt-1 space-y-2">
         <!-- FR-012: la fila "Ahorro" si y solo si hay descuento vigente. Nunca
              en cero, nunca vacía. El input showSavings es la válvula de
              research.md D6. -->
         @if (showSavings && savings > 0) {
-          <div class="flex justify-between items-center">
-            <span class="text-sm text-gray-500">Ahorro</span>
-            <span class="text-sm font-medium text-emerald-600">{{ savings | money }}</span>
+          <div class="flex justify-between items-baseline">
+            <span class="text-gray-500">Ahorro</span>
+            <span class="font-sora font-semibold text-emerald-600 tabular-nums">{{ savings | money }}</span>
           </div>
         }
-        <div class="flex justify-between items-center">
-          <span class="text-sm font-semibold text-gray-700">Total</span>
-          <span class="text-base font-bold text-gray-900">{{ total | money }}</span>
+        <div class="flex justify-between items-baseline">
+          <span class="font-semibold text-gray-900">Total</span>
+          <span class="font-sora text-xl font-bold text-gray-900 tabular-nums">{{ total | money }}</span>
         </div>
       </div>
       <!-- Ninguna fila de impuestos ni de subtotal, en ningún modo y bajo

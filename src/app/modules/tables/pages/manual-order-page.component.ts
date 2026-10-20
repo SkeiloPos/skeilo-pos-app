@@ -161,7 +161,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               <div
                 class="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded-[6px] text-[11px] text-gray-600 font-medium whitespace-nowrap"
               >
-                <app-mi-icon name="delivery_dining" [size]="14" class="text-indigo-600" />
+                <app-mi-icon name="delivery_dining" [size]="14" class="text-violet-600" />
                 <span class="text-gray-900 font-semibold">{{
                   store.ordersByType('domicilios').length
                 }}</span>
@@ -256,7 +256,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                            tarjeta, no un botón anidado (evita <button> dentro
                            de <button>). -->
                       <span
-                        class="w-9 h-9 rounded-[6px] flex items-center justify-center bg-indigo-600 text-white shrink-0"
+                        class="w-9 h-9 rounded-[6px] flex items-center justify-center bg-violet-600 text-white shrink-0"
                         aria-hidden="true"
                       >
                         <app-mi-icon name="shopping_cart" [size]="18" />
@@ -283,7 +283,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               <button
                 type="button"
                 (click)="viewingCart.set(true)"
-                class="w-full h-11 rounded-[6px] bg-indigo-600 hover:bg-indigo-700 text-white text-[14px] font-semibold flex items-center justify-between px-4 transition-colors"
+                class="w-full h-11 rounded-[6px] bg-violet-600 hover:bg-violet-700 text-white text-[14px] font-semibold flex items-center justify-between px-4 transition-colors"
               >
                 <span>Ver pedido ({{ store.cartView().length }})</span>
                 <span>{{ store.fmt(store.subtotal()) }}</span>
@@ -334,7 +334,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 <app-mi-icon
                   name="table_restaurant"
                   [size]="18"
-                  [class]="store.orderTypeTab() === 'mesas' ? 'text-indigo-600' : ''"
+                  [class]="store.orderTypeTab() === 'mesas' ? 'text-violet-600' : ''"
                 />
                 Mesa
               </button>
@@ -357,7 +357,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 <app-mi-icon
                   name="shopping_bag"
                   [size]="18"
-                  [class]="store.orderTypeTab() === 'para-llevar' ? 'text-indigo-600' : ''"
+                  [class]="store.orderTypeTab() === 'para-llevar' ? 'text-violet-600' : ''"
                 />
                 Para llevar
               </button>
@@ -380,7 +380,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 <app-mi-icon
                   name="delivery_dining"
                   [size]="18"
-                  [class]="store.orderTypeTab() === 'domicilios' ? 'text-indigo-600' : ''"
+                  [class]="store.orderTypeTab() === 'domicilios' ? 'text-violet-600' : ''"
                 />
                 Domicilio
               </button>
@@ -604,7 +604,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     <div class="col-span-3 text-right pr-3">
                       @if (it.promo; as promo) {
                         <div
-                          class="font-semibold text-[16px] text-indigo-600 tabular-nums font-mono"
+                          class="font-semibold text-[16px] text-violet-600 tabular-nums font-mono"
                         >
                           {{ store.fmt(promo.discountedAmount) }}
                         </div>
@@ -622,7 +622,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                           type="button"
                           (click)="store.openConfigForEdit(it.key)"
                           title="Ver/Editar Notas"
-                          class="p-1 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-[6px] transition-colors"
+                          class="p-1 text-gray-500 hover:text-violet-600 hover:bg-gray-100 rounded-[6px] transition-colors"
                         >
                           <app-mi-icon name="edit" ariaLabel="Ver/Editar Notas" [size]="16" />
                         </button>
@@ -630,7 +630,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                           type="button"
                           (click)="store.openConfigForEdit(it.key)"
                           title="Modificar Toppings"
-                          class="p-1 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-[6px] transition-colors"
+                          class="p-1 text-gray-500 hover:text-violet-600 hover:bg-gray-100 rounded-[6px] transition-colors"
                         >
                           <app-mi-icon name="tune" ariaLabel="Modificar Toppings" [size]="16" />
                         </button>
@@ -685,7 +685,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                       <div class="text-right shrink-0">
                         @if (it.promo; as promo) {
                           <div
-                            class="font-semibold text-[16px] text-indigo-600 tabular-nums font-mono"
+                            class="font-semibold text-[16px] text-violet-600 tabular-nums font-mono"
                           >
                             {{ store.fmt(promo.discountedAmount) }}
                           </div>
@@ -723,7 +723,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                             type="button"
                             (click)="store.openConfigForEdit(it.key)"
                             title="Ver/Editar Notas"
-                            class="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-[6px] transition-colors"
+                            class="p-1.5 text-gray-500 hover:text-violet-600 hover:bg-gray-100 rounded-[6px] transition-colors"
                           >
                             <app-mi-icon name="edit" ariaLabel="Ver/Editar Notas" [size]="16" />
                           </button>
@@ -731,7 +731,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                             type="button"
                             (click)="store.openConfigForEdit(it.key)"
                             title="Modificar Toppings"
-                            class="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-[6px] transition-colors"
+                            class="p-1.5 text-gray-500 hover:text-violet-600 hover:bg-gray-100 rounded-[6px] transition-colors"
                           >
                             <app-mi-icon name="tune" ariaLabel="Modificar Toppings" [size]="16" />
                           </button>
@@ -823,7 +823,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                       !store.deliveryAddress().trim() ||
                       store.deliveryFee() == null))
                 "
-                class="w-full h-12 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-[15px] flex items-center justify-center gap-2 rounded-[6px] disabled:opacity-50 transition-colors"
+                class="w-full h-12 bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white font-semibold text-[15px] flex items-center justify-center gap-2 rounded-[6px] disabled:opacity-50 transition-colors"
               >
                 <app-mi-icon name="credit_card" [size]="20" />
                 <span>{{ store.submitting() ? 'Guardando…' : 'Crear pedido' }}</span>
