@@ -43,6 +43,18 @@ export interface OrderOptionSelectionPayload {
 }
 
 /**
+ * spec 129: una adición (producto-topping) elegida para una línea de
+ * `POST /orders` o `POST /orders/{id}/items` (`ToppingSelectionIn`, hermano de
+ * `OrderOptionSelectionPayload`) -- resuelta en la MISMA transacción que crea
+ * la línea, sin la llamada aparte que antes hacía `POST
+ * /orders/items/{item_id}/toppings` por cada adición.
+ */
+export interface OrderToppingSelectionPayload {
+  topping_product_id: string;
+  quantity?: number;
+}
+
+/**
  * One line of a `POST /orders` (or `.../tables/{id}/items`) request
  * (`OrderItemIn`). Exactly one of `product_variant_id` / `combo_id` must be
  * set; a combo doesn't accept `options`.
@@ -52,6 +64,7 @@ export interface OrderItemPayload {
   combo_id?: string;
   quantity?: number;
   options?: OrderOptionSelectionPayload[];
+  toppings?: OrderToppingSelectionPayload[];
   notes?: string | null;
 }
 
@@ -107,6 +120,16 @@ export interface DiningOrderItemOption {
   added_after_sale?: boolean;
 }
 
+/** spec 129: adición (producto-topping) adjunta a una línea -- hermano de
+ *  `DiningOrderItemOption`, para sabores. */
+export interface DiningOrderItemTopping {
+  id: string;
+  name?: string | null;
+  quantity: number;
+  unit_price: string;
+  added_after_sale?: boolean;
+}
+
 /** One line of an order response (`OrderItemResponse`). Amounts are strings. */
 export interface DiningOrderItem {
   id: string;
@@ -152,6 +175,8 @@ export interface DiningOrderItem {
   void_de?: string | null;
   notes?: string | null;
   options?: DiningOrderItemOption[];
+  /** spec 129: adiciones (productos-topping) adjuntas a esta línea. */
+  toppings?: DiningOrderItemTopping[];
 }
 
 /**
@@ -221,6 +246,12 @@ export interface VoidItemPayload {
 /** Body for `POST /orders/items/{id}/additions` (spec 123, `OptionSelectionIn`). */
 export interface AddAdditionPayload {
   option_id: string;
+  quantity: number;
+}
+
+/** Body for `POST /orders/items/{id}/toppings` (spec 129, `ToppingSelectionIn`). */
+export interface AddToppingPayload {
+  topping_product_id: string;
   quantity: number;
 }
 

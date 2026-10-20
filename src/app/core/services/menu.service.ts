@@ -6,6 +6,7 @@ import { ApiErrorBody } from '../auth/auth.models';
 import {
   MenuCategory,
   MenuOptionGroup,
+  MenuTopping,
   MenuVariantPromotion,
 } from '../../modules/products/interfaces/product.interface';
 
@@ -45,6 +46,14 @@ interface MenuVariantResponse {
   available?: boolean;
 }
 
+/** spec 129: raw backend `MenuToppingResponse`. */
+interface MenuToppingResponse {
+  id: string;
+  name: string;
+  unit_price: string;
+  available?: boolean;
+}
+
 interface MenuProductResponse {
   id: string;
   name: string;
@@ -52,6 +61,8 @@ interface MenuProductResponse {
   image_url: string | null;
   variants?: MenuVariantResponse[];
   option_groups?: MenuOptionGroupResponse[];
+  /** spec 129 (FR-009): ausente contra un backend sin desplegar. */
+  toppings?: MenuToppingResponse[];
   available?: boolean;
   /** spec 093: marcado manual de "Agotado" (Cajero/Admin). */
   sold_out?: boolean;
@@ -79,6 +90,10 @@ function toPromotion(p: MenuVariantPromotion | null | undefined): MenuVariantPro
     min_qty: Number(p.min_qty),
     value: Number(p.value),
   };
+}
+
+function toTopping(t: MenuToppingResponse): MenuTopping {
+  return { id: t.id, name: t.name, unit_price: Number(t.unit_price), available: t.available ?? true };
 }
 
 function toGroup(g: MenuOptionGroupResponse): MenuOptionGroup {
@@ -150,6 +165,7 @@ export class MenuService {
           available: v.available ?? true,
         })),
         option_groups: (p.option_groups ?? []).map(toGroup),
+        toppings: (p.toppings ?? []).map(toTopping),
       })),
     };
   }

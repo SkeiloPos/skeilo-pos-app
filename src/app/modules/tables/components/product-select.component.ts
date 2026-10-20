@@ -15,6 +15,7 @@ import {
   MenuOption,
   MenuOptionGroup,
   MenuProduct,
+  MenuTopping,
   MenuVariant,
   MenuVariantPromotion,
   OptionGroupSelectionMode,
@@ -38,11 +39,25 @@ export interface ChosenMenuOption {
   selectionMode: OptionGroupSelectionMode;
 }
 
+/** spec 129 (FR-009): una adición elegida junto con cuántas unidades (FR-018).
+ *  A diferencia de `ChosenMenuOption`, no tiene grupo ni modo de selección --
+ *  siempre se cobra una vez por línea, nunca multiplicada por `quantity`
+ *  (FR-007/Assumptions, spec 117). */
+export interface ChosenMenuTopping {
+  topping: MenuTopping;
+  quantity: number;
+}
+
 /** Emitted when the diner confirms their selection for a product. */
 export interface ProductSelection {
   product: MenuProduct;
   variant: MenuVariant;
   options: ChosenMenuOption[];
+  /** spec 129 (FR-009): adiciones elegidas para esta línea -- a nivel de
+   *  producto, sin relación con `options` (sabores de la presentación).
+   *  Opcional (mismo criterio que `MenuProduct.toppings`): no obliga a los
+   *  fixtures de test ya existentes a declararlo -- ausente se trata como `[]`. */
+  toppings?: ChosenMenuTopping[];
   quantity: number;
   notes: string | null;
   /**
@@ -349,6 +364,45 @@ export interface ProductSelection {
             </section>
           }
 
+          <!-- Adiciones disponibles (spec 129, FR-009): a nivel de PRODUCTO, no de
+               presentación -- las mismas para cualquier variante elegida. -->
+          @if ((product.toppings ?? []).length > 0) {
+            <section class="pt-2">
+              <div class="rounded-2xl border border-gray-100 overflow-hidden">
+                <div class="px-4 py-3">
+                  <span class="block text-sm font-bold text-gray-900">Adiciones disponibles</span>
+                </div>
+                <div class="px-4 pb-4 space-y-2">
+                  @for (topping of product.toppings; track topping.id) {
+                    <div data-testid="topping-row" class="flex items-center justify-between gap-2 px-3 py-2.5 bg-white rounded-xl border border-gray-200"
+                      [class.opacity-50]="!topping.available">
+                      <span class="min-w-0">
+                        <span class="block text-sm font-medium text-gray-800 truncate">{{ topping.name }}</span>
+                        <span class="block text-xs text-gray-500">
+                          + {{ topping.unit_price | money }}
+                          @if (!topping.available) { · Agotado }
+                        </span>
+                      </span>
+                      <div class="flex items-center gap-2 shrink-0 bg-gray-100 rounded-full p-1 border border-gray-200">
+                        <button type="button" data-testid="topping-minus" (click)="decrementTopping(topping)"
+                          [disabled]="toppingQuantity(topping.id) === 0"
+                          aria-label="Quitar una unidad"
+                          class="w-7 h-7 rounded-full bg-white text-gray-700 shadow-sm hover:bg-gray-50 active:scale-95 text-base font-bold leading-none flex items-center justify-center transition disabled:opacity-40"
+                        >−</button>
+                        <span data-testid="topping-qty-value" class="w-5 text-center text-sm font-semibold text-gray-800">{{ toppingQuantity(topping.id) }}</span>
+                        <button type="button" data-testid="topping-plus" (click)="incrementTopping(topping)"
+                          [disabled]="!topping.available"
+                          aria-label="Añadir una unidad"
+                          class="w-7 h-7 rounded-full bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:scale-95 text-base font-bold leading-none flex items-center justify-center transition disabled:opacity-40"
+                        >+</button>
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+            </section>
+          }
+
           <!-- Notas -->
           <section class="pt-2 pb-2">
             <div class="flex items-center gap-2 mb-2">
@@ -466,6 +520,10 @@ export class ProductSelectComponent implements OnInit {
    * badge numerado (1, 2, 3…) de un grupo "conteo" con `max_select > 1`.
    */
   readonly selected = signal<Record<string, Record<string, number>>>({});
+  /** spec 129 (FR-009): topping.id → cantidad elegida. A nivel de producto, no
+   *  de variante -- no se reinicia al cambiar de presentación (a diferencia de
+   *  `selected`, que depende de `activeGroups()`). */
+  readonly selectedToppings = signal<Record<string, number>>({});
   readonly quantity = signal(1);
   readonly notes = signal('');
   /** Grupos desplegados. Ver `syncExpanded`: se abre lo que falta, se cierra lo completo. */
@@ -493,6 +551,11 @@ export class ProductSelectComponent implements OnInit {
         selected[group.id] = { ...(selected[group.id] ?? {}), [chosen.option.id]: chosen.quantity };
       }
       this.selected.set(selected);
+      // spec 129: a nivel de producto -- no depende de qué grupo/presentación
+      // ofrecía cada adición.
+      this.selectedToppings.set(
+        Object.fromEntries((initial.toppings ?? []).map((c) => [c.topping.id, c.quantity])),
+      );
       this.quantity.set(initial.quantity);
       this.notes.set(initial.notes ?? '');
     } else {
@@ -569,6 +632,32 @@ export class ProductSelectComponent implements OnInit {
     this.selectedOptions().map((c) => c.option.id).sort().join(','),
   );
 
+  /** spec 129 (FR-009): adiciones elegidas, a partir de `product.toppings` (no de la
+   *  variante). No es `private`: `confirm()` y el footer de total lo leen. */
+  readonly selectedToppingsList = computed<ChosenMenuTopping[]>(() => {
+    const map = this.selectedToppings();
+    return (this.product.toppings ?? [])
+      .map((topping) => ({ topping, quantity: map[topping.id] ?? 0 }))
+      .filter((c) => c.quantity > 0);
+  });
+
+  toppingQuantity(toppingId: string): number {
+    return this.selectedToppings()[toppingId] ?? 0;
+  }
+
+  incrementTopping(topping: MenuTopping): void {
+    if (!topping.available) return;
+    this.selectedToppings.update((map) => ({ ...map, [topping.id]: (map[topping.id] ?? 0) + 1 }));
+  }
+
+  decrementTopping(topping: MenuTopping): void {
+    this.selectedToppings.update((map) => {
+      const next = (map[topping.id] ?? 0) - 1;
+      const { [topping.id]: _removed, ...rest } = map;
+      return next > 0 ? { ...rest, [topping.id]: next } : rest;
+    });
+  }
+
   /**
    * spec 081 (contrato §2): `1` fuera de "Promociones", o cuando la variante
    * elegida no tiene ninguna regla vigente con cantidad mínima mayor a 1.
@@ -639,7 +728,12 @@ export class ProductSelectComponent implements OnInit {
       const multiplier = c.selectionMode === 'cantidad' ? 1 : (this.addonsPerLine ? 1 : quantity);
       return sum + addon * multiplier;
     }, 0);
-    return base + extra;
+    // spec 129 (FR-007/Assumptions): siempre una vez por línea, nunca multiplicada
+    // por `quantity` -- sin importar `addonsPerLine` (eje 089, independiente de este).
+    const toppingsExtra = this.selectedToppingsList().reduce(
+      (sum, c) => sum + c.topping.unit_price * c.quantity, 0,
+    );
+    return base + extra + toppingsExtra;
   });
 
   /**
@@ -1060,6 +1154,7 @@ export class ProductSelectComponent implements OnInit {
       product: this.product,
       variant,
       options: this.selectedOptions(),
+      toppings: this.selectedToppingsList(),
       quantity: this.quantity(),
       notes: this.notes().trim() || null,
       stepQuantity: this.fromPromotions && minQty > 1 ? minQty : undefined,

@@ -4075,6 +4075,7 @@ describe('PosTerminalStore — total inmediato al guardar y quitar (spec 089, A-
     product: { id: 'p2', name: 'Gaseosa' } as never,
     variant: { id: 'v2', price: unit, option_groups: [] } as never,
     options: [],
+    toppings: [],
     quantity,
     notes: null,
   });
@@ -4402,4 +4403,5 @@ describe('PosTerminalStore — total inmediato al guardar y quitar (spec 089, A-
     expect(previewSpy).not.toHaveBeenCalled();
     expect(store.checkoutPreviewEstimate()).toBeNull();
   });
+
 });

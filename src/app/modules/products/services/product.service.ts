@@ -69,8 +69,18 @@ interface ProductResponse {
   available_changed_at?: string | null;
   available_changed_by_name?: string | null;
   tracks_inventory: boolean;
+  /** spec 129 (FR-001). */
+  is_topping?: boolean;
+  /** spec 129 (FR-010/FR-011). */
+  visible_en_qr?: boolean;
   created_at: string;
   updated_at?: string | null;
+}
+
+/** spec 129: nombre de una adición asociada, denormalizado por el backend. */
+interface ToppingSummaryResponse {
+  id: string;
+  name: string;
 }
 
 /** Raw backend variant (decimals arrive as strings). */
@@ -99,6 +109,10 @@ interface ProductDetailResponse extends ProductResponse {
   /** Ajuste posterior a la spec 103: las desactivadas, ya en la misma respuesta --
    *  `GET /products/{id}/variants` deja de hacer falta solo para listarlas. */
   deactivated: VariantResponse[];
+  /** spec 129 (FR-002): ids de las adiciones asociadas. */
+  topping_ids?: string[];
+  /** spec 129: nombres denormalizados de esas mismas adiciones. */
+  toppings?: ToppingSummaryResponse[];
 }
 
 interface RecipeItemResponse {
@@ -222,6 +236,23 @@ export class ProductService {
     return firstValueFrom(this.http.get<Page<ProductResponse>>(this.productsUrl, { params }));
   }
 
+  /**
+   * Búsqueda remota del picker de "Adiciones disponibles" (spec 129): productos activos
+   * marcados `is_topping=true`, filtrados en el servidor por `GET /products?is_topping=true`
+   * -- mismo patrón que `searchInventoryItems`/`searchCategories` (spec 102/098).
+   */
+  async searchActiveToppingProducts(query: string): Promise<{ id: string; name: string }[]> {
+    let params = new HttpParams().set('page', 1).set('size', 20).set('active', 'true').set(
+      'is_topping',
+      'true',
+    );
+    if (query) params = params.set('search', query);
+    const page = await firstValueFrom(
+      this.http.get<Page<ProductResponse>>(this.productsUrl, { params }),
+    );
+    return page.items.map((p) => ({ id: p.id, name: p.name }));
+  }
+
   /** Antes: async, esperaba el round-trip. Ahora: setter síncrono; el fetch es un
    *  efecto reactivo de `productsQuery` sobre page/size/search/activeFilter/wantsPage. */
   loadProducts(page: number = this.page(), size: number = this.size()): void {
@@ -270,6 +301,7 @@ export class ProductService {
       return {
         ...this.toProduct(p),
         variants: p.variants.map((v) => this.toVariant(v)),
+        topping_ids: p.topping_ids ?? [],
       };
     } catch (err) {
       this.otherError.set(this.extractError(err));
@@ -562,6 +594,10 @@ export class ProductService {
       active: product.active,
       hasSizes: variantDrafts.length > 1,
       tracks_inventory: product.tracks_inventory,
+      is_topping: product.is_topping,
+      visible_en_qr: product.visible_en_qr,
+      topping_ids: raw.topping_ids ?? [],
+      toppingNames: Object.fromEntries((raw.toppings ?? []).map((t) => [t.id, t.name])),
       variants: variantDrafts,
       // Ajuste posterior a la spec 103: las desactivadas ya vienen en la misma
       // respuesta de `GET /products/{id}` -- deja de hacer falta un segundo
@@ -701,6 +737,9 @@ export class ProductService {
       description: draft.description.trim() || null,
       preparation_type: draft.preparation_type,
       tracks_inventory: draft.tracks_inventory,
+      is_topping: draft.is_topping,
+      visible_en_qr: draft.visible_en_qr,
+      topping_ids: draft.topping_ids,
     };
     // Producto nuevo: no hay imagen vigente que comparar, así que no hay base.
     if (!draft.id) return { ...common, image_url: draft.image_url || null };
@@ -775,6 +814,8 @@ export class ProductService {
       available_changed_at: p.available_changed_at ?? null,
       available_changed_by_name: p.available_changed_by_name ?? null,
       tracks_inventory: p.tracks_inventory ?? false,
+      is_topping: p.is_topping ?? false,
+      visible_en_qr: p.visible_en_qr ?? true,
       created_at: p.created_at,
       updated_at: p.updated_at,
     };

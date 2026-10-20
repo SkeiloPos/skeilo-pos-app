@@ -33,6 +33,11 @@ import { DiningCartService } from '../services/dining-cart.service';
                     {{ line.optionNames.join(', ') }}
                   </p>
                 }
+                @if ((line.toppingNames ?? []).length > 0) {
+                  <p class="text-xs text-gray-400 truncate">
+                    {{ (line.toppingNames ?? []).join(', ') }}
+                  </p>
+                }
                 @if (line.notes) {
                   <p class="text-xs text-gray-400 italic truncate">“{{ line.notes }}”</p>
                 }

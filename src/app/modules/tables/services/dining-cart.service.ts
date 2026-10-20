@@ -3,7 +3,7 @@ import {
   MenuProduct,
   MenuVariant,
 } from '../../products/interfaces/product.interface';
-import { ChosenMenuOption } from '../components/product-select.component';
+import { ChosenMenuOption, ChosenMenuTopping } from '../components/product-select.component';
 import { AdjustedOption, CartResponse } from '../interfaces/diner.interface';
 import { DinerService } from './diner.service';
 import { effectivePrice } from '../../promotions/services/promotion-pricing.util';
@@ -38,12 +38,20 @@ export interface CartLine {
    * independiente de la del producto).
    */
   optionSelections: { optionId: string; quantity: number }[];
+  /** spec 129: adiciones (productos-topping) elegidas, ya resueltas a nombre.
+   *  Opcional: no obliga a los fixtures de test ya existentes a declararlo --
+   *  ausente se trata como `[]`. */
+  toppingNames?: string[];
+  /** Para precargar el selector al editar -- mismo criterio que `optionSelections`. */
+  toppingSelections?: { toppingProductId: string; quantity: number }[];
 }
 
 /** Índice del menú para resolver ids → nombres al pintar el carrito. */
 interface MenuIndex {
   variants: Map<string, { productName: string; variantName: string }>;
   options: Map<string, string>;
+  /** spec 129: id de producto-adición → nombre, para resolver `toppingNames`. */
+  toppings: Map<string, string>;
 }
 
 /**
@@ -93,7 +101,7 @@ export class DiningCartService {
    */
   readonly savings = computed(() => Math.max(0, this.grossTotal() - this.total()));
 
-  private index: MenuIndex = { variants: new Map(), options: new Map() };
+  private index: MenuIndex = { variants: new Map(), options: new Map(), toppings: new Map() };
   /**
    * spec 081 (research.md D3): paso de cantidad por variante+opciones, solo en
    * memoria del navegador — nunca se lee ni se escribe desde `GET /cart`, así que
@@ -109,6 +117,7 @@ export class DiningCartService {
   indexMenu(categories: { products: MenuProduct[] }[]): void {
     const variants = new Map<string, { productName: string; variantName: string }>();
     const options = new Map<string, string>();
+    const toppings = new Map<string, string>();
     for (const cat of categories) {
       for (const product of cat.products) {
         for (const v of product.variants) {
@@ -117,9 +126,10 @@ export class DiningCartService {
         for (const g of product.option_groups) {
           for (const o of g.options) options.set(o.id, o.name);
         }
+        for (const t of product.toppings ?? []) toppings.set(t.id, t.name);
       }
     }
-    this.index = { variants, options };
+    this.index = { variants, options, toppings };
   }
 
   /** Carga el carrito vigente del backend (al abrir o al reingresar). */
@@ -143,12 +153,18 @@ export class DiningCartService {
     quantity: number,
     notes: string | null,
     stepQuantity?: number,
+    toppings: ChosenMenuTopping[] = [],
   ): Promise<void> {
     await this.mutate(() =>
       this.api.addItem({
         product_variant_id: variant.id,
         quantity,
         options: options.map((c) => ({ option_id: c.option.id, quantity: c.quantity })),
+        // spec 129: omitido cuando no hay adiciones -- conserva el payload exacto de
+        // siempre para toda línea sin adiciones (sin cambio visible de contrato).
+        ...(toppings.length > 0
+          ? { toppings: toppings.map((c) => ({ topping_product_id: c.topping.id, quantity: c.quantity })) }
+          : {}),
         notes: notes || null,
       }),
     );
@@ -173,10 +189,12 @@ export class DiningCartService {
     itemId: string,
     options: ChosenMenuOption[],
     notes: string | null,
+    toppings: ChosenMenuTopping[] = [],
   ): Promise<void> {
     await this.mutate(() =>
       this.api.updateItem(itemId, {
         options: options.map((c) => ({ option_id: c.option.id, quantity: c.quantity })),
+        toppings: toppings.map((c) => ({ topping_product_id: c.topping.id, quantity: c.quantity })),
         notes: notes || null,
       }),
     );
@@ -256,6 +274,15 @@ export class DiningCartService {
           productVariantId: it.product_variant_id,
           optionKey: it.options.map((o) => o.option_id).sort().join(','),
           optionSelections: it.options.map((o) => ({ optionId: o.option_id, quantity: o.quantity })),
+          toppingNames: (it.toppings ?? [])
+            .map((t) => {
+              const name = this.index.toppings.get(t.id);
+              return name ? formatQuantifiedLabel(name, t.quantity) : null;
+            })
+            .filter((n): n is string => !!n),
+          toppingSelections: (it.toppings ?? []).map((t) => ({
+            toppingProductId: t.id, quantity: t.quantity,
+          })),
         };
       }),
     );

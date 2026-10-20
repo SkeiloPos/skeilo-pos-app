@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import {
   AddAdditionPayload,
+  AddToppingPayload,
   CheckoutAndSendPayload,
   CheckoutPreview,
   ComplementaryPaymentPayload,
@@ -271,6 +272,17 @@ export class DiningSessionService {
   async removeAddition(itemId: string, optionId: string): Promise<DiningOrder> {
     return firstValueFrom(
       this.http.delete<DiningOrder>(`${this.api}/orders/items/${itemId}/additions/${optionId}`),
+    );
+  }
+
+  /**
+   * Agrega una adición (producto-topping) a una línea de pedido ya creada
+   * (spec 129) -- hermano de `addAddition`, para adiciones que ahora son
+   * productos marcados `is_topping=true` en vez de opciones de un grupo.
+   */
+  async addTopping(itemId: string, body: AddToppingPayload): Promise<DiningOrder> {
+    return firstValueFrom(
+      this.http.post<DiningOrder>(`${this.api}/orders/items/${itemId}/toppings`, body),
     );
   }
 

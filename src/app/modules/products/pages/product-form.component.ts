@@ -296,6 +296,69 @@ interface SlotBreakdown {
             </div>
           }
 
+          <!-- ===== Es una adición (spec 129) =====
+               Marca este producto como adición (topping) ofrecible dentro de otros
+               productos, además de poder venderse como línea independiente. Al
+               activarlo se oculta del menú QR por defecto (FR-010) -- el administrador
+               puede mostrarla igual con el switch de abajo. -->
+          <div class="flex items-start justify-between gap-4 mt-4 pt-4 border-t border-gray-100">
+            <div>
+              <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Es una adición</h4>
+              <p class="text-xs text-gray-500 mt-1">
+                Se puede vender sola (ej. "Gomitas") y además ofrecerse como adición de otros productos. No aparece como plato propio en el menú QR.
+              </p>
+            </div>
+            <button type="button" (click)="toggleIsTopping()" role="switch"
+              [attr.aria-checked]="draft().is_topping"
+              class="relative w-11 h-6 rounded-full transition-colors shrink-0"
+              [class]="draft().is_topping ? 'bg-indigo-600' : 'bg-gray-300'"
+              title="Actívalo si este producto funciona como adición de otros productos">
+              <span class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" [class]="draft().is_topping ? 'left-[22px]' : 'left-0.5'"></span>
+            </button>
+          </div>
+
+          <!-- ===== Visible en menú QR (spec 129, análogo a categorías spec 128) ===== -->
+          <div class="flex items-start justify-between gap-4 mt-4 pt-4 border-t border-gray-100">
+            <div>
+              <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Visible en menú QR</h4>
+              <p class="text-xs text-gray-500 mt-1">
+                Si se oculta, el comensal no puede pedirlo por su cuenta desde el menú QR, pero sigue disponible en el pedido manual (caja/mesa).
+              </p>
+            </div>
+            <button type="button" (click)="toggleVisibleEnQr()" role="switch"
+              [attr.aria-checked]="draft().visible_en_qr"
+              class="relative w-11 h-6 rounded-full transition-colors shrink-0"
+              [class]="draft().visible_en_qr ? 'bg-indigo-600' : 'bg-gray-300'"
+              title="Apágalo para ocultar este producto del menú QR">
+              <span class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" [class]="draft().visible_en_qr ? 'left-[22px]' : 'left-0.5'"></span>
+            </button>
+          </div>
+
+          <!-- ===== Adiciones disponibles (spec 129) =====
+               Qué adiciones (productos is_topping=true) ofrece este producto -- a nivel
+               de producto, aplica a todas sus variantes (FR-002/FR-003). -->
+          @if (!draft().is_topping) {
+            <div class="mt-4 pt-4 border-t border-gray-100">
+              <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Adiciones disponibles</h4>
+              <p class="text-xs text-gray-400 mt-0.5 mb-2">Qué adiciones puede llevar este producto -- aplica a todas sus presentaciones.</p>
+              <div class="space-y-2">
+                @if (draft().topping_ids.length === 0) {
+                  <p class="text-sm text-gray-400">Ninguna todavía.</p>
+                }
+                @for (toppingId of draft().topping_ids; track toppingId) {
+                  <div class="flex items-center gap-2">
+                    <span class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50">{{ toppingLabel(toppingId) }}</span>
+                    <button type="button" (click)="removeTopping(toppingId)"
+                      class="px-2 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg"><app-mi-icon name="close" ariaLabel="Quitar" [size]="14" /></button>
+                  </div>
+                }
+                <app-searchable-select [ngModel]="toppingPickerValue()"
+                  (ngModelChange)="toppingPickerValue.set($event)" (optionPicked)="addTopping($event)"
+                  [options]="[]" [search]="searchToppings" placeholder="+ Agregar adición…" />
+              </div>
+            </div>
+          }
+
           @if (activeVariant(); as av) {
             <div class="mt-4 space-y-5">
               @if (!draft().hasSizes) {
@@ -544,6 +607,11 @@ export class ProductFormComponent implements OnInit, OnDestroy {
    * son desgloses distintos.
    */
   private readonly openGroups = signal<ReadonlySet<string>>(new Set());
+
+  /** spec 129: el picker de "Adiciones disponibles" se usa en modo "agregar" -- su
+   *  valor se fuerza de vuelta a `''` tras cada elección (en `addTopping`), para que
+   *  quede listo para agregar la siguiente sin reflejar una selección fija. */
+  readonly toppingPickerValue = signal('');
 
   readonly activeVariant = computed(
     () => this.draft().variants.find((v) => v.localId === this.activeLocalId()) ?? null,
@@ -1097,6 +1165,10 @@ export class ProductFormComponent implements OnInit, OnDestroy {
       active: true,
       hasSizes: false,
       tracks_inventory: false,
+      is_topping: false,
+      visible_en_qr: true,
+      topping_ids: [],
+      toppingNames: {},
       variants: [this.newVariant()],
       deactivated: [],
     };
@@ -1250,6 +1322,52 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     return d.variants.some(
       (v) => v.recipe.length > 0 || v.optionGroups.some((g) => this.groupHasConsumption(g)),
     );
+  }
+
+  /** spec 129 (FR-001). Una adición no puede tener sus propias adiciones asociadas
+   *  (fuera de alcance) -- activar el switch limpia cualquier `topping_ids` previo. */
+  toggleIsTopping(): void {
+    this.draft.update((cur) => ({
+      ...cur,
+      is_topping: !cur.is_topping,
+      topping_ids: cur.is_topping ? cur.topping_ids : [],
+    }));
+  }
+
+  /** spec 129 (FR-010/FR-011). */
+  toggleVisibleEnQr(): void {
+    this.draft.update((cur) => ({ ...cur, visible_en_qr: !cur.visible_en_qr }));
+  }
+
+  /** spec 129 (FR-002): opciones para el select con buscador de "Adiciones
+   *  disponibles" -- mismo criterio que `searchInventoryItems`/`searchCategories`. */
+  readonly searchToppings = (query: string): Promise<{ id: string; label: string }[]> =>
+    this.service
+      .searchActiveToppingProducts(query)
+      .then((items) => items.map((p) => ({ id: p.id, label: p.name })));
+
+  addTopping(opt: { id: string; label: string }): void {
+    this.draft.update((cur) =>
+      cur.topping_ids.includes(opt.id)
+        ? cur
+        : {
+            ...cur,
+            topping_ids: [...cur.topping_ids, opt.id],
+            toppingNames: { ...cur.toppingNames, [opt.id]: opt.label },
+          },
+    );
+    this.toppingPickerValue.set('');
+  }
+
+  removeTopping(id: string): void {
+    this.draft.update((cur) => ({
+      ...cur,
+      topping_ids: cur.topping_ids.filter((t) => t !== id),
+    }));
+  }
+
+  toppingLabel(id: string): string {
+    return this.draft().toppingNames[id] ?? 'Adición';
   }
 
   addVariant(): void {

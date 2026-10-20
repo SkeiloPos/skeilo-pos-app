@@ -814,7 +814,7 @@ describe('PublicMenuComponent', () => {
       });
 
       expect(cart.updateItem).toHaveBeenCalledWith(
-        'l1', [{ option: queso, quantity: 2, groupName: 'Adicionales', selectionMode: 'cantidad' }], 'sin sal',
+        'l1', [{ option: queso, quantity: 2, groupName: 'Adicionales', selectionMode: 'cantidad' }], 'sin sal', [],
       );
       expect(component.editingLine()).toBeNull();
     });
@@ -826,7 +826,7 @@ describe('PublicMenuComponent', () => {
 
       await component.onEditSaved({ ...component.editing()!.selection, options: [] });
 
-      expect(cart.updateItem).toHaveBeenCalledWith('l1', [], 'sin cebolla');
+      expect(cart.updateItem).toHaveBeenCalledWith('l1', [], 'sin cebolla', []);
     });
 
     it('Cancelar cierra el selector, deja la línea intacta y no llama al backend', async () => {

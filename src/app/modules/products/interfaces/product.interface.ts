@@ -47,6 +47,13 @@ export interface Product {
   available_changed_by_name: string | null;
   /** Si el producto exige y aplica descuento de inventario en sus presentaciones. */
   tracks_inventory: boolean;
+  /** spec 129: marca este producto como una adición (topping) ofrecible dentro de
+   *  otros productos, además de poder venderse como línea independiente. */
+  is_topping: boolean;
+  /** spec 129 (FR-010/FR-011): visibilidad como ítem propio en el menú QR, igual
+   *  patrón que `Category.visible_en_qr` (spec 128). Ya resuelto por el backend:
+   *  nunca `null`. */
+  visible_en_qr: boolean;
   created_at: string;
   updated_at?: string | null;
 }
@@ -58,6 +65,8 @@ export interface Product {
  */
 export interface ProductDetail extends Product {
   variants: Variant[];
+  /** spec 129 (FR-002): adiciones asociadas a este producto. */
+  topping_ids: string[];
 }
 
 /** Editable fields captured by the product create/edit forms. */
@@ -83,6 +92,13 @@ export interface ProductCreatePayload {
   preparation_type: PreparationType;
   image_url?: string | null;
   tracks_inventory?: boolean;
+  /** spec 129 (FR-001). */
+  is_topping?: boolean;
+  /** spec 129 (research.md D6): ausente/`null` = usar el default calculado por el
+   *  backend (oculto si es una adición, visible en caso contrario). */
+  visible_en_qr?: boolean | null;
+  /** spec 129 (FR-002): adiciones que este producto ofrece, a nivel de producto. */
+  topping_ids?: string[];
   /**
    * Presentaciones iniciales, con receta y grupos de opciones (spec 043). Vacío/ausente = se
    * crea automáticamente la presentación "Single" a precio 0 (`RN-CAT-05`), igual que hoy.
@@ -106,6 +122,12 @@ export interface ProductUpdatePayload {
   active?: boolean;
   available?: boolean;
   tracks_inventory?: boolean;
+  /** spec 129: ausente = no tocar. */
+  is_topping?: boolean;
+  visible_en_qr?: boolean;
+  /** spec 129 (FR-002): ausente = no tocar la asociación existente; presente
+   *  (incluida `[]`) = reemplazo total, mismo criterio que `variants` abajo. */
+  topping_ids?: string[];
   /**
    * Árbol completo de presentaciones deseado (spec 043). Ausente del body = no tocar ninguna
    * presentación (back-compat). Presente (incluso `[]`) = reemplazo total: crea las entradas sin
@@ -423,6 +445,20 @@ export interface ProductDraft {
    * de aplicarlos al vender.
    */
   tracks_inventory: boolean;
+  /** spec 129 (FR-001): marca este producto como una adición (topping). */
+  is_topping: boolean;
+  /** spec 129 (FR-010/FR-011): visibilidad como ítem propio en el menú QR. En un
+   *  producto nuevo nace en `true` -- el checkbox "Es una adición" la ajusta en la
+   *  UI antes de guardar (research.md D6); el backend igual recalcula el default si
+   *  no se envía explícito. */
+  visible_en_qr: boolean;
+  /** spec 129 (FR-002): ids de productos `is_topping=true` que este producto ofrece. */
+  topping_ids: string[];
+  /** spec 129: nombres de esas mismas adiciones, por id -- denormalizados por el
+   *  backend al cargar (`toppings[]` de `GET /products/{id}`) o fijados al elegirlas
+   *  por búsqueda (mismo criterio que `onCategoryPicked`). Evita resolverlas por id
+   *  aparte -- ver memoria del proyecto sobre preferir denormalización. */
+  toppingNames: Record<string, string>;
   /** Las presentaciones vivas: las únicas editables y las únicas que se guardan. */
   variants: VariantDraft[];
   /** Las desactivadas del producto. Vacío en un producto nuevo. */
@@ -516,12 +552,27 @@ export interface MenuVariant {
   available: boolean;
 }
 
+/** spec 129 (FR-009): una adición disponible para personalizar este producto.
+ *  `id` es el del producto-adición -- el comensal/cajero no elige variante de
+ *  la adición, solo cuántas unidades (FR-018). */
+export interface MenuTopping {
+  id: string;
+  name: string;
+  unit_price: number;
+  available: boolean;
+}
+
 export interface MenuProduct {
   id: string;
   name: string;
   description: string | null;
   image_url: string | null;
   variants: MenuVariant[];
+  /** spec 129 (FR-009): adiciones disponibles para personalizar este producto --
+   *  a nivel de producto (no de variante), sin relación con `option_groups`.
+   *  Opcional (mismo criterio que `sold_out`): no obliga a los fixtures de test
+   *  ya existentes en todo el repo a declararlo -- ausente se trata como `[]`. */
+  toppings?: MenuTopping[];
   /**
    * Unión de los grupos de todas las presentaciones. **Solo sirve para resolver el
    * nombre y el precio de una opción** (tickets, comandas, carrito): su

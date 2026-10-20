@@ -630,6 +630,27 @@ html, body {
   background-color: #fff;
 }
 
+/* Línea de carrito con promoción vigente (manual-order-page.component.ts, Historia
+   "Nueva orden" del terminal POS): `bg-amber-50/40` + `border-amber-100` están pensados
+   para la tarjeta blanca del tema claro (R16: `amber-*` queda fuera del repintado
+   general de arriba a propósito, para no apagar los ~85 usos de advertencia que sí se
+   ven bien en oscuro con su tono sólido). Pero esta combinación en particular es un
+   BLANCO translúcido + borde casi blanco: sobre la tarjeta oscura (#1e293b) queda una
+   mancha gris apenas visible, y el texto `amber-700`/`amber-100` de la insignia
+   (pensado para leerse sobre esa misma superficie clara) pierde casi todo el
+   contraste -- el hallazgo reportado ("el fondo lo hace ver poco visible"). Mismo
+   patrón de parche puntual que ya usa `select` arriba: dos clases dedicadas en vez de
+   tocar los tokens `amber-*` globales. */
+.panel-theme[data-theme='dark'] .promo-line-highlight {
+  background-color: rgba(251, 191, 36, 0.1);
+  border-left-color: #fbbf24;
+}
+.panel-theme[data-theme='dark'] .promo-line-badge {
+  background-color: rgba(251, 191, 36, 0.16);
+  color: #fcd34d;
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    Transiciones de navegación — barra de carga + skeleton + aparición
    escalonada (Historia 4, FR-019 a FR-022; spec 116, segunda iteración)
