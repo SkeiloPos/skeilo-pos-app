@@ -367,6 +367,15 @@ export class InventoryService {
     );
   }
 
+  /** Cancela un job que quedó `procesando` (p. ej. el worker murió sin
+   *  terminarlo) sin necesitar acceso a la base de datos. Lo marca
+   *  `interrumpido`; si el worker sigue vivo, corta solo entre fila y fila. */
+  cancelImportJob(jobId: string): Promise<InventoryImportJob> {
+    return firstValueFrom(
+      this.http.post<InventoryImportJob>(`${this.baseUrl}/items/import/${jobId}/cancel`, {})
+    );
+  }
+
   /** Descarga el reporte de filas fallidas de un job (`.xlsx`); solo tiene
    *  sentido cuando `has_errors` es `true`. */
   downloadImportErrors(jobId: string): Observable<HttpResponse<Blob>> {
