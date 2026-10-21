@@ -4,6 +4,7 @@ import { ApiErrorBody } from '../../../core/auth/auth.models';
 import { InventoryImportJob } from '../interfaces/inventory.interface';
 import { InventoryService } from '../services/inventory.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
+import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { startVisibleInterval, VisibleInterval } from '../../../core/realtime/visible-interval';
 
@@ -66,6 +67,10 @@ import { startVisibleInterval, VisibleInterval } from '../../../core/realtime/vi
                 cerrar esta ventana y seguir usando el sistema.
               </p>
             </div>
+            <button type="button" (click)="cancel(current)" [disabled]="cancelling()"
+              class="w-full py-2 border border-red-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 disabled:opacity-40 transition-colors">
+              {{ cancelling() ? 'Cancelando...' : 'Cancelar importación' }}
+            </button>
           }
 
           @if (current && current.status !== 'procesando') {
@@ -113,10 +118,12 @@ export class InventoryImportModalComponent implements OnInit, OnDestroy {
 
   private readonly service = inject(InventoryService);
   private readonly toast = inject(ToastService);
+  private readonly confirm = inject(ConfirmService);
 
   readonly job = signal<InventoryImportJob | null>(null);
   readonly selectedFile = signal<File | null>(null);
   readonly uploading = signal(false);
+  readonly cancelling = signal(false);
   readonly error = signal<string | null>(null);
 
   private polling: VisibleInterval | null = null;
@@ -175,6 +182,29 @@ export class InventoryImportModalComponent implements OnInit, OnDestroy {
       URL.revokeObjectURL(url);
     } catch {
       this.toast.error('No se pudo descargar el reporte de errores');
+    }
+  }
+
+  async cancel(current: InventoryImportJob): Promise<void> {
+    const ok = await this.confirm.ask({
+      title: 'Cancelar importación',
+      message: `¿Cancelar la importación de "${current.file_name}"? Lo ya aplicado hasta ahora se queda tal cual; el resto del archivo no se procesará.`,
+      confirmText: 'Cancelar importación',
+      cancelText: 'Seguir esperando',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    this.cancelling.set(true);
+    try {
+      const updated = await this.service.cancelImportJob(current.id);
+      this.polling?.stop();
+      this.job.set(updated);
+      this.imported.emit();
+    } catch {
+      this.toast.error('No se pudo cancelar la importación');
+    } finally {
+      this.cancelling.set(false);
     }
   }
 
