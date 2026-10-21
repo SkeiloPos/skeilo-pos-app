@@ -100,6 +100,7 @@ function buildFieldGroup(initial?: {
               <option value="cash">Efectivo</option>
               <option value="card">Tarjeta</option>
               <option value="transfer">Transferencia</option>
+              <option value="mixed">Pago mixto</option>
               <option value="other">Otro</option>
             </select>
           </div>
@@ -209,7 +210,7 @@ export class PaymentMethodCatalogFormComponent implements OnInit {
 
   readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-    type: new FormControl<'cash' | 'card' | 'transfer' | 'other'>('other', { nonNullable: true }),
+    type: new FormControl<'cash' | 'card' | 'transfer' | 'other' | 'mixed'>('other', { nonNullable: true }),
     fields: new FormArray<FieldFormGroup>([]),
   });
 

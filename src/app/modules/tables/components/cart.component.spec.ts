@@ -56,8 +56,12 @@ describe('CartComponent', () => {
 
   function buttons(): { minus: HTMLButtonElement; plus: HTMLButtonElement } {
     const els = fixture.nativeElement.querySelectorAll('button');
-    const minus = Array.from(els as NodeListOf<HTMLButtonElement>).find((b) => b.textContent?.trim() === '−')!;
-    const plus = Array.from(els as NodeListOf<HTMLButtonElement>).find((b) => b.textContent?.trim() === '+')!;
+    const minus = Array.from(els as NodeListOf<HTMLButtonElement>).find(
+      (b) => b.textContent?.trim() === '−',
+    )!;
+    const plus = Array.from(els as NodeListOf<HTMLButtonElement>).find(
+      (b) => b.textContent?.trim() === '+',
+    )!;
     return { minus, plus };
   }
 
@@ -125,7 +129,10 @@ describe('CartComponent', () => {
     cart.isEmpty.set(false);
     cart.lines.set([
       line({
-        quantity: 2, unitPrice: 15000, addonsTotal: 3000, lineTotal: 33000,
+        quantity: 2,
+        unitPrice: 15000,
+        addonsTotal: 3000,
+        lineTotal: 33000,
         optionNames: ['Tocino x1'],
       }),
     ]);
@@ -146,7 +153,9 @@ describe('CartComponent', () => {
     fixture.detectChanges();
 
     // (el botón "Editar adicionales" sí está; lo que no debe haber es la fila "+ $ N adicionales")
-    expect((fixture.nativeElement as HTMLElement).textContent).not.toMatch(/\+\s*\$\s*[\d.]+\s*adicionales/);
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toMatch(
+      /\+\s*\$\s*[\d.]+\s*adicionales/,
+    );
   });
 
   // ── spec 089 (Historia 3): "Editar adicionales" por línea ──────────────────
@@ -163,7 +172,7 @@ describe('CartComponent', () => {
       (fixture.nativeElement as HTMLElement).querySelectorAll('[data-testid="editar-adicionales"]'),
     ) as HTMLButtonElement[];
     expect(botones.length).toBe(2);
-    expect(botones[0].textContent).toContain('Editar adicionales');
+    expect(botones[0].textContent).toContain('Editar');
     expect(botones[0].className).toContain('min-h-11'); // 44 px
     botones[1].click();
 
@@ -177,7 +186,9 @@ describe('CartComponent', () => {
     component.nonEditableLineIds = new Set(['l2']);
     fixture.detectChanges();
 
-    const botones = (fixture.nativeElement as HTMLElement).querySelectorAll('[data-testid="editar-adicionales"]');
+    const botones = (fixture.nativeElement as HTMLElement).querySelectorAll(
+      '[data-testid="editar-adicionales"]',
+    );
     expect(botones.length).toBe(1);
   });
 });

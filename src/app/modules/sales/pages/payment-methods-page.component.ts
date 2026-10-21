@@ -14,6 +14,7 @@ const TYPES: { value: PaymentMethodType; label: string; icon: string }[] = [
   { value: 'cash', label: 'Efectivo', icon: '💵' },
   { value: 'card', label: 'Tarjeta', icon: '💳' },
   { value: 'transfer', label: 'Transferencia', icon: '📲' },
+  { value: 'mixed', label: 'Pago mixto', icon: '🤝' },
   { value: 'other', label: 'Otro', icon: '🧾' },
 ];
 

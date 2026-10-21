@@ -34,7 +34,7 @@ export const checkoutHydrationGuard: CanActivateFn = async (route, state) => {
 
   const token = route.paramMap.get('token') ?? '';
   const toMenu = () => router.createUrlTree(['/menu/t', token]);
-  const toStep = (step: 'review' | 'method' | 'transfer' | 'confirmation') =>
+  const toStep = (step: 'review' | 'method' | 'cash' | 'transfer' | 'confirmation') =>
     router.createUrlTree(['/menu/t', token, 'checkout', step]);
 
   if (!token) return toMenu();
@@ -69,7 +69,7 @@ export const checkoutHydrationGuard: CanActivateFn = async (route, state) => {
   if (cart.isEmpty()) return toMenu();
 
   const record = progress.read();
-  let canonical: 'review' | 'method' | 'transfer' = 'review';
+  let canonical: 'review' | 'method' | 'cash' | 'transfer' = 'review';
 
   if (record?.payment_method_id) {
     try {
@@ -81,8 +81,14 @@ export const checkoutHydrationGuard: CanActivateFn = async (route, state) => {
     if (!stillActive) {
       progress.clearMethod();
       canonical = 'method';
+    } else if (record.step === 'transfer') {
+      canonical = 'transfer';
+    } else if (record.step === 'cash') {
+      // Spec 130: el paso del monto en efectivo de "Pago mixto" se recupera
+      // igual que el de transferencia — no vuelve a "method".
+      canonical = 'cash';
     } else {
-      canonical = record.step === 'transfer' ? 'transfer' : 'method';
+      canonical = 'method';
     }
   }
 

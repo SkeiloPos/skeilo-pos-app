@@ -199,6 +199,16 @@ export interface DinerPaymentAttempt {
   status: 'pendiente' | 'confirmado' | 'rechazado';
   receipt_file_url: string | null;
   created_at: string;
+  /**
+   * Pago mixto (spec 130, FR-008) — `null`/ausente en cualquier intento no
+   * mixto. Opcionales (no solo nullable) para no romper los literales de
+   * `DinerPaymentAttempt` ya escritos en otros componentes/tests antes de
+   * esta spec — el backend siempre los manda, pero tipar como obligatorios
+   * aquí forzaría a tocar cada uno de esos literales sin necesidad.
+   */
+  cash_amount?: number | null;
+  transfer_amount?: number | null;
+  cash_confirmed_at?: string | null;
 }
 
 /** Body de `POST /cart/payment-attempts/{id}/receipt/presign` (`ReceiptPresignIn`). */
@@ -229,6 +239,9 @@ export interface ReceiptAttachPayload {
 export interface SubmitCartPayload {
   payment_method_id: string;
   receipt_file_url?: string | null;
+  /** Pago mixto (spec 130, FR-005/FR-006) — `null`/ausentes para efectivo y transferencia puros. */
+  cash_amount?: number | null;
+  transfer_method_id?: string | null;
 }
 
 // ── Errores tipados que la UI debe distinguir ──────────────────────────────

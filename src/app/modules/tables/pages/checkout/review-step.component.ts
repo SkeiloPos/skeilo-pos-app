@@ -16,19 +16,19 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
   standalone: true,
   imports: [IconComponent, CheckoutStepIndicatorComponent, CheckoutOrderSummaryComponent],
   template: `
-    <div class="min-h-screen bg-gray-50 flex flex-col">
-      <div class="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <span class="w-7"></span>
+    <div class="min-h-screen flex flex-col" style="background:#F4F6F9">
+      <div class="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div class="max-w-lg mx-auto h-14 px-2 flex items-center justify-between gap-3">
+          <span class="w-11"></span>
           <app-checkout-step-indicator [step]="1" [total]="3" label="Revisa tu pedido" />
-          <button (click)="exit()" aria-label="Salir sin enviar" class="p-1 -mr-1 text-gray-400 hover:text-red-600 transition-colors">
+          <button (click)="exit()" aria-label="Salir sin enviar" class="w-11 h-11 rounded-full grid place-items-center text-gray-500 hover:bg-gray-100 transition-colors">
             <span class="w-5 h-5 block"><app-icon name="close" /></span>
           </button>
         </div>
       </div>
 
-      <div class="flex-1 max-w-lg w-full mx-auto px-4 py-6">
-        <h1 class="text-lg font-bold text-gray-900 mb-4">Tu pedido</h1>
+      <div class="flex-1 max-w-lg w-full mx-auto px-4 py-6 flex flex-col gap-5">
+        <h1 class="font-sora text-[22px] font-semibold text-gray-900 tracking-tight">Tu pedido</h1>
 
         <!-- spec 092 (FR-021, FR-022) — el resumen que vivía embebido aquí es
              ahora el componente compartido que este paso y el de datos de pago
@@ -47,7 +47,7 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
         <button
           (click)="continue()"
           [disabled]="cart.isEmpty()"
-          class="mt-6 w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
+          class="w-full h-14 bg-violet-700 hover:bg-violet-800 text-white font-semibold rounded-2xl transition-colors disabled:opacity-50"
         >
           Elegir método de pago
         </button>

@@ -5,7 +5,7 @@ import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { PROMOTIONS_TAB_ID, PublicMenuComponent } from './public-menu.component';
-import { DinerService, DinerSessionExpiredError } from '../services/diner.service';
+import { DinerService, DinerSessionExpiredError, PendingPaymentExitError } from '../services/diner.service';
 import { DinerTokenStore } from '../services/diner-token.store';
 import { CartLine, DiningCartService } from '../services/dining-cart.service';
 import { AdjustedOption } from '../interfaces/diner.interface';
@@ -36,7 +36,7 @@ class FakeDinerService {
       categories: this.categories,
     };
   }
-  async leave(): Promise<void> {}
+  leave = vi.fn(async (): Promise<void> => {});
   /** spec 089 (A-95): las pruebas de acceso denegado comprueban que nunca se llama. */
   openSession = vi.fn(async () => ({}));
   async myOrders() {
@@ -348,6 +348,60 @@ describe('PublicMenuComponent', () => {
     expect(texto).toContain('$ 13.000'); // total del pedido
   });
 
+  // ── Desglose de pago mixto en "Mis pedidos" (spec 130, FR-008) ────────────
+
+  function buildMixedOrder(overrides: Partial<NonNullable<DiningOrder['current_payment_attempt']>>): DiningOrder {
+    return {
+      id: 'o1',
+      channel: 'QR_MENU',
+      status: 'recibida',
+      created_at: new Date().toISOString(),
+      items: [{ id: 'it1', product_variant_id: 'v1', quantity: 1, unit_price: '8000', estado_cocina: 'pendiente' }],
+      current_payment_attempt: {
+        id: 'a1', status: 'pendiente', payment_method_name: 'Pago mixto', is_cash: false,
+        receipt_file_url: 'https://example.invalid/a.jpg',
+        cash_amount: 3000, transfer_amount: 5000, cash_confirmed_at: null,
+        ...overrides,
+      },
+    };
+  }
+
+  it('pago mixto con ambas partes pendientes muestra las dos porciones por separado', async () => {
+    const { fixture } = await createComponent('tok-1', [], { withSession: true });
+    fixture.componentInstance.myOrders.set([buildMixedOrder({})]);
+    fixture.componentInstance.section.set('pedidos');
+    fixture.detectChanges();
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain('$ 3.000 en efectivo — pendiente al recibir');
+    expect(texto).toContain('$ 5.000 por transferencia — en verificación');
+    expect(texto).not.toContain('Pago confirmado');
+  });
+
+  it('pago mixto con solo el efectivo confirmado no muestra "Pago confirmado"', async () => {
+    const { fixture } = await createComponent('tok-1', [], { withSession: true });
+    fixture.componentInstance.myOrders.set([buildMixedOrder({ cash_confirmed_at: new Date().toISOString() })]);
+    fixture.componentInstance.section.set('pedidos');
+    fixture.detectChanges();
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain('$ 3.000 en efectivo — confirmado');
+    expect(texto).toContain('$ 5.000 por transferencia — en verificación');
+    expect(texto).not.toContain('Pago confirmado');
+  });
+
+  it('pago mixto con ambas confirmaciones muestra "Pago confirmado"', async () => {
+    const { fixture } = await createComponent('tok-1', [], { withSession: true });
+    fixture.componentInstance.myOrders.set([
+      buildMixedOrder({ status: 'confirmado', cash_confirmed_at: new Date().toISOString() }),
+    ]);
+    fixture.componentInstance.section.set('pedidos');
+    fixture.detectChanges();
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).toContain('Pago confirmado');
+  });
+
   it('tacha el precio de lista y muestra el descontado cuando la línea tiene promoción', async () => {
     const order: DiningOrder = {
       id: 'o1',
@@ -462,7 +516,7 @@ describe('PublicMenuComponent', () => {
       },
     ]);
 
-    expect(el.textContent).toContain('🎉 Promo');
+    expect(el.querySelector('[data-testid="promo-badge"]')).not.toBeNull();
   });
 
   it('CA2: una regla de porcentaje produce la MISMA insignia, no una distinta por tipo', async () => {
@@ -476,7 +530,7 @@ describe('PublicMenuComponent', () => {
       },
     ]);
 
-    expect(el.textContent).toContain('🎉 Promo');
+    expect(el.querySelector('[data-testid="promo-badge"]')).not.toBeNull();
     // La insignia por tipo que gobernaba antes ya no se pinta en la tarjeta.
     expect(el.textContent).not.toContain('🏷️');
   });
@@ -486,7 +540,7 @@ describe('PublicMenuComponent', () => {
       { id: 'v1', name: 'Pequeño 8oz', price: 8000, option_groups: [], available: true },
     ]);
 
-    expect(el.textContent).not.toContain('🎉 Promo');
+    expect(el.querySelector('[data-testid="promo-badge"]')).toBeNull();
   });
 
   it('CA4: fuera de su ventana el backend no pobló promotion -> sin insignia', async () => {
@@ -498,7 +552,7 @@ describe('PublicMenuComponent', () => {
       },
     ]);
 
-    expect(el.textContent).not.toContain('🎉 Promo');
+    expect(el.querySelector('[data-testid="promo-badge"]')).toBeNull();
   });
 
   it('CA5: con porcentaje de cantidad mínima 1 se conserva el tachado Y ADEMÁS hay insignia (FR-015)', async () => {
@@ -513,7 +567,7 @@ describe('PublicMenuComponent', () => {
       },
     ]);
 
-    expect(el.textContent).toContain('🎉 Promo');
+    expect(el.querySelector('[data-testid="promo-badge"]')).not.toBeNull();
     expect(el.querySelector('.line-through')).not.toBeNull();
   });
 
@@ -533,7 +587,7 @@ describe('PublicMenuComponent', () => {
       },
     ]);
 
-    expect(el.textContent).toContain('🎉 Promo');
+    expect(el.querySelector('[data-testid="promo-badge"]')).not.toBeNull();
     // spec 084 (A-82): solo la condición; el equivalente por unidad (`· $6.000 c/u`) se quitó.
     expect(el.textContent).toContain('2 x $12.000');
     expect(el.textContent).not.toContain('c/u');
@@ -577,7 +631,7 @@ describe('PublicMenuComponent', () => {
       { id: 'v1', name: 'Pequeño 8oz', price: 8000, option_groups: [], available: true },
     ]);
 
-    expect(el.textContent).not.toContain('🎉 Promo');
+    expect(el.querySelector('[data-testid="promo-badge"]')).toBeNull();
     expect(el.textContent).not.toContain(' x $');
   });
 
@@ -632,8 +686,8 @@ describe('PublicMenuComponent', () => {
     component.selectCategory(PROMOTIONS_TAB_ID);
     fixture.detectChanges();
 
-    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(texto).toContain('🎉 Promo');
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="promo-badge"]')).not.toBeNull();
   });
 
   it('FR-008: sin ninguna promoción vigente, "Promociones" muestra un aviso en vez de una grilla vacía sin explicación', async () => {
@@ -1205,6 +1259,117 @@ describe('PublicMenuComponent', () => {
       await new Promise((r) => setTimeout(r, 30));
       fixture.detectChanges();
 
+      expect(component.view()).toBe('closed');
+    });
+  });
+
+  // ── Bloqueo de "Salir" con pago pendiente (spec 130, A-139) ───────────────
+
+  describe('confirmExit()/exit() — bloqueo con pago pendiente', () => {
+    function buildOrder(attempt: Partial<NonNullable<DiningOrder['current_payment_attempt']>> | null): DiningOrder {
+      return {
+        id: 'o1', channel: 'QR_MENU', status: 'recibida', created_at: new Date().toISOString(),
+        items: [],
+        current_payment_attempt: attempt
+          ? {
+              id: 'a1', status: 'pendiente', payment_method_name: 'Efectivo', is_cash: true,
+              receipt_file_url: null, ...attempt,
+            }
+          : null,
+      };
+    }
+
+    it('con un pedido propio en efectivo sin cobrar, bloquea sin llamar al backend', async () => {
+      const { component, fixture } = await createComponent('tok-1', [], { withSession: true });
+      const diner = TestBed.inject(DinerService) as unknown as FakeDinerService;
+      component.myOrders.set([buildOrder({ status: 'pendiente' })]);
+      const confirmSpy = vi.spyOn(window, 'confirm');
+
+      component.confirmExit();
+      fixture.detectChanges();
+
+      expect(component.exitBlocked()).toBe(true);
+      expect(diner.leave).not.toHaveBeenCalled();
+      expect(confirmSpy).not.toHaveBeenCalled();
+    });
+
+    it('con un pedido propio mixto con una sola confirmación, bloquea', async () => {
+      const { component } = await createComponent('tok-1', [], { withSession: true });
+      component.myOrders.set([
+        buildOrder({ status: 'confirmado', cash_amount: 3000, transfer_amount: 5000, cash_confirmed_at: null }),
+      ]);
+
+      component.confirmExit();
+
+      expect(component.exitBlocked()).toBe(true);
+    });
+
+    it('con el pedido propio completamente confirmado, no bloquea (llama al backend normalmente)', async () => {
+      const { component } = await createComponent('tok-1', [], { withSession: true });
+      component.myOrders.set([buildOrder({ status: 'confirmado' })]);
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const diner = TestBed.inject(DinerService) as unknown as FakeDinerService;
+
+      component.confirmExit();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(component.exitBlocked()).toBe(false);
+      expect(diner.leave).toHaveBeenCalled();
+      expect(component.view()).toBe('closed');
+    });
+
+    it('sin ningún pedido propio, sale con normalidad', async () => {
+      const { component } = await createComponent('tok-1', [], { withSession: true });
+      component.myOrders.set([]);
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      component.confirmExit();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(component.exitBlocked()).toBe(false);
+      expect(component.view()).toBe('closed');
+    });
+
+    it('un pedido pendiente de OTRO comensal no bloquea (el que sale no tiene pedidos propios)', async () => {
+      // `myOrders()` solo trae pedidos del comensal que consulta (el backend ya filtra
+      // por participante) — un comensal sin pedidos propios ve `[]` sin importar qué
+      // pedidos pendientes tenga otro comensal de la misma mesa (Clarificación Q2).
+      const { component } = await createComponent('tok-1', [], { withSession: true });
+      component.myOrders.set([]);
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      component.confirmExit();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(component.exitBlocked()).toBe(false);
+      expect(component.view()).toBe('closed');
+    });
+
+    it('un 409 del backend (no detectado client-side) también bloquea y no cierra la sesión', async () => {
+      const { component } = await createComponent('tok-1', [], { withSession: true });
+      component.myOrders.set([]); // nada detectable client-side
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const diner = TestBed.inject(DinerService) as unknown as FakeDinerService;
+      diner.leave.mockRejectedValueOnce(new PendingPaymentExitError('Tienes un pago pendiente.'));
+
+      component.confirmExit();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(component.exitBlocked()).toBe(true);
+      expect(component.view()).not.toBe('closed');
+    });
+
+    it('un error de red simple (no 409) sigue permitiendo la salida best-effort', async () => {
+      const { component } = await createComponent('tok-1', [], { withSession: true });
+      component.myOrders.set([]);
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const diner = TestBed.inject(DinerService) as unknown as FakeDinerService;
+      diner.leave.mockRejectedValueOnce(new Error('red caída'));
+
+      component.confirmExit();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(component.exitBlocked()).toBe(false);
       expect(component.view()).toBe('closed');
     });
   });

@@ -1,8 +1,9 @@
 /** Formato esperado de un campo de integración del catálogo (spec 032, FR-004). */
 export type PaymentMethodFieldFormat = 'text' | 'numeric' | 'image';
 
-/** Clasificación del método, reutilizada del arqueo (`sales.interface.ts`). */
-export type PaymentMethodCatalogType = 'cash' | 'card' | 'transfer' | 'other';
+/** Clasificación del método, reutilizada del arqueo (`sales.interface.ts`).
+ *  `'mixed'` (spec 130, FR-004): "Pago mixto" (efectivo + transferencia). */
+export type PaymentMethodCatalogType = 'cash' | 'card' | 'transfer' | 'other' | 'mixed';
 
 /** Un campo de integración que el catálogo exige/permite a un tenant. */
 export interface PaymentMethodFieldDefinition {
