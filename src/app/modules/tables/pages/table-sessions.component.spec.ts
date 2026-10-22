@@ -171,10 +171,13 @@ describe('TableSessionsComponent — diálogo de éxito (spec 029 + spec 125)', 
     fixture.detectChanges();
 
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('svg')).toBeNull();
+    // Spec 131: el resto de la Terminal de Mesas (cabecera, sub-barra) ya usa
+    // SVGs estilo lucide a propósito — el diálogo de éxito en sí (fuera de
+    // alcance de ese spec) sigue sin SVG artesanal, solo `app-mi-icon`.
+    const dialogo = el.querySelector('.fixed.inset-0')!;
+    expect(dialogo.querySelector('svg')).toBeNull();
     expect(el.textContent).not.toContain('🧾');
     expect(el.textContent).not.toContain('✅');
-    const dialogo = el.querySelector('.fixed.inset-0')!;
     const icon = dialogo.querySelector('app-mi-icon .material-icons-outlined');
     expect(icon?.textContent?.trim()).toBe('check_circle');
   });
@@ -374,33 +377,39 @@ describe('TableSessionsComponent — colapso móvil de la grilla de mesas y el p
     expect(hasHiddenClass(detailColumn())).toBe(true);
   });
 
-  it('con una mesa seleccionada (con pedido en curso): la columna de mesas se oculta EN CUALQUIER ANCHO (no solo por debajo de lg -- a pedido del usuario, la de detalle pasa a ocupar todo el espacio también en tablet/desktop) y la de detalle queda visible', () => {
-    // t1 sin pedidos caería en el estado "mesa-libre", que ya no muestra la
-    // tarjeta de detalle en absoluto (ver el describe de más abajo) -- para
-    // probar el colapso genérico hace falta una mesa con contenido real.
-    store.orders.set([
-      {
-        id: 'o1',
-        channel: 'POS',
-        status: 'recibida',
-        version: 1,
-        dining_table_id: 't1',
-        customer_name: null,
-        created_at: '2026-08-28T10:00:00',
-        items: [],
-      } as DiningOrder,
-    ]);
-    store.selectedTableId.set('t1');
-    fixture.detectChanges();
+  it(
+    'reescrito de nuevo (A-143, registro-de-anomalias.md): con una mesa seleccionada (con ' +
+      'pedido en curso), la columna de mesas se oculta EN CUALQUIER ANCHO -- se probó mostrarla ' +
+      'lado a lado con el detalle desde "lg" (A-142), pero el resultado eran 3 columnas a la vez ' +
+      '(mesas + pedido + cobro) en vez de las 2 que el usuario pedía al comparar contra el ' +
+      'diseño de referencia; revertido el mismo día',
+    () => {
+      // t1 sin pedidos caería en el estado "mesa-libre", que ya no muestra la
+      // tarjeta de detalle en absoluto (ver el describe de más abajo) -- para
+      // probar el colapso genérico hace falta una mesa con contenido real.
+      store.orders.set([
+        {
+          id: 'o1',
+          channel: 'POS',
+          status: 'recibida',
+          version: 1,
+          dining_table_id: 't1',
+          customer_name: null,
+          created_at: '2026-08-28T10:00:00',
+          items: [],
+        } as DiningOrder,
+      ]);
+      store.selectedTableId.set('t1');
+      fixture.detectChanges();
 
-    expect(hasHiddenClass(mesasColumn())).toBe(true);
-    expect(hasHiddenClass(detailColumn())).toBe(false);
-    // Ninguna clase con prefijo lg: -- la ocultación/el ancho completo ya no
-    // dependen del breakpoint (antes `hidden lg:flex` / `flex-1 lg:flex-1`
-    // dejaba las dos tarjetas a medias desde lg).
-    expect(mesasColumn().className).not.toMatch(/\blg:/);
-    expect(detailColumn().className).not.toMatch(/\blg:/);
-  });
+      expect(hasHiddenClass(mesasColumn())).toBe(true);
+      expect(hasHiddenClass(detailColumn())).toBe(false);
+      // Ninguna clase con prefijo lg: -- la ocultación no depende del
+      // breakpoint, en ningún sentido (ni A-142 ni el hotfix previo a esta).
+      expect(mesasColumn().className).not.toMatch(/\blg:/);
+      expect(detailColumn().className).not.toMatch(/\blg:/);
+    },
+  );
 
   it('el botón de volver de página se ve en cualquier ancho, no solo por debajo de lg (la tarjeta de mesas se oculta a la vez en todos los anchos)', () => {
     store.orders.set([
@@ -424,32 +433,38 @@ describe('TableSessionsComponent — colapso móvil de la grilla de mesas y el p
     expect(wrapper.className).not.toMatch(/\blg:hidden\b/);
   });
 
-  it('bugfix: el CTA "+ Crear pedido nuevo" de la sub-barra sigue visible con una mesa/pedido seleccionado', () => {
-    // Antes el botón vivía dentro de un `@if (!showingDetail())`, así que
-    // desaparecía justo al seleccionar una mesa con pedido en curso -- se
-    // reporta como bug porque el cajero pierde el acceso al CTA fijo
-    // mientras trabaja sobre una mesa ya abierta.
-    store.orders.set([
-      {
-        id: 'o1',
-        channel: 'POS',
-        status: 'recibida',
-        version: 1,
-        dining_table_id: 't1',
-        customer_name: null,
-        created_at: '2026-08-28T10:00:00',
-        items: [],
-      } as DiningOrder,
-    ]);
-    store.selectedTableId.set('t1');
-    fixture.detectChanges();
+  it(
+    'reescrito para FR-022b/A-141 (spec 131): dentro del detalle de una mesa, el CTA de la ' +
+      'sub-barra se oculta -- "Nueva cuenta" (pos-order-panel.component.ts) ofrece la misma ' +
+      'capacidad desde ahí dentro (antes vivía en un @if (!showingDetail()) que lo ocultaba de ' +
+      'más; ahora se oculta a propósito, solo dentro del detalle de mesa)',
+    () => {
+      store.orders.set([
+        {
+          id: 'o1',
+          channel: 'POS',
+          status: 'recibida',
+          version: 1,
+          dining_table_id: 't1',
+          customer_name: null,
+          created_at: '2026-08-28T10:00:00',
+          items: [],
+        } as DiningOrder,
+      ]);
+      store.selectedTableId.set('t1');
+      store.selectedOrderId.set('o1');
+      fixture.detectChanges();
 
-    expect(hasHiddenClass(detailColumn())).toBe(false);
-    const cta = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.includes('Crear pedido nuevo'),
-    );
-    expect(cta).toBeTruthy();
-  });
+      expect(hasHiddenClass(detailColumn())).toBe(false);
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="sub-bar-new-order-cta"]'),
+      ).toBeNull();
+      const nuevaCuenta = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+        (b as HTMLButtonElement).textContent?.includes('Nueva cuenta'),
+      );
+      expect(nuevaCuenta).toBeTruthy();
+    },
+  );
 
   it('el botón de volver de página llama a store.cancelSelection(), único para los 3 estados del panel central', () => {
     // t1 sin pedidos caería en "mesa-libre", que ya no tiene panel de
@@ -558,7 +573,13 @@ describe('TableSessionsComponent — columna de detalle: una sola columna flex a
     expect(scrollWrappers).toHaveLength(1);
   });
 
-  it('la fila del título dentro de la columna de detalle sigue shrink-0 (el botón de volver ya vive en la sub-barra, fuera de este flujo)', () => {
+  // Reescrito: el título "Pedido de la mesa" se unificó con el botón "Volver
+  // a mesas" en la misma fila de la sub-barra (mockup de referencia, tDetOn:
+  // un solo renglón con ambos) -- antes vivían en filas separadas, una
+  // dentro de la columna de detalle con su propio shrink-0. Ahora el shrink-0
+  // vive en el propio <span> del título (no hace falta en su padre, que
+  // además contiene el botón de volver y comparte su layout).
+  it('el título "Pedido de la mesa" sigue shrink-0, junto al botón de volver en la sub-barra', () => {
     store.orders.set([conPedido()]);
     store.selectedTableId.set('t1');
     fixture.detectChanges();
@@ -566,7 +587,10 @@ describe('TableSessionsComponent — columna de detalle: una sola columna flex a
     const titulo = Array.from(fixture.nativeElement.querySelectorAll('span')).find(
       (s) => (s as HTMLElement).textContent?.trim() === 'Pedido de la mesa',
     ) as HTMLElement;
-    expect(titulo.parentElement!.className).toContain('shrink-0');
+    expect(titulo.className).toContain('shrink-0');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="page-back-button"]'),
+    ).not.toBeNull();
   });
 
   it('el @switch del panel central y app-pos-checkout-panel viven juntos en una única región flex-1 min-h-0 overflow-y-auto (hotfix posterior)', () => {
@@ -792,10 +816,20 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
     vi.spyOn(store, 'init').mockResolvedValue(undefined);
   });
 
-  const cta = (): HTMLButtonElement =>
-    Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.includes('Crear pedido nuevo'),
-    ) as HTMLButtonElement;
+  // Spec 131 (FR-022b/A-141): acotado al contenedor de la sub-barra
+  // (`data-testid="sub-bar-new-order-cta"`), no a cualquier botón con ese
+  // texto en toda la pantalla — `pos-checkout-panel.component.ts` tiene su
+  // propio "+ Crear pedido nuevo" para el caso "Pedido de mostrador" (sin
+  // pedido seleccionado), que es un botón distinto y no el que este describe
+  // ejercita. Desde que ese contenedor también lleva el botón "Filtros" de
+  // móvil (otro <button>, spec 131), se busca específicamente el que
+  // contiene el texto "Crear pedido nuevo" en vez del primer <button> a secas.
+  const cta = (): HTMLButtonElement | undefined =>
+    Array.from(
+      fixture.nativeElement.querySelector('[data-testid="sub-bar-new-order-cta"]')?.querySelectorAll('button') ?? [],
+    ).find((b) => (b as HTMLButtonElement).textContent?.includes('Crear pedido nuevo')) as
+      | HTMLButtonElement
+      | undefined;
 
   for (const tab of ['mesas', 'domicilios', 'para-llevar'] as const) {
     it(`el CTA se renderiza con la pestaña en '${tab}' (sin tarjeta seleccionada) (FR-007)`, () => {
@@ -809,7 +843,7 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
   it('la etiqueta "Crear pedido nuevo" es visible en los tres anchos — el <span> ya no lleva hidden sm:inline (FR-013, FR-015)', () => {
     fixture.detectChanges();
 
-    const label = Array.from(cta().querySelectorAll('span')).find(
+    const label = Array.from(cta()!.querySelectorAll('span')).find(
       (s) => s.textContent?.trim() === 'Crear pedido nuevo',
     ) as HTMLSpanElement;
     expect(label).toBeTruthy();
@@ -822,7 +856,7 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
     store.setOrderTypeTab('domicilios');
     fixture.detectChanges();
 
-    cta().click();
+    cta()!.click();
 
     expect(navigateSpy).toHaveBeenCalledWith(
       ['/dashboard/mesas-sesiones/orden-manual'],
@@ -835,7 +869,7 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
     store.setOrderTypeTab('para-llevar');
     fixture.detectChanges();
 
-    cta().click();
+    cta()!.click();
 
     expect(navigateSpy).toHaveBeenCalledWith(
       ['/dashboard/mesas-sesiones/orden-manual'],
@@ -849,7 +883,7 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
     store.selectedTableId.set('t1');
     fixture.detectChanges();
 
-    cta().click();
+    cta()!.click();
 
     expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones', 't1', 'orden-manual']);
   });
@@ -857,22 +891,28 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
   it("el CTA solo se deshabilita por falta de mesa libre en la pestaña 'mesas' (FR-007, FR-012)", () => {
     store.setOrderTypeTab('mesas');
     fixture.detectChanges();
-    expect(cta().disabled).toBe(true); // sin mesa libre seleccionada
+    expect(cta()!.disabled).toBe(true); // sin mesa libre seleccionada
 
     store.setOrderTypeTab('domicilios');
     fixture.detectChanges();
-    expect(cta().disabled).toBe(false); // Domicilio no exige mesa
+    expect(cta()!.disabled).toBe(false); // Domicilio no exige mesa
 
     store.setOrderTypeTab('para-llevar');
     fixture.detectChanges();
-    expect(cta().disabled).toBe(false);
+    expect(cta()!.disabled).toBe(false);
   });
 
   it(
-    'con una mesa seleccionada que tiene un pedido sin pagar o con saldo pendiente, el CTA ' +
-      'sigue habilitado (spec 126, A-138: revierte A-137 — "Crear pedido nuevo" nunca se ' +
-      'condiciona al saldo de la mesa)',
+    'reescrito para FR-022b/A-141 (spec 131): con una mesa seleccionada (pedido sin pagar o con ' +
+      'saldo pendiente), el CTA de la sub-barra ya no existe ahí -- "Nueva cuenta" ' +
+      '(pos-order-panel.component.ts) ofrece la misma capacidad, nunca condicionada al saldo de ' +
+      'la mesa (spec 126, A-138, sigue vigente, solo cambia dónde vive el botón)',
     () => {
+      const nuevaCuentaButton = (): HTMLButtonElement | undefined =>
+        Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+          (b as HTMLButtonElement).textContent?.includes('Nueva cuenta'),
+        ) as HTMLButtonElement | undefined;
+
       store.setOrderTypeTab('mesas');
       store.orders.set([
         {
@@ -887,9 +927,11 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
         } as DiningOrder,
       ]);
       store.selectedTableId.set('t1');
+      store.selectedOrderId.set('o1');
       fixture.detectChanges();
 
-      expect(cta().disabled).toBe(false); // pedido 'recibida' sin pagar — A-138
+      expect(cta()).toBeUndefined(); // sub-barra oculta dentro del detalle de mesa
+      expect(nuevaCuentaButton()?.disabled).toBe(false); // pedido 'recibida' sin pagar — A-138
 
       store.orders.set([
         {
@@ -907,7 +949,8 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
       ]);
       fixture.detectChanges();
 
-      expect(cta().disabled).toBe(false); // pagado con saldo pendiente (spec 123) — A-138
+      expect(cta()).toBeUndefined();
+      expect(nuevaCuentaButton()?.disabled).toBe(false); // pagado con saldo pendiente (spec 123) — A-138
     },
   );
 });
@@ -987,5 +1030,180 @@ describe('TableSessionsComponent — restaura pestaña/mesa/pedido tras crear un
     fixture.detectChanges();
 
     expect(store.orderTypeTab()).toBe('mesas');
+  });
+});
+
+/**
+ * spec 131 (FR-002/FR-003, fidelidad al mockup de referencia): el buscador y
+ * el filtro de ocupación se movieron de `pos-tables-panel.component.ts` a la
+ * sub-barra de esta página, en la misma franja que las pestañas de tipo de
+ * orden -- el mockup (`isTerminal`) los pone todos juntos en una sola fila.
+ */
+describe('TableSessionsComponent — buscador y filtro de ocupación en la sub-barra (spec 131)', () => {
+  let fixture: ComponentFixture<TableSessionsComponent>;
+  let store: PosTerminalStore;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [TableSessionsComponent],
+      providers: [
+        provideRouter([]),
+        swPushStub,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    fixture = TestBed.createComponent(TableSessionsComponent);
+    store = fixture.componentInstance.store;
+    vi.spyOn(store, 'init').mockResolvedValue(undefined);
+  });
+
+  it('en la pestaña "Mesas", sin selección, muestra el buscador con ícono lucide y el filtro de ocupación', () => {
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    const input = el.querySelector('input[placeholder="Buscar mesa…"]') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    expect(el.querySelector('app-lucide-icon svg')).toBeTruthy();
+    const select = el.querySelector('select[aria-label="Filtrar por estado"]') as HTMLSelectElement;
+    expect(select).toBeTruthy();
+  });
+
+  it('escribir en el buscador actualiza store.search()', () => {
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector(
+      'input[placeholder="Buscar mesa…"]',
+    ) as HTMLInputElement;
+    input.value = 'Mesa 3';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(store.search()).toBe('Mesa 3');
+  });
+
+  it('F2 enfoca el buscador', () => {
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector(
+      'input[placeholder="Buscar mesa…"]',
+    ) as HTMLInputElement;
+    fixture.componentInstance.onKey({ key: 'F2', preventDefault: () => {} } as KeyboardEvent);
+
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('el filtro de ocupación muestra las 4 opciones con su conteo y elegir una actualiza store.filter()', () => {
+    store.tables.set([
+      { id: 't1', number: 1, name: null, qr_token: 'a', active: true, status: 'libre' },
+      { id: 't2', number: 2, name: null, qr_token: 'b', active: true, status: 'ocupada' },
+    ]);
+    fixture.detectChanges();
+
+    const select = fixture.nativeElement.querySelector(
+      'select[aria-label="Filtrar por estado"]',
+    ) as HTMLSelectElement;
+    const labels = Array.from(select.options).map((o) => o.textContent?.trim());
+    expect(labels).toEqual(['Todas · 2', 'Libres · 1', 'Ocupadas · 1', 'Pendientes · 0']);
+
+    select.value = 'ocupadas';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(store.filter()).toBe('ocupadas');
+  });
+
+  // spec 131 (fidelidad responsive al mockup, tToggleFilt/tFiltOpen): en
+  // móvil el filtro de ocupación empieza colapsado tras un botón "Filtros"
+  // (solo ícono) junto a "Crear pedido nuevo" -- pulsarlo despliega el
+  // buscador + el filtro de ocupación (cada uno a todo el ancho) debajo de
+  // la sub-barra, con los mismos controles reales que la versión de
+  // escritorio (oculta en este ancho).
+  const filtrosToggle = (): HTMLButtonElement =>
+    Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).getAttribute('aria-label') === 'Filtros',
+    ) as HTMLButtonElement;
+
+  it('el botón "Filtros" de móvil empieza colapsado (sin el panel desplegable)', () => {
+    fixture.detectChanges();
+
+    expect(filtrosToggle()).toBeTruthy();
+    expect(filtrosToggle().getAttribute('aria-expanded')).toBe('false');
+    // El <select> de escritorio existe (oculto por CSS en este ancho, no
+    // removido del DOM) -- el panel desplegable de móvil no debe existir aún.
+    expect(fixture.nativeElement.querySelectorAll('select[aria-label="Filtrar por estado"]').length).toBe(1);
+    expect(fixture.nativeElement.querySelector('input[placeholder="Buscar mesa…"]')).not.toBeNull();
+  });
+
+  it('pulsar "Filtros" despliega un buscador y un filtro de ocupación adicionales, a todo el ancho', () => {
+    store.tables.set([
+      { id: 't1', number: 1, name: null, qr_token: 'a', active: true, status: 'libre' },
+    ]);
+    fixture.detectChanges();
+
+    filtrosToggle().click();
+    fixture.detectChanges();
+
+    expect(filtrosToggle().getAttribute('aria-expanded')).toBe('true');
+    // Ahora hay dos buscadores y dos selects en el DOM: el de escritorio
+    // (oculto por CSS bajo "sm") y el del panel desplegable de móvil.
+    const inputs = fixture.nativeElement.querySelectorAll('input[placeholder="Buscar mesa…"]');
+    const selects = fixture.nativeElement.querySelectorAll('select[aria-label="Filtrar por estado"]');
+    expect(inputs.length).toBe(2);
+    expect(selects.length).toBe(2);
+
+    const mobileSelect = selects[selects.length - 1] as HTMLSelectElement;
+    expect(mobileSelect.className).toContain('w-full');
+    mobileSelect.value = 'libres';
+    mobileSelect.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(store.filter()).toBe('libres');
+  });
+
+  it('pulsar "Filtros" de nuevo lo colapsa', () => {
+    fixture.detectChanges();
+
+    filtrosToggle().click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('select[aria-label="Filtrar por estado"]').length).toBe(2);
+
+    filtrosToggle().click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('select[aria-label="Filtrar por estado"]').length).toBe(1);
+  });
+
+  it('en "Domicilios"/"Para llevar" no muestra el buscador ni el filtro de ocupación (solo aplican a mesas)', () => {
+    fixture.detectChanges();
+    store.setOrderTypeTab('domicilios');
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('input[placeholder="Buscar mesa…"]')).toBeNull();
+    expect(el.querySelector('select[aria-label="Filtrar por estado"]')).toBeNull();
+  });
+
+  it('dentro del detalle (botón de volver visible) no muestra el buscador ni el filtro', () => {
+    store.orders.set([
+      {
+        id: 'o1',
+        channel: 'POS',
+        status: 'recibida',
+        version: 1,
+        dining_table_id: 't1',
+        customer_name: null,
+        created_at: '2026-08-28T10:00:00',
+        items: [],
+      } as DiningOrder,
+    ]);
+    store.selectedTableId.set('t1');
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('input[placeholder="Buscar mesa…"]')).toBeNull();
+    expect(el.querySelector('select[aria-label="Filtrar por estado"]')).toBeNull();
   });
 });

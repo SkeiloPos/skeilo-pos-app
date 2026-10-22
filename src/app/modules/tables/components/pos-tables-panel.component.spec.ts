@@ -87,21 +87,12 @@ describe('PosTablesPanelComponent', () => {
 
   afterEach(() => http.verify());
 
-  // Los botones de filtro de ocupación llevan un badge con el conteo pegado
-  // al label (p. ej. "Libres" + "4") -- se compara con startsWith en vez de
-  // igualdad exacta para no atarse a ese número.
-  const tabButton = (label: string): HTMLButtonElement | undefined =>
-    Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.trim().startsWith(label),
-    ) as HTMLButtonElement | undefined;
-
   it('"Mesas" está activa por defecto y muestra la grilla de mesas ya existente', () => {
     tableService.tables.set([table({ id: 't1', number: 5 })]);
     fixture.detectChanges();
 
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Mesa 5');
-    expect(fixture.nativeElement.querySelector('input[placeholder*="Buscar mesa"]')).not.toBeNull();
   });
 
   it('"Domicilios" muestra un listado vacío con mensaje claro, no la grilla de mesas', () => {
@@ -130,19 +121,18 @@ describe('PosTablesPanelComponent', () => {
     expect(store.orderTypeTab()).toBe('para-llevar');
   });
 
-  it('el filtro de ocupación ya existente sigue funcionando sin cambios en "Mesas"', () => {
+  // Spec 131: el filtro de ocupación (selector <select>, fidelidad al
+  // mockup) se movió a table-sessions.component.ts -- este componente ya no
+  // lo renderiza, solo reacciona a store.filter() (mismo patrón ya aplicado
+  // arriba a las pestañas de tipo de orden). La cobertura del <select> en sí
+  // vive ahora en table-sessions.component.spec.ts.
+  it('el filtro de ocupación ya existente sigue funcionando sin cambios en "Mesas" (store.filter())', () => {
     tableService.tables.set([table({ id: 't1', number: 1, status: 'libre' })]);
     fixture.detectChanges();
 
-    expect(tabButton('Libres')).toBeDefined();
-    expect(tabButton('Ocupadas')).toBeDefined();
-    expect(tabButton('Pendientes')).toBeDefined();
-    expect(tabButton('Todas')).toBeDefined();
-
-    tabButton('Ocupadas')!.click();
+    store.filter.set('ocupadas');
     fixture.detectChanges();
 
-    expect(store.filter()).toBe('ocupadas');
     // Mesa libre no debe aparecer bajo el filtro "Ocupadas" (comportamiento
     // ya existente, sin tocar).
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
@@ -180,7 +170,10 @@ describe('PosTablesPanelComponent', () => {
     expect(grid.querySelector('[class*="overflow-x-auto"]')).toBeNull();
   });
 
-  it('cada botón de filtro de ocupación muestra el conteo de mesas correspondiente', () => {
+  // Spec 131: el conteo por opción del filtro se renderiza ahora en
+  // table-sessions.component.ts (ver su spec) -- aquí queda cubierto que
+  // store.tableCounts() (la fuente de esos números) sigue siendo correcta.
+  it('store.tableCounts() refleja el conteo de mesas por estado (fuente del filtro de ocupación)', () => {
     tableService.tables.set([
       table({ id: 't1', number: 1, status: 'libre' }),
       table({ id: 't2', number: 2, status: 'ocupada' }),
@@ -188,10 +181,7 @@ describe('PosTablesPanelComponent', () => {
     ]);
     fixture.detectChanges();
 
-    expect(tabButton('Todas')!.textContent).toContain('3');
-    expect(tabButton('Libres')!.textContent).toContain('1');
-    expect(tabButton('Ocupadas')!.textContent).toContain('2');
-    expect(tabButton('Pendientes')!.textContent).toContain('0');
+    expect(store.tableCounts()).toEqual({ total: 3, libres: 1, ocupadas: 2, pendientes: 0 });
   });
 
   const tableCard = (label: string): HTMLButtonElement | undefined =>
@@ -293,23 +283,19 @@ describe('PosTablesPanelComponent', () => {
     expect(selectSpy).toHaveBeenCalledWith('o1');
   });
 
-  it('el buscador de la pestaña "Mesas" ya no usa un SVG artesanal (spec 082)', () => {
-    fixture.detectChanges();
-    const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('svg')).toBeNull();
-    const icon = el.querySelector('app-mi-icon .material-icons-outlined');
-    expect(icon?.textContent?.trim()).toBe('search');
-  });
+  // Reescrito para el rediseño visual (spec 131, FR-002/FR-003): el ícono del
+  // estado vacío pasa de `app-mi-icon` (Material) a `app-lucide-icon` (SVG
+  // estilo lucide, research.md punto 3) — el SVG en sí ya no está prohibido
+  // (antes marcaba la migración a fuente de íconos). El buscador en sí se
+  // movió a table-sessions.component.ts (ver su spec), igual que el filtro.
 
-  it('el estado vacío de "Domicilios" ya no usa el emoji 🧾 (spec 082)', () => {
+  it('el estado vacío de "Domicilios" ya no usa el emoji 🧾 y usa el ícono "receipt" estilo lucide (spec 131)', () => {
     fixture.detectChanges();
     store.setOrderTypeTab('domicilios');
     fixture.detectChanges();
 
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('svg')).toBeNull();
     expect(el.textContent).not.toContain('🧾');
-    const icon = el.querySelector('app-mi-icon .material-icons-outlined');
-    expect(icon?.textContent?.trim()).toBe('receipt');
+    expect(el.querySelector('app-lucide-icon svg')).toBeTruthy();
   });
 });

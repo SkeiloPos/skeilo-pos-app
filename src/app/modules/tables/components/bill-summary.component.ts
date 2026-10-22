@@ -18,44 +18,66 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IconMiComponent],
+  // spec 131: colores vía var(--terminal-color-*, valor-actual) con
+  // *fallback* al literal de siempre -- este componente también lo usa
+  // manual-order-page.component.ts (fuera de alcance de ese spec), así que
+  // fuera de `.terminal-theme` (donde esas variables no existen) se ve
+  // exactamente igual que antes; dentro de la Terminal de Mesas rediseñada
+  // toma la paleta nueva. Mismo patrón ya usado en product-select.component.ts.
   template: `
     @if (subtotal !== undefined) {
-      <div class="flex justify-between items-center text-[13px] text-gray-500">
+      <div
+        class="flex justify-between items-center text-[13px]"
+        style="color:var(--terminal-color-text-secondary,#6b7280)"
+      >
         <span>{{ subtotalLabel }}</span>
-        <span class="font-mono font-medium text-gray-900 tabular-nums">{{ money(subtotal) }}</span>
+        <span
+          class="font-mono font-medium tabular-nums"
+          style="color:var(--terminal-color-text-primary,#111827)"
+          >{{ money(subtotal) }}</span
+        >
       </div>
     }
     @if (discount > 0) {
-      <div class="flex justify-between items-center text-[13px] text-green-700">
+      <div
+        class="flex justify-between items-center text-[13px]"
+        style="color:var(--terminal-color-success,#15803d)"
+      >
         <span>{{ discountLabel }}</span>
         <span class="font-mono font-medium tabular-nums">− {{ money(discount) }}</span>
       </div>
     }
     @if (deliveryFee > 0) {
-      <div class="flex justify-between items-center text-[13px] text-gray-500 pt-0.5">
-        <span class="flex items-center gap-1" [class]="showDeliveryIcon ? 'text-gray-900 font-medium' : ''">
+      <div class="flex justify-between items-center text-[13px] pt-0.5" style="color:var(--terminal-color-text-secondary,#6b7280)">
+        <span
+          class="flex items-center gap-1"
+          [style]="showDeliveryIcon ? 'color:var(--terminal-color-text-primary,#111827);font-weight:500' : ''"
+        >
           @if (showDeliveryIcon) {
-            <app-mi-icon name="delivery_dining" [size]="15" class="text-violet-600" />
+            <app-mi-icon name="delivery_dining" [size]="15" style="color:var(--terminal-color-primary,#7c3aed)" />
           }
           {{ deliveryFeeLabel }}
         </span>
-        <span class="font-mono font-semibold tabular-nums text-gray-900"
+        <span class="font-mono font-semibold tabular-nums" style="color:var(--terminal-color-text-primary,#111827)"
           >{{ showDeliveryIcon ? '+' : '' }}{{ money(deliveryFee) }}</span
         >
       </div>
     }
     <div
       class="flex justify-between items-baseline"
-      [class]="totalBorder && (subtotal !== undefined || discount > 0 || deliveryFee > 0) ? 'border-t border-gray-200 mt-0.5 pt-1.5' : ''"
+      [class]="totalBorder && (subtotal !== undefined || discount > 0 || deliveryFee > 0) ? 'border-t mt-0.5 pt-1.5' : ''"
+      [style]="totalBorder && (subtotal !== undefined || discount > 0 || deliveryFee > 0) ? 'border-color:var(--terminal-color-border,#e5e7eb)' : ''"
     >
       <span
-        class="font-bold tracking-tight text-gray-900"
-        [class]="size === 'lg' ? 'text-[14px]' : size === 'md' ? 'text-[14px]' : 'text-[13px]'"
+        class="font-bold tracking-tight"
+        style="color:var(--terminal-color-text-primary,#111827)"
+        [class]="size === 'lg' ? 'text-[15px]' : 'text-[13px]'"
         >{{ totalLabel }}</span
       >
       <span
-        class="font-mono font-bold tabular-nums tracking-tight leading-none text-gray-900"
-        [class]="size === 'lg' ? 'text-[30px]' : size === 'md' ? 'text-[26px] font-extrabold' : 'text-[19px]'"
+        class="font-mono font-bold tabular-nums tracking-tight leading-none"
+        style="color:var(--terminal-color-text-primary,#111827)"
+        [class]="size === 'lg' ? 'text-[32px]' : 'text-[21px]'"
         >{{ money(total) }}</span
       >
     </div>
@@ -77,7 +99,7 @@ export class BillSummaryComponent {
   @Input() showDeliveryIcon = false;
   @Input({ required: true }) total!: number;
   @Input() totalLabel = 'Total';
-  @Input() size: 'sm' | 'md' | 'lg' = 'sm';
+  @Input() size: 'sm' | 'lg' = 'sm';
   @Input() totalBorder = true;
 
   money(n: number): string {

@@ -4,7 +4,7 @@ import { PosTerminalHeaderComponent } from './pos-terminal-header.component';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { AuthService } from '../../../core/services/auth.service';
 
-describe('PosTerminalHeaderComponent — íconos estandarizados (spec 082)', () => {
+describe('PosTerminalHeaderComponent — rediseño visual (spec 131)', () => {
   function crear(cashIsOpen: boolean) {
     TestBed.configureTestingModule({
       imports: [PosTerminalHeaderComponent],
@@ -26,25 +26,22 @@ describe('PosTerminalHeaderComponent — íconos estandarizados (spec 082)', () 
     return fixture.nativeElement as HTMLElement;
   }
 
-  it('ningún ícono se renderiza ya como SVG artesanal', () => {
-    const el = crear(false);
-    expect(el.querySelector('svg')).toBeNull();
-  });
+  // Reescrito para el rediseño visual (spec 131, FR-001): el set de íconos
+  // `app-mi-icon` (Material) de esta cabecera se reemplaza por
+  // `app-lucide-icon` (SVG estilo lucide, research.md punto 3) — la cabecera
+  // sigue exponiendo la misma información (turno/cajero, turno de caja,
+  // bloquear terminal), solo cambia el componente de ícono.
 
   it('renderiza el ícono de turno/cajero y el botón "Turno caja" (caja cerrada)', () => {
     const el = crear(false);
-    const ligaduras = Array.from(el.querySelectorAll('app-mi-icon .material-icons-outlined')).map(
-      (n) => n.textContent?.trim(),
-    );
-    expect(ligaduras).toEqual(expect.arrayContaining(['group', 'credit_card', 'lock']));
+    expect(el.querySelectorAll('app-lucide-icon svg').length).toBeGreaterThanOrEqual(3);
+    expect(el.textContent).toContain('Turno caja');
   });
 
-  it('renderiza el ícono de bloquear terminal incluso con caja abierta', () => {
+  it('renderiza el ícono de bloquear terminal incluso con caja abierta, y oculta "Turno caja"', () => {
     const el = crear(true);
-    const ligaduras = Array.from(el.querySelectorAll('app-mi-icon .material-icons-outlined')).map(
-      (n) => n.textContent?.trim(),
-    );
-    expect(ligaduras).toEqual(expect.arrayContaining(['group', 'lock']));
-    expect(ligaduras).not.toContain('credit_card');
+    expect(el.textContent).toContain('Caja abierta');
+    expect(el.textContent).not.toContain('Turno caja');
+    expect(el.querySelector('app-lucide-icon svg')).toBeTruthy();
   });
 });
