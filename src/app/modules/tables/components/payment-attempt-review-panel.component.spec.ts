@@ -583,7 +583,11 @@ describe('PaymentAttemptReviewPanelComponent', () => {
     expect(suggestionBtns().length).toBe(0);
   });
 
-  it('el método de pago pendiente ya no usa el emoji 💳 (spec 082)', async () => {
+  // Reescrito para el rediseño visual (spec 131): el ícono pasa de
+  // `app-mi-icon` (Material, "credit_card") a `app-lucide-icon`
+  // ("credit-card", SVG estilo lucide, research.md punto 3) — el emoji sigue
+  // sin aparecer.
+  it('el método de pago pendiente ya no usa el emoji 💳 ni el ícono Material (spec 131)', async () => {
     await renderWith(
       [attempt({ status: 'pendiente', payment_method_name: 'Efectivo' })],
       order('o1', [item('8000', 1)]),
@@ -591,10 +595,8 @@ describe('PaymentAttemptReviewPanelComponent', () => {
     );
 
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('svg')).toBeNull();
     expect(el.textContent).not.toContain('💳');
-    const icon = el.querySelector('app-mi-icon .material-icons-outlined');
-    expect(icon?.textContent?.trim()).toBe('credit_card');
+    expect(el.querySelector('app-lucide-icon svg')).toBeTruthy();
   });
 
   // ── Pago mixto (spec 130): bugfix de la pata en efectivo huérfana ────────

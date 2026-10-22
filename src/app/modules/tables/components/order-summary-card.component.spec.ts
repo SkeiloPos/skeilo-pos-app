@@ -56,14 +56,16 @@ describe('OrderSummaryCardComponent', () => {
     expect((fixture.nativeElement.textContent as string)).not.toContain('pedidos');
   });
 
-  it('aplica la clase de "seleccionado" únicamente cuando selected=true', () => {
+  // Reescrito para el rediseño visual (spec 131): el color de borde de
+  // "seleccionado" pasa de una clase Tailwind a `--terminal-color-primary`
+  // vía `[style.border-color]` (tokens del design system, research.md punto 2).
+  it('aplica el color de borde de "seleccionado" únicamente cuando selected=true', () => {
     fixture.detectChanges();
-    expect(cardButton().className).toContain('border-gray-200');
-    expect(cardButton().className).not.toContain('border-indigo-500');
+    expect(cardButton().style.borderColor).not.toBe('var(--terminal-color-primary)');
 
     fixture.componentRef.setInput('selected', true);
     fixture.detectChanges();
-    expect(cardButton().className).toContain('border-indigo-500');
+    expect(cardButton().style.borderColor).toBe('var(--terminal-color-primary)');
   });
 
   it('emite select exactamente una vez por click, sin importar cuántas veces se re-renderice', () => {

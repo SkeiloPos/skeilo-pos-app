@@ -20,7 +20,7 @@ import {
   paymentIssue,
   paymentLines,
 } from '../services/payment-draft.util';
-import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.component';
 
 /**
  * Cuenta de la mesa y cobro -- se apila debajo de `app-pos-order-panel`
@@ -65,7 +65,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
     PaymentInputComponent,
     BillSummaryComponent,
     PaymentAttemptReviewPanelComponent,
-    IconMiComponent,
+    IconLucideComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   // spec 078 (US3/US4, research.md D4/D5): min-w-0 para que cliente/método
@@ -95,7 +95,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   // propio alto completo, no un bloque más de un scroll compartido.
   host: {
     class:
-      'w-full flex flex-col border-t border-gray-200 min-w-0 bg-white lg:w-[40%] lg:shrink-0 lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:border-l',
+      'w-full flex flex-col border-t min-w-0 lg:w-[40%] lg:shrink-0 lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:border-l',
+    style: 'border-color:var(--terminal-color-border,#e5e7eb);background:var(--terminal-color-surface,#fff)',
   },
   template: `
       <div class="p-4">
@@ -108,19 +109,21 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
         -->
         @if (store.billStale() && !store.billLoading()) {
           <div
-            class="mb-3 flex items-center gap-2 rounded-[6px] border border-amber-100 bg-amber-50 px-3 py-2"
+            class="mb-3 flex items-center gap-2 rounded-[8px] border px-3 py-2"
+            style="border-color:var(--terminal-color-warning-soft,#fef3c7);background:var(--terminal-color-warning-soft,#fffbeb)"
           >
-            <span class="text-[13px] text-amber-800 flex-1">La cuenta cambió</span>
+            <span class="text-[13px] flex-1" style="color:var(--terminal-color-warning,#92400e)">La cuenta cambió</span>
             <button
               (click)="store.refreshBill()"
-              class="px-2.5 py-1 rounded-[6px] bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-semibold transition-colors"
+              class="px-2.5 py-1 rounded-[6px] text-white text-[11px] font-semibold transition-colors"
+              style="background:var(--terminal-color-warning,#d97706)"
             >
               Actualizar
             </button>
           </div>
         }
         @if (store.billLoading()) {
-          <p class="text-[12px] text-gray-400 py-8 text-center">Cargando cuenta…</p>
+          <p class="text-[12px] py-8 text-center" style="color:var(--terminal-color-text-muted,#9ca3af)">Cargando cuenta…</p>
         } @else {
           @if (store.selectedOrderPending()) {
             <!-- A pedido del usuario: el comprobante/confirmación de un pago
@@ -133,13 +136,14 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             @if (store.selectedOrder(); as pending) {
               <div class="mb-4">
                 <div class="flex items-center justify-between gap-3 mb-3">
-                  <p class="text-[12px] text-gray-500">
+                  <p class="text-[12px]" style="color:var(--terminal-color-text-secondary,#6b7280)">
                     Aprobar el comprobante o confirmar el pago registra el pedido como una venta en
                     el sistema.
                   </p>
                   <button
                     (click)="store.reload()"
-                    class="text-[12px] font-medium text-gray-400 hover:text-indigo-600 transition-colors shrink-0"
+                    class="text-[12px] font-medium transition-colors shrink-0"
+                    style="color:var(--terminal-color-primary-text,#9ca3af)"
                   >
                     Actualizar
                   </button>
@@ -200,7 +204,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             <button
               (click)="store.rejectOrder()"
               [disabled]="store.submitting()"
-              class="w-full min-h-11 py-2 mt-2 border border-red-200 text-red-700 rounded-[6px] text-[13px] font-medium hover:bg-red-50 disabled:opacity-40 transition-colors"
+              class="w-full min-h-11 py-2 mt-2 rounded-[8px] border text-[13px] font-medium disabled:opacity-40 transition-colors"
+              style="border-color:var(--terminal-color-error,#fca5a5);color:var(--terminal-color-error,#b91c1c);background:none"
             >
               Rechazar pedido
             </button>
@@ -220,7 +225,10 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             "Liberar Mesa" (bloque de abajo).
           -->
           <div class="flex flex-col h-full">
-            <h2 class="text-[15px] font-bold text-gray-900 mb-3">
+            <h2
+              class="mb-4"
+              style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-size:18px;font-weight:700;color:var(--terminal-color-text-primary,#111827)"
+            >
               {{ store.selectedOrder() ? 'Cobrar pedido' : 'Pedido de mostrador' }}
             </h2>
 
@@ -242,13 +250,16 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 (click)="goToNewOrder()"
                 [disabled]="!newOrderTableId()"
                 [title]="!newOrderTableId() ? 'No hay ninguna mesa libre disponible' : ''"
-                class="w-full py-2.5 bg-indigo-600 text-white rounded-[6px] text-[13px] font-semibold hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+                class="w-full py-2.5 rounded-[8px] text-[13px] font-semibold disabled:opacity-40 transition-colors"
+                style="background:var(--terminal-color-primary,#7c3aed);color:#fff"
               >
                 + Crear pedido nuevo
               </button>
             } @else {
-              <div class="mb-2">
-                <label class="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1"
+              <div class="mb-3">
+                <label
+                  class="block text-[11px] font-semibold uppercase tracking-wide mb-1.5"
+                  style="color:var(--terminal-color-text-muted,#6b7280)"
                   >Facturar a nombre de</label
                 >
                 <div class="relative">
@@ -259,16 +270,21 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                     (input)="store.billingCustomerName.set($any($event.target).value)"
                     (blur)="onFacturacionBlur()"
                     placeholder="Consumidor Final"
-                    class="w-full min-h-11 px-3 py-2 pr-9 border border-gray-200 rounded-[6px] text-[14px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                    [class]="editandoFacturacion() ? '' : 'bg-gray-50 text-gray-500'"
+                    class="w-full min-h-11 px-3 py-2 pr-9 rounded-[8px] text-[14px] border focus:outline-none"
+                    [style]="
+                      editandoFacturacion()
+                        ? 'background:var(--terminal-color-surface,#fff);border-color:var(--terminal-color-primary-border,#7c3aed);color:var(--terminal-color-text-primary,#111827)'
+                        : 'background:var(--terminal-color-surface-soft,#f9fafb);border-color:var(--terminal-color-border-strong,#d1d5db);color:var(--terminal-color-text-secondary,#6b7280)'
+                    "
                   />
                   <button
                     type="button"
                     (click)="toggleEditarFacturacion()"
                     title="Editar nombre de facturación"
-                    class="absolute right-2 inset-y-0 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                    class="absolute right-2 inset-y-0 flex items-center transition-colors"
+                    style="color:var(--terminal-color-text-muted,#9ca3af)"
                   >
-                    <app-mi-icon name="edit" ariaLabel="Editar nombre de facturación" [size]="16" />
+                    <app-lucide-icon name="pencil" ariaLabel="Editar nombre de facturación" [size]="16" />
                   </button>
                 </div>
               </div>
@@ -282,7 +298,10 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 muestra neto (sin el descuento), igual que A-125/A-127.
               -->
               @if (displayedPreview(); as p) {
-                <div class="rounded-[6px] border border-gray-200 bg-gray-50 px-3 py-2 my-3 space-y-1">
+                <div
+                  class="rounded-[8px] px-3 py-2.5 my-3 space-y-1.5"
+                  style="background:var(--terminal-color-surface-elevated,#f3f4f6)"
+                >
                   <app-bill-summary
                     [subtotal]="+p.subtotal - +p.discount"
                     [deliveryFee]="+p.delivery_fee"
@@ -292,7 +311,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                   @if (store.checkoutPreviewEstimate() !== null) {
                     <!-- spec 089 (A-96): cifra estimada al instante mientras el servidor
                          confirma; Cobrar queda deshabilitado hasta tener la confirmada. -->
-                    <p data-testid="total-actualizando" class="text-[11px] text-gray-400 text-right">
+                    <p data-testid="total-actualizando" class="text-[11px] text-right" style="color:var(--terminal-color-text-muted,#9ca3af)">
                       actualizando…
                     </p>
                   }
@@ -300,15 +319,19 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               } @else {
                 <!-- FR-007a: nunca un total provisional — estado "calculando"
                      visible y "Cobrar" deshabilitado hasta recibir el total. -->
-                <p class="text-[13px] text-gray-400 py-3 text-center">Calculando el total…</p>
+                <p class="text-[13px] py-3 text-center" style="color:var(--terminal-color-text-muted,#9ca3af)">Calculando el total…</p>
               }
 
               @if (store.checkoutPreviewStale() && !store.checkoutPreviewLoading()) {
-                <div class="mb-3 flex items-center gap-2 rounded-[6px] border border-amber-100 bg-amber-50 px-3 py-2">
-                  <span class="text-[13px] text-amber-800 flex-1">El total cambió</span>
+                <div
+                  class="mb-3 flex items-center gap-2 rounded-[8px] border px-3 py-2"
+                  style="border-color:var(--terminal-color-warning-soft,#fef3c7);background:var(--terminal-color-warning-soft,#fffbeb)"
+                >
+                  <span class="text-[13px] flex-1" style="color:var(--terminal-color-warning,#92400e)">El total cambió</span>
                   <button
                     (click)="store.loadCheckoutPreview(store.selectedOrderId())"
-                    class="px-2.5 py-1 rounded-[6px] bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-semibold transition-colors"
+                    class="px-2.5 py-1 rounded-[6px] text-white text-[11px] font-semibold transition-colors"
+                    style="background:var(--terminal-color-warning,#d97706)"
                   >
                     Actualizar
                   </button>
@@ -322,9 +345,10 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 <div
                   data-testid="total-cambio-aviso"
                   role="status"
-                  class="mb-3 rounded-[6px] border border-amber-100 bg-amber-50 px-3 py-2"
+                  class="mb-3 rounded-[8px] border px-3 py-2"
+                  style="border-color:var(--terminal-color-warning-soft,#fef3c7);background:var(--terminal-color-warning-soft,#fffbeb)"
                 >
-                  <span class="text-[13px] text-amber-800">
+                  <span class="text-[13px]" style="color:var(--terminal-color-warning,#92400e)">
                     El total cambió: ahora es {{ store.fmt(n.now) }} (antes {{ store.fmt(n.before) }}).
                     Revisa el importe y vuelve a pulsar Cobrar.
                   </span>
@@ -340,15 +364,15 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               }
 
               @if (store.error()) {
-                <div class="bg-red-50 border border-red-200 rounded-[6px] px-3 py-2 my-3">
-                  <p class="text-[13px] text-red-700">{{ store.error() }}</p>
+                <div class="rounded-[8px] border px-3 py-2 my-3" style="border-color:var(--terminal-color-error-soft,#fecaca);background:var(--terminal-color-error-soft,#fef2f2)">
+                  <p class="text-[13px]" style="color:var(--terminal-color-error,#b91c1c)">{{ store.error() }}</p>
                 </div>
               }
 
               <button
                 (click)="checkout()"
                 [disabled]="store.checkoutSubmitting() || !preview() || store.checkoutPreviewLoading() || store.checkoutPreviewEstimate() !== null || issue() !== null"
-                class="w-full min-h-11 py-2.5 mt-3 bg-indigo-600 hover:bg-indigo-700 text-white text-[14px] font-semibold rounded-[6px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                class="w-full min-h-11 py-2.5 mt-3 bg-[#15803d] hover:bg-[#166534] text-white text-[14px] font-semibold rounded-[8px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {{ store.checkoutSubmitting() ? 'Cobrando…' : 'Cobrar' }}
               </button>
@@ -357,7 +381,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               <button
                 (click)="store.rejectOrder()"
                 [disabled]="store.submitting() || store.checkoutSubmitting()"
-                class="w-full min-h-11 py-2 mt-2 border border-red-200 text-red-700 rounded-[6px] text-[13px] font-medium hover:bg-red-50 disabled:opacity-40 transition-colors"
+                class="w-full min-h-11 py-2 mt-2 rounded-[8px] border text-[13px] font-medium disabled:opacity-40 transition-colors"
+                style="border-color:var(--terminal-color-error,#fca5a5);color:var(--terminal-color-error,#b91c1c);background:none"
               >
                 Rechazar pedido
               </button>
@@ -376,7 +401,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           modos del panel (resumen QR, showSessionCharge) sin cambios (FR-008).
         -->
         @if (!pendingCheckout()) {
-          <div class="p-3 border-t border-gray-200 space-y-2 shrink-0">
+          <div class="p-3 border-t space-y-2 shrink-0" style="border-color:var(--terminal-color-border,#e5e7eb)">
             <!-- spec 123 (FR-006/FR-016): saldo generado por adiciones agregadas
                después de facturar -- visible mientras exista, con su propia
                acción de cobro (reutiliza el mismo selector de método de pago
@@ -384,8 +409,11 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                cobrarse íntegramente. -->
             @if (store.selectedOrder(); as pendingOrder) {
               @if (+(pendingOrder.pending_balance ?? 0) > 0) {
-                <div class="rounded-[6px] bg-amber-50 border border-amber-200 p-2.5 space-y-2">
-                  <div class="text-[13px] font-semibold text-amber-800">
+                <div
+                  class="rounded-[8px] border p-2.5 space-y-2"
+                  style="background:var(--terminal-color-warning-soft,#fffbeb);border-color:var(--terminal-color-warning-soft,#fde68a)"
+                >
+                  <div class="text-[13px] font-semibold" style="color:var(--terminal-color-warning,#92400e)">
                     Saldo pendiente: {{ store.fmt(+pendingOrder.pending_balance!) }}
                   </div>
                   <app-payment-input
@@ -396,7 +424,8 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                   <button
                     (click)="settlePendingBalance(pendingOrder.id)"
                     [disabled]="store.submitting() || pendingBalanceDraft().length !== 1 || !pendingBalanceDraft()[0].methodId"
-                    class="w-full min-h-10 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[13px] font-semibold rounded-[6px] disabled:opacity-40 transition-colors"
+                    class="w-full min-h-10 py-2 text-white text-[13px] font-semibold rounded-[8px] disabled:opacity-40 transition-colors"
+                    style="background:var(--terminal-color-warning,#d97706)"
                   >
                     Cobrar saldo
                   </button>
@@ -421,9 +450,10 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               @if (!store.selectedOrderPending() && store.centralState() !== 'validar-pago') {
               <button
                 (click)="store.printOrderInvoice(order.id)"
-                class="w-full min-h-11 py-2 border border-gray-200 rounded-[6px] text-[13px] font-medium text-gray-600 hover:bg-gray-50 transition-colors inline-flex items-center justify-center gap-1.5"
+                class="w-full min-h-11 py-2 rounded-[8px] border text-[13px] font-medium transition-colors inline-flex items-center justify-center gap-1.5"
+                style="border-color:var(--terminal-color-border-strong,#e5e7eb);color:var(--terminal-color-text-secondary,#4b5563);background:var(--terminal-color-surface,#fff)"
               >
-                <app-mi-icon name="receipt" [size]="16" />
+                <app-lucide-icon name="receipt" [size]="16" />
                 Imprimir Factura
               </button>
               }
@@ -440,9 +470,10 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               <button
                 (click)="store.releaseTable()"
                 [disabled]="store.submitting()"
-                class="w-full min-h-11 py-2 border border-gray-200 rounded-[6px] text-[13px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors inline-flex items-center justify-center gap-1.5"
+                class="w-full min-h-11 py-2 rounded-[8px] border text-[13px] font-medium disabled:opacity-40 transition-colors inline-flex items-center justify-center gap-1.5"
+                style="border-color:var(--terminal-color-border-strong,#e5e7eb);color:var(--terminal-color-text-secondary,#4b5563);background:var(--terminal-color-surface,#fff)"
               >
-                <app-mi-icon name="lock_open" [size]="16" />
+                <app-lucide-icon name="lock-open" [size]="16" />
                 Liberar Mesa
               </button>
             }

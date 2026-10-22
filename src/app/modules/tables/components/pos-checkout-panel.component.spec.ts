@@ -801,15 +801,15 @@ describe('PosCheckoutPanelComponent — pedido ya en cocina, cobro por sesión d
     expect(texto).toContain('Liberar Mesa');
   });
 
-  it('"Imprimir Factura" y "Liberar Mesa" ya no usan emoji ni SVG artesanal (spec 082)', () => {
+  // Reescrito para el rediseño visual (spec 131): los íconos pasan de
+  // `app-mi-icon` (Material) a `app-lucide-icon` (SVG estilo lucide,
+  // research.md punto 3) — el SVG en sí ya no está prohibido, el emoji sigue
+  // sin aparecer.
+  it('"Imprimir Factura" y "Liberar Mesa" ya no usan emoji ni íconos Material (spec 131)', () => {
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('svg')).toBeNull();
     expect(el.textContent).not.toContain('🧾');
     expect(el.textContent).not.toContain('🔓');
-    const ligaduras = Array.from(el.querySelectorAll('app-mi-icon .material-icons-outlined')).map(
-      (n) => n.textContent?.trim(),
-    );
-    expect(ligaduras).toEqual(expect.arrayContaining(['receipt', 'lock_open']));
+    expect(el.querySelectorAll('app-lucide-icon svg').length).toBeGreaterThanOrEqual(2);
   });
 
   it('T035: "Liberar Mesa" pide confirmación y muestra el motivo del 409 si falla', async () => {

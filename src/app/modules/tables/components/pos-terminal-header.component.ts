@@ -4,7 +4,7 @@ import { PosTerminalStore } from '../services/pos-terminal.store';
 import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
 import { VisibleInterval, startVisibleInterval } from '../../../core/realtime/visible-interval';
-import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.component';
 
 /**
  * Cabecera de terminal compartida entre `table-sessions.component.ts` y
@@ -19,57 +19,59 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   selector: 'app-pos-terminal-header',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconMiComponent],
+  imports: [IconLucideComponent],
   template: `
-    <header class="h-14 bg-white border-b border-gray-200 px-3 sm:px-4 flex items-center justify-between gap-2 shrink-0">
-      <div class="flex items-center gap-2 sm:gap-3 min-w-0">
-        <div class="flex flex-col min-w-0">
-          <span class="text-[11px] font-bold uppercase tracking-wider text-gray-900 truncate">Terminal de mesas</span>
-          <div class="flex items-center gap-1.5 mt-0.5">
-            <span class="w-2 h-2 rounded-[6px] shrink-0" [class]="connectionDotClass()"></span>
-            <span class="text-[11px] font-semibold text-gray-600 whitespace-nowrap">{{ connectionLabel() }}</span>
-          </div>
+    <header
+      class="flex items-center justify-between gap-4 flex-wrap px-5 py-3 border-b shrink-0"
+      style="border-color:var(--terminal-color-border);background:var(--terminal-color-surface)"
+    >
+      <div class="flex items-center gap-5 flex-wrap min-w-0">
+        <div class="flex items-center gap-1.5 text-[12px]" [style.color]="connectionColor()">
+          <span class="w-2 h-2 rounded-full shrink-0" [style.background]="connectionColor()"></span>
+          {{ connectionLabel() }}
         </div>
-        <div class="hidden sm:block h-6 w-px bg-gray-200 mx-1"></div>
-        <div class="hidden sm:flex items-center gap-2 text-gray-600">
-          <app-mi-icon name="group" [size]="18" class="text-gray-500 shrink-0" />
-          <span class="text-[12px] font-medium text-gray-600 whitespace-nowrap">{{ shiftLabel() }}</span>
+        <div class="flex items-center gap-2 text-[13px]" style="color:var(--terminal-color-text-secondary)">
+          <app-lucide-icon name="users" [size]="16" />
+          {{ shiftLabel() }}
         </div>
       </div>
 
-      <div class="hidden md:flex items-center gap-2 px-3 py-1 bg-gray-50 border border-gray-200 rounded-[6px] shrink-0">
-        <span class="text-[12px] font-semibold text-gray-900 tabular-nums tracking-[-0.01em]">{{ clockLabel() }}</span>
-        <span class="text-gray-500 text-[11px]">·</span>
-        <span class="text-[11px] text-gray-500 tabular-nums">{{ dateLabel() }}</span>
-      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <div
+          class="px-3.5 py-1.5 rounded-[8px] border font-semibold tabular-nums whitespace-nowrap"
+          style="border-color:var(--terminal-color-border);background:var(--terminal-color-surface-soft);color:var(--terminal-color-text-primary)"
+        >
+          {{ clockLabel() }}
+          <span style="color:var(--terminal-color-text-muted);font-weight:400"> · {{ dateLabel() }}</span>
+        </div>
 
-      <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
-        <span class="hidden sm:flex h-9 px-3 rounded-[6px] bg-gray-100 text-gray-900 font-semibold text-[12px] items-center">POS</span>
-        <div class="hidden sm:block h-6 w-px bg-gray-200"></div>
         @if (store.cashIsOpen()) {
           <div
-            class="h-9 px-2.5 sm:px-3 rounded-[6px] bg-gray-100 flex items-center gap-1.5 text-[12px] font-medium text-green-700"
+            class="h-9 px-3 rounded-[8px] flex items-center gap-1.5 text-[12px] font-semibold whitespace-nowrap"
+            style="background:var(--terminal-color-success-soft);color:var(--terminal-color-success)"
             [title]="'Turno abierto' + (store.cashShift()?.user_name ? ' · ' + store.cashShift()?.user_name : '')"
           >
-            <span class="w-2 h-2 rounded-[6px] bg-green-700 shrink-0"></span>
-            <span class="hidden sm:inline whitespace-nowrap">Caja abierta</span>
+            <app-lucide-icon name="circle-check" [size]="16" />
+            <span class="hidden sm:inline">Caja abierta</span>
           </div>
         } @else {
           <button
             (click)="goToCash()"
             title="Abrir turno de caja"
-            class="h-9 px-2.5 sm:px-3 rounded-[6px] border border-gray-200 bg-transparent hover:bg-gray-100 flex items-center gap-1.5 text-[12px] font-medium text-gray-600 transition-colors"
+            class="h-9 px-3 rounded-[8px] border flex items-center gap-1.5 text-[12px] font-semibold transition-colors"
+            style="border-color:var(--terminal-color-border-strong);background:var(--terminal-color-surface);color:var(--terminal-color-text-secondary)"
           >
-            <app-mi-icon name="credit_card" [size]="18" class="shrink-0" />
+            <app-lucide-icon name="credit-card" [size]="16" />
             <span class="hidden sm:inline">Turno caja</span>
           </button>
         }
         <button
           (click)="onLockTerminal()"
           title="Bloquear terminal"
-          class="h-9 w-9 rounded-[6px] border border-gray-200 bg-transparent hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors"
+          class="h-9 w-9 rounded-[8px] border flex items-center justify-center transition-colors"
+          style="border-color:var(--terminal-color-border-strong);background:var(--terminal-color-surface);color:var(--terminal-color-text-secondary)"
         >
-          <app-mi-icon name="lock" [size]="18" />
+          <app-lucide-icon name="lock" [size]="16" />
         </button>
       </div>
     </header>
@@ -118,8 +120,8 @@ export class PosTerminalHeaderComponent implements OnInit, OnDestroy {
     return nombre ? `Turno ${periodo}: ${nombre}` : `Turno ${periodo}`;
   }
 
-  connectionDotClass(): string {
-    return this.store.realtimeStatus() === 'open' ? 'bg-emerald-500' : 'bg-amber-500';
+  connectionColor(): string {
+    return this.store.realtimeStatus() === 'open' ? 'var(--terminal-color-success)' : 'var(--terminal-color-warning)';
   }
 
   connectionLabel(): string {

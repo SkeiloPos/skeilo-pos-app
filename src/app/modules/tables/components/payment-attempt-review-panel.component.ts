@@ -17,7 +17,7 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
 import { formatMoney } from '../../../shared/money';
 import { roundingSuggestions } from '../services/payment-draft.util';
 import { BillSummaryComponent } from './bill-summary.component';
-import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.component';
 
 /**
  * Revisión de pagos del cajero para una orden (spec 024): aprobar/rechazar el
@@ -48,19 +48,25 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 @Component({
   selector: 'app-payment-attempt-review-panel',
   standalone: true,
-  imports: [FormsModule, MoneyInputComponent, BillSummaryComponent, IconMiComponent],
+  imports: [FormsModule, MoneyInputComponent, BillSummaryComponent, IconLucideComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (loading()) {
-      <p class="text-sm text-gray-400">Cargando pago…</p>
+      <p class="text-sm" style="color:var(--terminal-color-text-muted,#9ca3af)">Cargando pago…</p>
     } @else if (current(); as attempt) {
-      <div class="border border-gray-200 bg-gray-50 rounded-lg p-2.5 space-y-2">
+      <div
+        class="border rounded-[12px] p-3 space-y-2"
+        style="border-color:var(--terminal-color-border,#e5e7eb);background:var(--terminal-color-surface-soft,#f9fafb)"
+      >
         <div class="flex items-center justify-between gap-2">
-          <span class="text-base font-semibold text-amber-800 inline-flex items-center gap-1.5">
-            <app-mi-icon name="credit_card" [size]="18" />
+          <span class="text-base font-semibold inline-flex items-center gap-1.5" style="color:var(--terminal-color-warning,#92400e)">
+            <app-lucide-icon name="credit-card" [size]="18" />
             {{ attempt.payment_method_name }}
           </span>
-          <span class="text-sm px-2 py-1 rounded-full font-medium bg-amber-100 text-amber-700">
+          <span
+            class="text-sm px-2 py-1 rounded-full font-medium"
+            style="background:var(--terminal-color-warning-soft,#fef3c7);color:var(--terminal-color-warning,#b45309)"
+          >
             Pendiente de revisión
           </span>
         </div>
@@ -72,7 +78,10 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           y el chequeo del "monto recibido" salen de este mismo Total.
         -->
         @if (checkoutPreview(); as p) {
-          <div class="rounded-lg border border-gray-200 bg-white px-3 py-2 space-y-1">
+          <div
+            class="rounded-[8px] border px-3 py-2 space-y-1"
+            style="border-color:var(--terminal-color-border,#e5e7eb);background:var(--terminal-color-surface,#fff)"
+          >
             <app-bill-summary
               [subtotal]="+p.subtotal"
               [discount]="+p.discount"
@@ -140,7 +149,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                 <button
                   type="button"
                   (click)="receiptPreviewOpen.set(true)"
-                  class="text-sm font-medium text-indigo-600 hover:underline"
+                  class="text-sm font-medium hover:underline" style="color:var(--terminal-color-primary,#4f46e5)"
                 >
                   Ver comprobante
                 </button>
@@ -184,7 +193,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             }
           } @else {
             <p class="text-sm text-emerald-700 font-medium inline-flex items-center gap-1.5">
-              <app-mi-icon name="check" [size]="16" />
+              <app-lucide-icon name="check" [size]="16" />
               Transferencia verificada ({{ money(attempt.transfer_amount) }})
             </p>
           }
@@ -209,11 +218,11 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                     type="button"
                     data-testid="sugerencia-monto"
                     (click)="amountReceived = sugerencia"
-                    class="min-h-9 px-3 py-1.5 rounded-md text-sm font-medium border"
-                    [class]="
+                    class="min-h-9 px-3 py-1.5 rounded-[8px] text-sm font-medium border"
+                    [style]="
                       sugerencia === amountReceived
-                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        ? 'border-color:var(--terminal-color-primary-border,#a5b4fc);background:var(--terminal-color-primary-soft,#eef2ff);color:var(--terminal-color-primary-text,#4338ca)'
+                        : 'border-color:var(--terminal-color-border-strong,#e5e7eb);background:var(--terminal-color-surface,#fff);color:var(--terminal-color-text-secondary,#374151)'
                     "
                   >
                     {{ sugerencia === +attempt.cash_amount! ? 'Exacto' : money(sugerencia) }}
@@ -253,7 +262,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             }
           } @else {
             <p class="text-sm text-emerald-700 font-medium inline-flex items-center gap-1.5">
-              <app-mi-icon name="check" [size]="16" />
+              <app-lucide-icon name="check" [size]="16" />
               Efectivo confirmado ({{ money(attempt.cash_amount) }})
             </p>
           }
@@ -286,11 +295,11 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                     type="button"
                     data-testid="sugerencia-monto"
                     (click)="amountReceived = sugerencia"
-                    class="min-h-9 px-3 py-1.5 rounded-md text-sm font-medium border"
-                    [class]="
+                    class="min-h-9 px-3 py-1.5 rounded-[8px] text-sm font-medium border"
+                    [style]="
                       sugerencia === amountReceived
-                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        ? 'border-color:var(--terminal-color-primary-border,#a5b4fc);background:var(--terminal-color-primary-soft,#eef2ff);color:var(--terminal-color-primary-text,#4338ca)'
+                        : 'border-color:var(--terminal-color-border-strong,#e5e7eb);background:var(--terminal-color-surface,#fff);color:var(--terminal-color-text-secondary,#374151)'
                     "
                   >
                     {{ sugerencia === orderTotal() ? 'Exacto' : money(sugerencia) }}
@@ -353,7 +362,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             <button
               type="button"
               (click)="receiptPreviewOpen.set(true)"
-              class="text-sm font-medium text-indigo-600 hover:underline"
+              class="text-sm font-medium hover:underline" style="color:var(--terminal-color-primary,#4f46e5)"
             >
               Ver comprobante
             </button>
@@ -431,7 +440,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
     } @else if (lastResolved(); as last) {
       @if (last.status === 'confirmado') {
         <p class="text-base text-emerald-700 font-medium inline-flex items-center gap-1.5">
-          <app-mi-icon name="check" [size]="18" />
+          <app-lucide-icon name="check" [size]="18" />
           Pago confirmado ({{ last.payment_method_name }})
         </p>
         @if (last.is_cash) {

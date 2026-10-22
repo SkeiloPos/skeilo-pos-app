@@ -1585,7 +1585,14 @@ describe('ManualOrderPageComponent', () => {
     fixture.detectChanges();
 
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('svg')).toBeNull();
+    // Spec 131: `app-pos-terminal-header` (compartido con table-sessions) ya
+    // usa SVG estilo lucide a propósito dentro de esta misma página — el
+    // resto de esta pantalla (fuera de alcance de ese spec) sigue sin SVG
+    // artesanal, solo `app-mi-icon`.
+    const svgsFueraDeCabecera = Array.from(el.querySelectorAll('svg')).filter(
+      (svg) => !svg.closest('app-pos-terminal-header'),
+    );
+    expect(svgsFueraDeCabecera).toHaveLength(0);
     const ligaduras = Array.from(el.querySelectorAll('app-mi-icon .material-icons-outlined')).map(
       (n) => n.textContent?.trim(),
     );

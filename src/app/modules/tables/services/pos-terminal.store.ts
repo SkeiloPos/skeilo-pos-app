@@ -155,8 +155,15 @@ export interface OrderSummaryCardView {
 
 const STATUS_META: Record<TableDisplayStatus, { label: string; chip: string }> = {
   libre: { label: 'Libre', chip: 'bg-gray-100 text-gray-600' },
-  por_confirmar: { label: 'Por confirmar', chip: 'bg-amber-400 text-gray-900' },
-  en_preparacion: { label: 'En preparación', chip: 'bg-teal-100 text-teal-700' },
+  por_confirmar: {
+    label: 'Por confirmar',
+    chip: 'bg-[var(--terminal-color-warning,#f59e0b)] text-[var(--terminal-color-canvas,#090d16)]',
+  },
+  en_preparacion: {
+    label: 'En preparación',
+    chip:
+      'bg-[var(--terminal-color-success-soft,rgba(0,255,135,0.1))] text-[var(--terminal-color-success,#00ff87)]',
+  },
   listo: { label: 'Listo', chip: 'bg-green-100 text-green-700' },
   pago_pendiente: { label: 'Pago pendiente', chip: 'bg-violet-600 text-white' },
   ocupada: { label: 'Ocupada', chip: 'bg-sky-100 text-sky-700' },

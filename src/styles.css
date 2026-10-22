@@ -630,6 +630,128 @@ html, body {
   background-color: #fff;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Terminal de Mesas — tokens visuales del rediseño (spec 131)
+   ══════════════════════════════════════════════════════════════════════════
+
+   Valores tomados **literalmente** del sistema de diseño entregado
+   (`design/_ds/skeilopos-design-system-.../tokens/{colors,spacing,typography,
+   base,effects,theme-light}.css`, tema claro — research.md punto 2), igual
+   patrón que `.auth-theme` (spec 095) y `.panel-theme` (spec 116): acotados a
+   `.terminal-theme` (host de `app-table-sessions`), nunca en `:root`, para no
+   repintar ninguna otra pantalla del panel (Principio V). */
+.terminal-theme {
+  --terminal-color-primary: #7c3aed;
+  --terminal-color-primary-active: #6d28d9;
+  --terminal-color-primary-soft: rgba(124, 58, 237, 0.1);
+  --terminal-color-primary-line: rgba(124, 58, 237, 0.35);
+  --terminal-color-primary-text: #6d28d9;
+  --terminal-color-primary-border: #7c3aed;
+  --terminal-color-secondary: #475569;
+  --terminal-color-secondary-text: #334155;
+  --terminal-color-secondary-soft: #eef1f5;
+  --terminal-color-secondary-line: #cbd5e1;
+  --terminal-color-canvas: #f4f6f9;
+  --terminal-color-surface-soft: #edf1f5;
+  --terminal-color-surface: #ffffff;
+  --terminal-color-surface-elevated: #f1f5f9;
+  --terminal-color-border: #e5e9ef;
+  --terminal-color-border-strong: #cbd5e1;
+  --terminal-color-text-primary: #090d16;
+  --terminal-color-text-secondary: #334155;
+  --terminal-color-text-muted: #64748b;
+  --terminal-color-text-subtle: #94a3b8;
+  --terminal-color-on-primary: #ffffff;
+  --terminal-color-success: #6d28d9;
+  --terminal-color-success-soft: rgba(124, 58, 237, 0.1);
+  --terminal-color-warning: #b45309;
+  --terminal-color-warning-soft: #fef3e2;
+  --terminal-color-error: #e11d48;
+  --terminal-color-error-active: #be123c;
+  --terminal-color-error-soft: #fdecef;
+  --terminal-color-info: #334155;
+  --terminal-color-info-soft: #eef1f5;
+  --terminal-overlay-hover: rgba(9, 13, 22, 0.05);
+
+  --terminal-space-xxs: 4px;
+  --terminal-space-xs: 8px;
+  --terminal-space-sm: 12px;
+  --terminal-space-md: 16px;
+  --terminal-space-lg: 24px;
+  --terminal-space-xl: 32px;
+  --terminal-radius-xs: 4px;
+  --terminal-radius-sm: 6px;
+  --terminal-radius-md: 8px;
+  --terminal-radius-lg: 12px;
+  --terminal-radius-xl: 16px;
+  --terminal-radius-pill: 9999px;
+  --terminal-control-h-lg: 48px;
+  --terminal-touch-min: 44px;
+
+  --terminal-font-display: 'Sora', ui-sans-serif, system-ui, sans-serif;
+  --terminal-font-ui: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+  --terminal-tracking-display: -0.02em;
+  --terminal-tracking-caps: 0.08em;
+
+  --terminal-shadow-overlay: 0 12px 32px rgba(15, 23, 42, 0.12), 0 0 0 1px var(--terminal-color-border);
+  --terminal-shadow-dropdown: 0 8px 20px rgba(15, 23, 42, 0.1);
+  --terminal-focus-ring-input: 0 0 0 3px rgba(124, 58, 237, 0.18);
+
+  font-family: var(--terminal-font-ui);
+  color: var(--terminal-color-text-primary);
+  background-color: var(--terminal-color-canvas);
+}
+
+/* Variante oscura de `.terminal-theme` — el usuario reportó que, con el panel
+   de tenant en modo oscuro (`.panel-theme[data-theme='dark']` en
+   `.shell-root`, ver `dashboard-layout.component.ts`), la Terminal de Mesas
+   se quedaba en paleta clara mientras el resto del panel (sidebar, navbar)
+   ya estaba oscuro — valores tomados literalmente de
+   `design/_ds/skeilopos-design-system-.../tokens/colors.css` (tema oscuro,
+   el `:root` de ese archivo — theme-light.css es la variante clara que
+   `.terminal-theme` usa por defecto arriba). Mismo mecanismo de anidado que
+   ya usa `.panel-theme[data-theme='dark'] .force-light-surface` más abajo:
+   `.terminal-theme` vive dentro de `.shell-root.panel-theme`, así que este
+   selector anidado alcanza cualquier instancia sin que el componente lea
+   `PanelThemeService` directamente. */
+.panel-theme[data-theme='dark'] .terminal-theme {
+  --terminal-color-primary: #7c3aed;
+  --terminal-color-primary-active: #6d28d9;
+  --terminal-color-primary-soft: rgba(124, 58, 237, 0.16);
+  --terminal-color-primary-line: rgba(139, 92, 246, 0.45);
+  --terminal-color-primary-text: #a78bfa;
+  --terminal-color-primary-border: #8b5cf6;
+  --terminal-color-secondary: #64748b;
+  --terminal-color-secondary-text: #cbd5e1;
+  --terminal-color-secondary-soft: rgba(148, 163, 184, 0.12);
+  --terminal-color-secondary-line: rgba(148, 163, 184, 0.35);
+  --terminal-color-canvas: #090d16;
+  --terminal-color-surface-soft: #111827;
+  --terminal-color-surface: #1e293b;
+  --terminal-color-surface-elevated: #263449;
+  --terminal-color-border: #334155;
+  --terminal-color-border-strong: #475569;
+  --terminal-color-text-primary: #f8fafc;
+  --terminal-color-text-secondary: #cbd5e1;
+  --terminal-color-text-muted: #94a3b8;
+  --terminal-color-text-subtle: #64748b;
+  --terminal-color-on-primary: #ffffff;
+  --terminal-color-success: #00ff87;
+  --terminal-color-success-soft: rgba(0, 255, 135, 0.1);
+  --terminal-color-warning: #f59e0b;
+  --terminal-color-warning-soft: rgba(245, 158, 11, 0.12);
+  --terminal-color-error: #f43f5e;
+  --terminal-color-error-active: #e11d48;
+  --terminal-color-error-soft: rgba(244, 63, 94, 0.12);
+  --terminal-color-info: #60a5fa;
+  --terminal-color-info-soft: rgba(96, 165, 250, 0.12);
+  --terminal-overlay-hover: rgba(248, 250, 252, 0.06);
+
+  --terminal-shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--terminal-color-border);
+  --terminal-shadow-dropdown: 0 8px 20px rgba(0, 0, 0, 0.35);
+  --terminal-focus-ring-input: 0 0 0 3px rgba(139, 92, 246, 0.28);
+}
+
 /* Línea de carrito con promoción vigente (manual-order-page.component.ts, Historia
    "Nueva orden" del terminal POS): `bg-amber-50/40` + `border-amber-100` están pensados
    para la tarjeta blanca del tema claro (R16: `amber-*` queda fuera del repintado

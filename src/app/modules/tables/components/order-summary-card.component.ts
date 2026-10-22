@@ -22,27 +22,35 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
     <button
       type="button"
       (click)="select.emit()"
-      class="w-full h-full text-left bg-white rounded-[6px] border p-2.5 flex flex-col justify-between gap-1 min-h-11 transition-colors hover:bg-gray-100"
-      [class]="selected ? 'border-indigo-500 ring-1 ring-indigo-200' : 'border-gray-200'"
+      class="w-full h-full text-left rounded-[12px] border p-4 flex flex-col gap-3 min-h-11 transition-colors"
+      style="background:var(--terminal-color-surface)"
+      [style.border-color]="selected ? 'var(--terminal-color-primary)' : 'var(--terminal-color-border)'"
     >
-      <div class="flex items-start justify-between gap-2">
-        <span class="text-[15px] font-semibold tracking-[-0.01em] text-gray-900">{{ title }}</span>
+      <div class="flex items-center justify-between gap-2">
+        <b style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-size:18px;color:var(--terminal-color-text-primary)">{{ title }}</b>
         <span class="px-2 py-0.5 text-[11px] font-medium rounded-[6px] shrink-0" [class]="statusClass">{{ statusLabel }}</span>
       </div>
-      <div class="flex items-center justify-between gap-2 text-[12px] text-gray-500">
+      <div class="flex items-center justify-between gap-2 text-[14px]" style="color:var(--terminal-color-text-secondary)">
         <span class="truncate">{{ secondaryLabel }} · {{ elapsedLabel }}</span>
         @if (ordersCount && ordersCount > 1) {
-          <span class="shrink-0 px-1.5 py-0.5 rounded-[6px] bg-gray-100 text-gray-600 text-[11px]">{{ ordersCount }} pedidos</span>
+          <span
+            class="shrink-0 px-1.5 py-0.5 rounded-[6px] text-[11px]"
+            style="background:var(--terminal-color-surface-elevated);color:var(--terminal-color-text-secondary)"
+          >{{ ordersCount }} pedidos</span>
         }
       </div>
-      <div class="flex items-baseline justify-between pt-1 border-t border-gray-200">
-        <span class="text-[11px] text-gray-500 uppercase tracking-wider font-medium">Total</span>
+      <div class="flex items-baseline justify-between pt-2.5 border-t" style="border-color:var(--terminal-color-border)">
         <span
+          class="text-[13px] uppercase tracking-[.08em] font-semibold"
+          style="color:var(--terminal-color-text-muted)"
+        >Total</span>
+        <b
           class="tabular-nums"
-          [class]="totalLabel === '—' ? 'text-[14px] font-medium text-gray-500' : 'text-[15px] font-semibold text-gray-900 tracking-[-0.01em]'"
+          style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-size:21px"
+          [style.color]="totalLabel === '—' ? 'var(--terminal-color-text-muted)' : 'var(--terminal-color-text-primary)'"
         >
           {{ totalLabel }}
-        </span>
+        </b>
       </div>
     </button>
   `,

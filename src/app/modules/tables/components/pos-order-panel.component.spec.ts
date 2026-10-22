@@ -282,11 +282,23 @@ describe('PosOrderPanelComponent — adicionales por línea (spec 089)', () => {
     expect(texto).not.toContain('2 × $');
   });
 
-  it('A-133: sin promoción, "{{ qty }} × ..." se sigue mostrando con el precio de lista (sin cambio)', () => {
+  // Reescrito (spec 131, fidelidad visual a pedido del usuario): la fila
+  // "{{ qty }} × $ unitario" se retira también SIN promoción -- ya era
+  // redundante con la insignia de cantidad ("2x") y "$ unitario c/u" que la
+  // misma línea muestra arriba; mostrarla una tercera vez (esta vez a la
+  // derecha, bajo el importe) recargaba la línea sin aportar nada que el
+  // cajero no viera ya. La fila con promoción (A-133 arriba) seguía oculta
+  // desde antes, por la razón original (precio promedio sin relación con lo
+  // cobrado) -- ahora las dos ramas coinciden: nunca se muestra.
+  it('sin promoción, "{{ qty }} × ..." tampoco se muestra -- es redundante con la insignia de cantidad y "c/u" que la línea ya trae', () => {
     conItem({ unit_price: '8000' });
 
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(texto).toContain('2 × $ 8.000');
+    expect(texto).not.toContain('2 × $ 8.000');
+    // La info sigue disponible, solo que una vez cada una: la insignia de
+    // cantidad y el precio unitario.
+    expect(texto).toContain('2x');
+    expect(texto).toContain('$ 8.000 c/u');
   });
 
   // ─── spec 115 (hallazgo adicional): ítem "Pendiente" sin discounted_unit_price todavía ───
@@ -552,7 +564,7 @@ describe('PosOrderPanelComponent — catálogo embebido (spec 036, Historia 2)',
     fixture.detectChanges();
     expect(store.catalogOpen()).toBe(true);
 
-    findButton('← Volver a la lista')!.click();
+    findButton('Volver a la lista')!.click();
     fixture.detectChanges();
 
     expect(store.catalogOpen()).toBe(false);
@@ -978,18 +990,16 @@ describe('PosOrderPanelComponent — pedido sin mesa (spec 059, Historia 3)', ()
     expect(deliveryRow()).toBeNull();
   });
 
-  it('los íconos de dirección/teléfono/domicilio ya no son emoji (spec 082)', () => {
+  // Reescrito para el rediseño visual (spec 131, FR-024): el ícono pasa de
+  // `app-mi-icon` (Material) a `app-lucide-icon` (SVG estilo lucide,
+  // research.md punto 3) — la prueba de fondo (ya no son emoji) sigue vigente.
+  it('los íconos de dirección/teléfono/domicilio ya no son emoji ni íconos Material (spec 131)', () => {
     seleccionarDomicilio();
     const el = deliveryRow();
     expect(el.textContent).not.toContain('📍');
     expect(el.textContent).not.toContain('📞');
     expect(el.textContent).not.toContain('🛵');
-    const ligaduras = Array.from(el.querySelectorAll('app-mi-icon .material-icons-outlined')).map(
-      (n) => n.textContent?.trim(),
-    );
-    expect(ligaduras).toEqual(
-      expect.arrayContaining(['location_on', 'call', 'delivery_dining']),
-    );
+    expect(el.querySelectorAll('app-lucide-icon svg').length).toBe(3);
   });
 });
 
@@ -1078,16 +1088,21 @@ describe('PosOrderPanelComponent — una sola card para adiciones sucesivas con 
 });
 
 /**
- * El selector "Agregar adición" rechazaba con 422 ("Esa opción ya está en la
- * línea") al elegir un topping que la línea ya tenía -- único camino era
- * anular la línea entera. Ahora, si la opción ya está en la línea, el mismo
- * botón sube su cantidad (PATCH) en vez de intentar agregarla de nuevo (POST).
+ * Reescrito para el rediseño visual (spec 131, FR-023; A-140 en
+ * registro-de-anomalias.md): el selector dedicado "Agregar adición" y el
+ * modal que abría (stepper +/-, botón "Agregar"/"Actualizar", quitar
+ * adición) se retiraron del detalle de pedido por decisión de negocio —
+ * agregar una opción extra a una línea ya facturada pasa a cubrirse
+ * exclusivamente vía "＋ Agregar producto" (el catálogo embebido normal).
+ * `store.openAdditionPicker()`/`confirmAddition()`/`updateAdditionQuantity()`/
+ * `removeAddition()` siguen existiendo en `PosTerminalStore` (no se tocan,
+ * fuera de alcance de este spec) — lo que cambia es que esta plantilla ya no
+ * tiene ningún punto de entrada de UI que los dispare.
  */
-describe('PosOrderPanelComponent — reutilizar "Agregar adición" para subir cantidad', () => {
+describe('PosOrderPanelComponent — "Agregar adición" retirado del detalle (spec 131, FR-023)', () => {
   let fixture: ComponentFixture<PosOrderPanelComponent>;
   let store: PosTerminalStore;
   let http: HttpTestingController;
-  let menuService: MenuService;
 
   function pedidoConAdicion(): DiningOrder {
     return {
@@ -1122,190 +1137,40 @@ describe('PosOrderPanelComponent — reutilizar "Agregar adición" para subir ca
     fixture = TestBed.createComponent(PosOrderPanelComponent);
     store = TestBed.inject(PosTerminalStore);
     http = TestBed.inject(HttpTestingController);
-    menuService = TestBed.inject(MenuService);
-    menuService.categories.set([{
-      id: 'c1', name: 'Helados', products: [{
-        id: 'p1', name: 'Ojo de Diablo', description: null, image_url: null, available: true,
-        option_groups: [],
-        variants: [{
-          id: 'v1', name: '8 onz', price: 8000, available: true,
-          option_groups: [{
-            id: 'g1', name: 'Toppings', min_select: 0, max_select: 99, consume: false,
-            selection_mode: 'cantidad', max_quantity_per_option: null, max_total_quantity: null,
-            options: [
-              { id: 'opt1', name: 'Gomita', extra_price: 1000, available: true },
-              { id: 'opt2', name: 'Cinta acida', extra_price: 1000, available: true },
-            ],
-          }],
-        }],
-      }],
-    }]);
-    store.catalogCategoryId.set('c1');
     store.orders.set([pedidoConAdicion()]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
-    store.openAdditionPicker('i1', 'v1');
     fixture.detectChanges();
   });
 
   afterEach(() => http.verify());
 
-  const filaDe = (nombre: string): HTMLElement =>
-    Array.from(fixture.nativeElement.querySelectorAll('.border-b.border-gray-50')).find((row) =>
-      (row as HTMLElement).textContent?.includes(nombre),
-    ) as HTMLElement;
-
-  // La fila tiene hasta cuatro botones: stepper "−", stepper "+", el de confirmar
-  // (Agregar/Actualizar, único con fondo indigo) y, solo si ya está en la línea, el
-  // de quitarla -- se identifica por clase, no por posición, porque ese último varía.
-  const confirmarBotonDe = (fila: HTMLElement): HTMLButtonElement =>
-    fila.querySelector('button.bg-indigo-600') as HTMLButtonElement;
-  const quitarBotonDe = (fila: HTMLElement): HTMLButtonElement | null =>
-    fila.querySelector('button[title="Quitar esta adición de la línea"]');
-  const stepperBotonDe = (fila: HTMLElement, simbolo: '−' | '+'): HTMLButtonElement =>
-    (Array.from(fila.querySelectorAll('button')) as HTMLButtonElement[]).find(
-      (b) => b.textContent?.trim() === simbolo,
-    )!;
-
-  it('la opción ya en la línea arranca en su cantidad actual (no en "actual + 1") y el botón dice "Actualizar"', () => {
-    const fila = filaDe('Gomita');
-    expect(fila.textContent).toContain('Ya en la línea: x3');
-    expect(confirmarBotonDe(fila).textContent?.trim()).toBe('Actualizar');
-    const input = fila.querySelector('input') as HTMLInputElement;
-    // No asume que el cajero quiere una unidad más -- arranca en lo que ya hay.
-    expect(input.value).toBe('3');
-    // El PATCH admite bajar la cantidad -- el `min` nunca baja de 1 (no de 0).
-    expect(input.min).toBe('1');
-  });
-
-  it('una opción nueva arranca en 0 (no en 1) -- no asume que siempre se agrega al menos una unidad', () => {
-    const fila = filaDe('Cinta acida');
-    expect(fila.textContent).not.toContain('Ya en la línea');
-    expect(confirmarBotonDe(fila).textContent?.trim()).toBe('Agregar');
-    const input = fila.querySelector('input') as HTMLInputElement;
-    expect(input.value).toBe('0');
-    expect(input.min).toBe('0');
-  });
-
-  it('el botón de confirmar arranca deshabilitado (0 en una opción nueva, o la misma cantidad en una existente) y se habilita al mover el contador', () => {
-    const nueva = filaDe('Cinta acida');
-    expect(confirmarBotonDe(nueva).disabled).toBe(true);
-    stepperBotonDe(nueva, '+').click();
-    fixture.detectChanges();
-    expect(confirmarBotonDe(nueva).disabled).toBe(false);
-
-    const existente = filaDe('Gomita');
-    expect(confirmarBotonDe(existente).disabled).toBe(true);
-    stepperBotonDe(existente, '+').click();
-    fixture.detectChanges();
-    expect(confirmarBotonDe(existente).disabled).toBe(false);
-  });
-
-  it('el stepper +/- incrementa y decrementa el campo, sin bajar del mínimo de cada caso', () => {
-    const fila = filaDe('Gomita');
-    const input = fila.querySelector('input') as HTMLInputElement;
-    expect(input.value).toBe('3');
-
-    stepperBotonDe(fila, '+').click();
-    fixture.detectChanges();
-    expect(input.value).toBe('4');
-
-    stepperBotonDe(fila, '−').click();
-    stepperBotonDe(fila, '−').click();
-    stepperBotonDe(fila, '−').click();
-    stepperBotonDe(fila, '−').click();
-    fixture.detectChanges();
-    expect(input.value).toBe('1'); // existente: nunca baja de additionQtyMinFor (1)
-
-    const botonMenos = stepperBotonDe(fila, '−');
-    expect(botonMenos.disabled).toBe(true);
-  });
-
-  it('el stepper "−" de una opción nueva se deshabilita en 0, no en 1', () => {
-    const fila = filaDe('Cinta acida');
-    const input = fila.querySelector('input') as HTMLInputElement;
-    expect(input.value).toBe('0');
-    expect(stepperBotonDe(fila, '−').disabled).toBe(true);
-
-    stepperBotonDe(fila, '+').click();
-    fixture.detectChanges();
-    expect(input.value).toBe('1');
-    expect(stepperBotonDe(fila, '−').disabled).toBe(false);
-
-    stepperBotonDe(fila, '−').click();
-    fixture.detectChanges();
-    expect(input.value).toBe('0');
-    expect(stepperBotonDe(fila, '−').disabled).toBe(true);
-  });
-
-  it('"Actualizar" con una cantidad menor a la actual también llama a store.updateAdditionQuantity', () => {
-    const update = vi.spyOn(store, 'updateAdditionQuantity').mockResolvedValue(undefined);
-
-    const fila = filaDe('Gomita');
-    const input = fila.querySelector('input') as HTMLInputElement;
-    input.value = '1';
-    input.dispatchEvent(new Event('input'));
-    fixture.detectChanges(); // el botón pasa de deshabilitado (1 ≠ 3) a habilitado
-
-    confirmarBotonDe(fila).click();
-
-    expect(update).toHaveBeenCalledWith('opt1', 1);
-  });
-
-  it('"Actualizar" llama a store.updateAdditionQuantity (PATCH), no a confirmAddition (POST)', () => {
-    // El resto del flujo HTTP de `updateAdditionQuantity`/`confirmAddition` (incluido su
-    // `reload()` en cascada) ya está cubierto en `pos-terminal.store.spec.ts` -- aquí solo
-    // importa a cuál de los dos métodos enruta el botón reutilizado.
-    const update = vi.spyOn(store, 'updateAdditionQuantity').mockResolvedValue(undefined);
-    const confirm = vi.spyOn(store, 'confirmAddition').mockResolvedValue(undefined);
-
-    const fila = filaDe('Gomita');
-    stepperBotonDe(fila, '+').click(); // 3 -> 4: sin mover el contador, el botón sigue deshabilitado
-    fixture.detectChanges();
-    confirmarBotonDe(fila).click();
-
-    expect(update).toHaveBeenCalledWith('opt1', 4);
-    expect(confirm).not.toHaveBeenCalled();
-  });
-
-  it('"Agregar" sobre una opción nueva sigue llamando a store.confirmAddition (POST)', () => {
-    const update = vi.spyOn(store, 'updateAdditionQuantity').mockResolvedValue(undefined);
-    const confirm = vi.spyOn(store, 'confirmAddition').mockResolvedValue(undefined);
-
-    const fila = filaDe('Cinta acida');
-    stepperBotonDe(fila, '+').click(); // 0 -> 1: el cajero elige explícitamente cuántas quiere
-    fixture.detectChanges();
-    confirmarBotonDe(fila).click();
-
-    expect(confirm).toHaveBeenCalledWith('opt2', 1);
-    expect(update).not.toHaveBeenCalled();
-  });
-
-  it('solo la opción ya en la línea tiene botón para quitarla', () => {
-    expect(quitarBotonDe(filaDe('Gomita'))).toBeTruthy();
-    expect(quitarBotonDe(filaDe('Cinta acida'))).toBeNull();
-  });
-
-  it('el botón de quitar llama a store.removeAddition con el id de la opción', () => {
-    const remove = vi.spyOn(store, 'removeAddition').mockResolvedValue(undefined);
-
-    quitarBotonDe(filaDe('Gomita'))!.click();
-
-    expect(remove).toHaveBeenCalledWith('opt1');
-  });
-
-  it('"Agregar adición" en la línea desaparece si la variante no tiene ningún grupo de opciones configurado', () => {
-    menuService.categories.set([{
-      id: 'c1', name: 'Helados', products: [{
-        id: 'p1', name: 'Ojo de Diablo', description: null, image_url: null, available: true,
-        option_groups: [],
-        variants: [{ id: 'v1', name: '8 onz', price: 8000, available: true, option_groups: [] }],
-      }],
-    }]);
-    store.closeAdditionPicker();
-    fixture.detectChanges();
-
+  it('ninguna línea muestra el botón "Agregar adición"', () => {
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(texto).not.toContain('Agregar adición');
+  });
+
+  it('ninguna línea muestra el badge "Modificada", aunque el ítem venga marcado modificada', () => {
+    const base = pedidoConAdicion();
+    store.orders.set([
+      { ...base, items: [{ ...base.items![0], modificada: true } as never] },
+    ]);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Modificada');
+  });
+
+  it('store.openAdditionPicker() ya no abre ningún modal (sin disparador de UI, la plantilla no lo lee)', () => {
+    store.openAdditionPicker('i1', 'v1');
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.fixed.inset-0')).toBeNull();
+  });
+
+  it('"＋ Agregar producto" sigue siendo el único camino para agregar algo a un pedido ya facturado', () => {
+    const boton = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.trim() === '＋ Agregar producto',
+    ) as HTMLButtonElement | undefined;
+    expect(boton).toBeTruthy();
   });
 });

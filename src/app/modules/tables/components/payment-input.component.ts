@@ -42,16 +42,22 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
   template: `
     <div class="space-y-3">
       @for (line of draft(); track $index; let i = $index) {
-        <div class="space-y-2" [class.border-t]="i > 0" [class.pt-3]="i > 0">
+        <div
+          class="space-y-2"
+          [class.border-t]="i > 0"
+          [class.pt-3]="i > 0"
+          [style.border-color]="i > 0 ? 'var(--terminal-color-border, #e5e7eb)' : null"
+        >
           <div class="flex items-center justify-between">
-            <label class="block text-sm font-medium text-gray-600">
+            <label class="block text-[13px] font-semibold" style="color:var(--terminal-color-text-secondary,#4b5563)">
               {{ draft().length > 1 ? 'Método de pago ' + (i + 1) : 'Método de pago' }}
             </label>
             @if (draft().length > 1) {
               <button
                 type="button"
                 (click)="removeLine(i)"
-                class="text-sm font-medium text-red-600 hover:text-red-700"
+                class="text-[13px] font-medium"
+                style="color:var(--terminal-color-error,#dc2626)"
               >
                 Eliminar
               </button>
@@ -60,7 +66,8 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
           <select
             [ngModel]="line.methodId"
             (ngModelChange)="setMethod(i, $event)"
-            class="w-full min-h-11 px-3 py-2 border border-gray-200 rounded-lg text-base"
+            class="w-full min-h-11 px-3 py-2 rounded-[8px] text-[14px] border focus:outline-none"
+            style="background:var(--terminal-color-surface,#fff);border-color:var(--terminal-color-border-strong,#d1d5db);color:var(--terminal-color-text-primary,#111827)"
           >
             <option value="">Selecciona…</option>
             @for (m of methods; track m.id) {
@@ -69,13 +76,13 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
           </select>
 
           @if (line.methodId) {
-            <label class="block text-sm font-medium text-gray-600">
+            <label class="block text-[13px] font-semibold" style="color:var(--terminal-color-text-secondary,#4b5563)">
               {{ isCash(line.methodId) ? 'Con cuánto paga' : 'Importe' }}
             </label>
             <app-money-input
               [ngModel]="line.amount || null"
               (ngModelChange)="setAmount(i, $event ?? 0)"
-              sizeClass="min-h-11 px-3 py-2 rounded-lg text-base"
+              sizeClass="min-h-11 px-3 py-2 rounded-[8px] text-base"
             />
 
             @if (isCash(line.methodId) && pendingBalance(i) > 0) {
@@ -90,11 +97,11 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
                     type="button"
                     data-testid="sugerencia-monto"
                     (click)="setAmount(i, sugerencia)"
-                    class="min-h-9 px-3 py-1.5 rounded-md text-sm font-medium border"
-                    [class]="
+                    class="min-h-9 px-3 py-1.5 rounded-[8px] text-[13px] font-medium border"
+                    [style]="
                       sugerencia === line.amount
-                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        ? 'border-color:var(--terminal-color-primary-border,#a5b4fc);background:var(--terminal-color-primary-soft,#eef2ff);color:var(--terminal-color-primary-text,#4338ca)'
+                        : 'border-color:var(--terminal-color-border-strong,#e5e7eb);background:var(--terminal-color-surface,#fff);color:var(--terminal-color-text-secondary,#374151)'
                     "
                   >
                     {{ money(sugerencia) }}
@@ -104,20 +111,24 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
             }
 
             @if (!isCash(line.methodId)) {
-              <label class="block text-sm font-medium text-gray-600">Referencia (opcional)</label>
+              <label class="block text-[13px] font-semibold" style="color:var(--terminal-color-text-secondary,#4b5563)">Referencia (opcional)</label>
               <input
                 [ngModel]="line.reference"
                 (ngModelChange)="setReference(i, $event)"
                 type="text"
                 placeholder="Últimos 4 dígitos o número de comprobante"
-                class="w-full min-h-11 px-3 py-2 border border-gray-200 rounded-lg text-base"
+                class="w-full min-h-11 px-3 py-2 rounded-[8px] text-[14px] border focus:outline-none"
+                style="background:var(--terminal-color-surface,#fff);border-color:var(--terminal-color-border-strong,#d1d5db);color:var(--terminal-color-text-primary,#111827)"
               />
             }
 
             @if (change(i) > 0) {
-              <div class="flex items-center justify-between bg-emerald-50 rounded-lg px-3 py-2">
-                <span class="text-sm font-medium text-emerald-800">Cambio</span>
-                <span class="text-lg font-bold text-emerald-700">{{ money(change(i)) }}</span>
+              <div
+                class="flex items-center justify-between rounded-[8px] px-3 py-2"
+                style="background:var(--terminal-color-success-soft,#ecfdf5)"
+              >
+                <span class="text-[13px] font-medium" style="color:var(--terminal-color-success,#065f46)">Cambio</span>
+                <span class="text-[18px] font-bold" style="color:var(--terminal-color-success,#047857)">{{ money(change(i)) }}</span>
               </div>
             }
           }
@@ -128,14 +139,15 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
         <button
           type="button"
           (click)="addLine()"
-          class="w-full min-h-11 py-2 border border-dashed border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50"
+          class="w-full min-h-11 py-2 rounded-[8px] border border-dashed text-[13px] font-semibold transition-colors"
+          style="border-color:var(--terminal-color-primary-border,#d1d5db);color:var(--terminal-color-primary-text,#4b5563)"
         >
           Agregar otro método
         </button>
       }
 
       @if (issue(); as problema) {
-        <p class="text-sm font-medium text-red-600">{{ problema }}</p>
+        <p class="text-[13px] font-medium" style="color:var(--terminal-color-error,#dc2626)">{{ problema }}</p>
       }
     </div>
   `,
