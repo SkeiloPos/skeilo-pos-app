@@ -26,11 +26,18 @@ import { CartOptionLine } from '../services/pos-terminal.store';
   template: `
     @let grupos = optionGroups();
     @if (grupos.length > 0) {
-      <div class="border border-gray-200 rounded-[8px] px-2.5 py-2 space-y-1.5">
+      <div
+        class="border rounded-[8px] px-2.5 py-2 space-y-1.5"
+        style="border-color:var(--terminal-color-border,#e5e7eb)"
+      >
         @for (g of grupos; track g.label ?? $index) {
-          <div class="text-[13px] text-gray-600">
+          <div class="text-[13px]" style="color:var(--terminal-color-text-secondary,#4b5563)">
             @if (g.label) {
-              <span class="font-semibold text-gray-700">{{ g.label }}:</span>
+              <span
+                class="font-semibold"
+                style="color:var(--terminal-color-text-primary,#374151)"
+                >{{ g.label }}:</span
+              >
             }
             {{ g.items.join(', ') }}
           </div>
@@ -46,7 +53,8 @@ import { CartOptionLine } from '../services/pos-terminal.store';
     <ng-template #notaTpl>
       <span
         data-testid="item-note"
-        class="block w-full bg-amber-100 text-amber-900 border border-amber-300 text-base font-semibold px-3 py-1.5 rounded-lg whitespace-pre-wrap break-words"
+        class="block w-full border text-base font-semibold px-3 py-1.5 rounded-lg whitespace-pre-wrap break-words"
+        style="background:var(--terminal-color-warning-soft,#fef3c7);color:var(--terminal-color-text-primary,#78350f);border-color:var(--terminal-color-warning,#f59e0b)"
       >
         ℹ️ Nota: {{ notes }}
       </span>

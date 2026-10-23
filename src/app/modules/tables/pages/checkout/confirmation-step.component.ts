@@ -35,17 +35,17 @@ import { CheckoutProgressStore } from './checkout-progress.store';
       @if (order(); as o) {
         <div class="w-full max-w-sm flex flex-col items-center gap-5">
           @if (cart.isEmpty()) {
-            <!-- spec 130 (rediseño) — un pago mixto siempre llega aquí con el
-                 comprobante de la porción por transferencia todavía por
-                 revisar, así que el pedido NO está "enviado" sin más: está
-                 "recibido" y pendiente de verificación. Mismo ícono/copy que
-                 design/Bienvenida QR.dc.html (doneIcon/doneTitle/doneSub
-                 cuando el método no es 'Efectivo'). -->
+            <!-- spec 130 (rediseño) — un pago mixto siempre llega aquí con la
+                 porción por transferencia todavía por verificar, así que el
+                 pedido NO está "enviado" sin más: está "recibido" y pendiente
+                 de verificación. spec 132 (A-144, FR-023): la verificación es
+                 en persona del cajero al entregar el pedido, no de un archivo
+                 subido -- el copy ya no habla de "comprobante recibido". -->
             @if (o.current_payment_attempt?.cash_amount != null) {
               <span class="w-16 h-16 rounded-full bg-amber-50 text-amber-500 grid place-items-center"><span class="w-8 h-8 block"><app-icon name="clock" /></span></span>
               <div class="flex flex-col gap-1.5">
                 <h1 class="font-sora text-2xl font-semibold text-gray-900 tracking-tight">Pedido recibido.</h1>
-                <p class="text-gray-500">Estamos verificando tu pago para preparar tu pedido.</p>
+                <p class="text-gray-500">Muestra tu comprobante de transferencia al cajero cuando recibas tu pedido.</p>
               </div>
             } @else {
               <span class="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 grid place-items-center"><span class="w-8 h-8 block"><app-icon name="check-circle" /></span></span>
@@ -79,8 +79,8 @@ import { CheckoutProgressStore } from './checkout-progress.store';
                 <span class="text-sm text-gray-400">Efectivo + Transferencia</span>
               </div>
               <p class="text-sm text-gray-600 leading-relaxed">
-                Recibimos tu comprobante y lo estamos revisando. Cuando se confirme, preparamos tu
-                pedido y te lo llevamos a la mesa. El efectivo lo pagas al recibirlo.
+                Al recibir tu pedido, muestra el comprobante de la transferencia al cajero. El
+                efectivo lo pagas al recibirlo.
               </p>
               <div class="border-t border-gray-200 pt-3 flex flex-col gap-1.5 text-sm">
                 <div class="flex justify-between items-baseline">
@@ -116,11 +116,14 @@ import { CheckoutProgressStore } from './checkout-progress.store';
                   <span class="w-4 h-4 block shrink-0"><app-icon name="wallet" /></span>
                   Te llevaremos tu pedido a la mesa. Paga al recibirlo.
                 </p>
-              } @else if (o.current_payment_attempt?.receipt_file_url) {
+              } @else if (o.current_payment_attempt) {
+                <!-- spec 132 (A-144, FR-023): ya no depende de
+                     receipt_file_url -- ese campo ahora solo lo adjunta el
+                     cajero (opcional, al aprobar), nunca el comensal, así que
+                     para su propia vista casi siempre llega en null. -->
                 <p class="flex items-center gap-2 text-sm text-amber-700">
                   <span class="w-4 h-4 block shrink-0"><app-icon name="clock" /></span>
-                  Recibimos tu comprobante y lo estamos revisando. Cuando se confirme el pago,
-                  preparamos tu pedido y te lo llevamos a la mesa.
+                  Muestra el comprobante de tu banco al cajero cuando recibas tu pedido.
                 </p>
               }
             }

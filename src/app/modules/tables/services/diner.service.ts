@@ -16,7 +16,6 @@ import {
   DinerPaymentAttempt,
   DinerPaymentMethod,
   DinerTable,
-  ReceiptPresignResponse,
   SessionOpenResponse,
   StockConflictDetail,
   SubmitCartPayload,
@@ -218,54 +217,11 @@ export class DinerService {
     );
   }
 
-  /** Pide la URL firmada para subir el comprobante directo a R2. */
-  presignReceipt(attemptId: string, contentType: string): Promise<ReceiptPresignResponse> {
-    return this.call(() =>
-      this.http.post<ReceiptPresignResponse>(
-        `${this.api}/cart/payment-attempts/${attemptId}/receipt/presign`,
-        { content_type: contentType },
-      ),
-    );
-  }
-
-  /** Asocia el archivo ya subido a R2 con el intento. */
-  attachReceipt(attemptId: string, fileUrl: string): Promise<DinerPaymentAttempt> {
-    return this.call(() =>
-      this.http.post<DinerPaymentAttempt>(
-        `${this.api}/cart/payment-attempts/${attemptId}/receipt`,
-        { file_url: fileUrl },
-      ),
-    );
-  }
-
-  /**
-   * Presign genérico para el comprobante (spec 025): a diferencia de
-   * `presignReceipt`, no exige ningún intento de pago previo — se usa
-   * *antes* de enviar el pedido, cuando todavía no existe ninguna orden ni
-   * intento al que asociar el archivo.
-   */
-  presignPaymentReceipt(contentType: string): Promise<ReceiptPresignResponse> {
-    return this.call(() =>
-      this.http.post<ReceiptPresignResponse>(`${this.api}/cart/payment-receipt/presign`, {
-        content_type: contentType,
-      }),
-    );
-  }
-
-  /**
-   * Sube el archivo directo a R2 con la URL firmada (fuera de la API misma:
-   * es un `PUT` plano al bucket, sin `x-session-token` ni JSON).
-   */
-  async uploadReceiptFile(uploadUrl: string, file: File): Promise<void> {
-    const res = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type },
-      body: file,
-    });
-    if (!res.ok) {
-      throw new Error('No se pudo subir el comprobante. Intenta de nuevo.');
-    }
-  }
+  // spec 132 (A-144, FR-023): `presignReceipt`/`attachReceipt`/
+  // `presignPaymentReceipt`/`uploadReceiptFile` se retiraron de aquí — el
+  // comensal ya no sube comprobante desde el flujo QR en ningún paso
+  // (transferencia total, pago mixto, ni el reintento tras un rechazo). La
+  // verificación queda enteramente a cargo del cajero en persona.
 
   // ── Pedidos propios ──────────────────────────────────────────────────────
 

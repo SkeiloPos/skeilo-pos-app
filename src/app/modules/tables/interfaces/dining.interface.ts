@@ -315,9 +315,48 @@ export interface PaymentAttempt {
   cash_confirmed_at: string | null;
 }
 
+/**
+ * Conjunto cerrado de motivos de rechazo (spec 132, FR-015) — espejo exacto
+ * de `RejectionReason` (`pos-backend/app/models/order_payment_attempt.py`).
+ * `422` desde el backend si se manda cualquier otro valor.
+ */
+export type RejectionReason =
+  | 'cliente_no_muestra_app'
+  | 'monto_no_coincide'
+  | 'transferencia_no_completada'
+  | 'cliente_se_niega_a_mostrar'
+  | 'comprobante_sospechoso';
+
+/** Etiquetas legibles para `RejectionReason`, en el mismo orden del selector. */
+export const REJECTION_REASON_OPTIONS: { value: RejectionReason; label: string }[] = [
+  { value: 'cliente_no_muestra_app', label: 'El cliente no muestra la app del banco' },
+  { value: 'monto_no_coincide', label: 'El monto no coincide' },
+  { value: 'transferencia_no_completada', label: 'La transferencia no se completó' },
+  { value: 'cliente_se_niega_a_mostrar', label: 'El cliente se niega a mostrar el comprobante' },
+  { value: 'comprobante_sospechoso', label: 'El comprobante parece sospechoso' },
+];
+
 /** Body de `POST /orders/payment-attempts/{id}/reject` (`PaymentAttemptRejectIn`). */
 export interface PaymentAttemptRejectPayload {
-  reason: string;
+  reason: RejectionReason;
+}
+
+/** Body de `POST /orders/payment-attempts/{id}/adjust-split` (spec 132, FR-013). */
+export interface PaymentAttemptAdjustSplitPayload {
+  cash_amount: number;
+  transfer_amount: number;
+  transfer_method_id?: string | null;
+  payment_method_id?: string | null;
+}
+
+/** Una fila de `GET /orders/{order_id}/payment-events` (spec 132, FR-019). */
+export interface PaymentEvent {
+  action: string;
+  entity: string;
+  entity_id: string | null;
+  user_name: string | null;
+  at: string;
+  payload: Record<string, unknown> | null;
 }
 
 /** Body de `POST /orders/payment-attempts/{id}/confirm-cash` (`PaymentAttemptConfirmCashIn`). */

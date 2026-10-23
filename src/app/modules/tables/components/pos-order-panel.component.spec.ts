@@ -17,8 +17,9 @@ import { MenuService } from '../../../core/services/menu.service';
 
 const API = environment.apiBaseUrl;
 
-/** Pedido con un solo ítem ya en cocina ('listo'), origen mesero. `paid` se
- *  fija por test (spec 029, Historia 1: "Anular" desaparece una vez pagado). */
+/** Pedido con un solo ítem en cocina ('pendiente', osea no listo todavía),
+ *  origen mesero. `paid` se fija por test (spec 029, Historia 1: "Anular"
+ *  desaparece una vez pagado). */
 function orderConItemListo(paid: boolean): DiningOrder {
   return {
     id: 'o1',
@@ -29,7 +30,7 @@ function orderConItemListo(paid: boolean): DiningOrder {
     customer_name: null,
     created_at: '2026-08-21T10:00:00',
     paid,
-    items: [{ id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '10000', estado_cocina: 'listo' }],
+    items: [{ id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '10000', estado_cocina: 'pendiente' }],
   } as DiningOrder;
 }
 
@@ -81,6 +82,17 @@ describe('PosOrderPanelComponent — anulación bloqueada tras pago', () => {
     fixture.detectChanges();
 
     expect(anularButton()).toBeDefined();
+  });
+
+  it('no muestra "Anular" en una línea ya lista, aunque el pedido todavía no esté pagado', () => {
+    const order = orderConItemListo(false);
+    order.items![0].estado_cocina = 'listo';
+    store.orders.set([order]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    fixture.detectChanges();
+
+    expect(anularButton()).toBeUndefined();
   });
 });
 

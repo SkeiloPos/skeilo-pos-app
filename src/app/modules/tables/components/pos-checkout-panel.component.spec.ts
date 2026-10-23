@@ -352,6 +352,47 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
     expect(button).toBeDefined();
   });
 
+  /** "Aceptar pedido" sin cobrar (`POST /orders/{id}/start-preparation`): se
+   *  ofrece junto al panel de revisión de un pago QR pendiente, y desaparece
+   *  en cuanto el pedido ya tiene algún ítem fuera de 'pendiente' (ya se
+   *  aceptó, no tiene sentido ofrecerlo otra vez). */
+  it('ofrece "Aceptar pedido" sobre un pago QR pendiente, y lo oculta una vez ya aceptado', async () => {
+    const qrPending = {
+      ...manualOrder(),
+      id: 'o2',
+      channel: 'QR_MENU',
+      status: 'recibida',
+    } as DiningOrder;
+    store.orders.set([qrPending]);
+    store.selectedOrderId.set('o2');
+    await flushPreview();
+    // `app-payment-attempt-review-panel` pide su propio historial de intentos.
+    for (const req of http.match((r) => r.url.endsWith('/payment-attempts'))) {
+      req.flush([]);
+    }
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const findButton = () =>
+      Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+        (b as HTMLButtonElement).textContent?.includes('Aceptar pedido'),
+      );
+    expect(findButton()).toBeDefined();
+
+    // Ya aceptado para cocina (ítem en 'en_preparacion', status sigue 'recibida').
+    store.orders.set([
+      { ...qrPending, items: [{ ...qrPending.items![0], estado_cocina: 'en_preparacion' }] } as DiningOrder,
+    ]);
+    await flushPreview();
+    await flushPreview();
+    for (const req of http.match((r) => r.url.endsWith('/payment-attempts'))) {
+      req.flush([]);
+    }
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(findButton()).toBeUndefined();
+  });
+
   // ── spec 078 (US3/US4, FR-025; research.md D5) ──────────────────────────────
 
   it('el panel apilado va min-w-0, sin scroll ni techo propios por debajo de lg (a pedido del usuario: un solo scroll para toda la columna); desde lg es su propia columna al 40% con scroll propio', () => {

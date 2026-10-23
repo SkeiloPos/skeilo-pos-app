@@ -485,7 +485,10 @@ describe('TransferDetailsStepComponent', () => {
     expect(summaryEl().textContent).toContain('Resumen del pedido');
   });
 
-  it('ubica el resumen DESPUÉS de los datos bancarios y ANTES de la zona de comprobante (FR-016)', async () => {
+  it('ubica el resumen DESPUÉS de los datos bancarios y ANTES del aviso de comprobante (FR-016)', async () => {
+    // spec 132 (A-144, FR-023): el paso de subida se retiró — el resumen
+    // sigue entre los datos bancarios y el aviso de mostrar el comprobante
+    // al cajero en la entrega, que ocupa su lugar en el orden del DOM.
     await createComponent(
       buildMethod([{ key: 'numero_celular', label: 'Número de celular', format: 'text' }], {
         numero_celular: '3106448749',
@@ -493,12 +496,12 @@ describe('TransferDetailsStepComponent', () => {
       { lines: buildLines(2), total: 23500, count: 5 },
     );
     const bankInfo = fixture.nativeElement.querySelector('[data-testid="bank-info"]') as HTMLElement;
-    const comprobante = Array.from(
+    const aviso = Array.from(
       fixture.nativeElement.querySelectorAll('p') as NodeListOf<HTMLElement>,
-    ).find((p) => p.textContent?.trim() === 'Sube tu comprobante')!;
+    ).find((p) => p.textContent?.includes('muestra el comprobante desde la app de tu banco'))!;
 
     expect(bankInfo.compareDocumentPosition(summaryEl()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(summaryEl().compareDocumentPosition(comprobante) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(summaryEl().compareDocumentPosition(aviso) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it(`con más de ${UMBRAL_EXPANDIDO_POR_DEFECTO} líneas el resumen llega contraído en esta pantalla (FR-008)`, async () => {
@@ -579,12 +582,12 @@ describe('TransferDetailsStepComponent', () => {
     expect(text()).not.toMatch(/impuesto|iva|subtotal/i);
   });
 
-  it('no altera la zona de comprobante ni el botón de enviar (FR-018)', async () => {
+  it('no altera el botón de enviar, habilitado sin comprobante (FR-018, spec 132 A-144)', async () => {
     await createComponent(nequi(), { lines: buildLines(6), total: 23500, count: 6 });
     const enviar = buttons().find((b) => b.textContent?.includes('Enviar pedido'))!;
 
     expect(enviar).toBeTruthy();
-    expect(enviar.disabled).toBe(true); // sin comprobante adjunto, como antes
-    expect(text()).toContain('Sube tu comprobante');
+    expect(enviar.disabled).toBe(false); // spec 132: nunca exige comprobante
+    expect(text()).toContain('muestra el comprobante desde la app de tu banco');
   });
 });

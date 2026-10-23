@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DinerService, DinerSessionExpiredError } from '../../services/diner.service';
 import { DinerTokenStore } from '../../services/diner-token.store';
@@ -13,10 +13,16 @@ import { CheckoutProgressStore } from './checkout-progress.store';
 import { CheckoutOrderSummaryComponent } from './checkout-order-summary.component';
 
 /**
- * Paso 3 — datos de pago del método de transferencia + carga del comprobante
- * (spec 034, US1/US3). Muestra cada clave de `payment_info` según su
- * `format` (FR-011/FR-012/FR-013) en vez del texto plano que pintaba el modal
- * retirado con `objectKeys(info)`.
+ * Paso 3 — datos de pago del método de transferencia (spec 034, US1/US3).
+ * Muestra cada clave de `payment_info` según su `format` (FR-011/FR-012/FR-013)
+ * en vez del texto plano que pintaba el modal retirado con `objectKeys(info)`.
+ *
+ * Spec 132 (A-144, FR-001/FR-002/FR-004/FR-008/FR-023): retira el paso de
+ * subida de comprobante — el comensal confirma su pedido viendo el monto
+ * exacto a transferir y la instrucción de referencia, y muestra el
+ * comprobante desde la app de su banco al cajero en el momento de la
+ * entrega; la verificación real queda enteramente a cargo del cajero, nunca
+ * de un archivo subido.
  */
 @Component({
   selector: 'app-transfer-details-step',
@@ -35,7 +41,7 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
         <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <button
             (click)="back()"
-            [disabled]="uploading() || submitting()"
+            [disabled]="submitting()"
             aria-label="Volver"
             class="p-1 -ml-1 text-gray-500 hover:text-violet-600 disabled:opacity-40 transition-colors"
           >
@@ -44,7 +50,7 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
           <app-checkout-step-indicator [step]="3" [total]="3" label="Datos de transferencia" />
           <button
             (click)="exit()"
-            [disabled]="uploading() || submitting()"
+            [disabled]="submitting()"
             aria-label="Salir sin enviar"
             class="p-1 -mr-1 text-gray-400 hover:text-red-600 disabled:opacity-40 transition-colors"
           >
@@ -58,21 +64,11 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
           <p class="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-3">{{ error() }}</p>
         }
 
-        <!-- spec 092 (FR-001, FR-002) / spec 130 (rediseño) — el monto a pagar
-             por este medio, el dato sin el cual esta pantalla no cumple su
-             función. Va FUERA de la rama que espera el método a propósito: no
-             depende de que el método haya cargado, así que está visible sin
-             ninguna interacción ni ninguna espera de red (SC-001). Y fuera de
-             toda zona colapsable, para que contraer el resumen nunca lo
-             esconda (FR-002). La cifra es text-3xl y el h1 del método es
-             text-lg: eso la deja siendo el texto más grande de la vista
-             (FR-001).
-
-             spec 130: en un pago mixto, la cifra destacada es SOLO la porción
-             a transferir (transferAmount), no el total del pedido — el rótulo
-             pasa a "Transfiere por <método>" y la porción en efectivo se
-             aclara debajo. El conteo de unidades ya no se repite aquí: vive
-             una sola vez, en el encabezado del resumen colapsable de abajo. -->
+        <!-- spec 092 (FR-001, FR-002) / spec 130 (rediseño) / spec 132 (FR-004) —
+             el monto a pagar por este medio, el dato sin el cual esta pantalla
+             no cumple su función. Va FUERA de la rama que espera el método a
+             propósito: no depende de que el método haya cargado, así que está
+             visible sin ninguna interacción ni ninguna espera de red (SC-001). -->
         <div
           data-testid="payment-total"
           class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4 text-center"
@@ -86,6 +82,10 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
               Más {{ mixedCashAmount() | money }} en efectivo al recibir el pedido
             </p>
           }
+          <!-- spec 132 (FR-003/FR-004): instrucción de referencia para incluir
+               en el mensaje de la transferencia -- mesa y número de pedido,
+               cuando ya se conocen (número de pedido solo tras confirmar). -->
+          <p class="text-xs text-gray-400 mt-2">Incluye tu mesa como referencia al transferir.</p>
         </div>
 
         @if (!method()) {
@@ -93,15 +93,12 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
         } @else {
           <!-- spec 092 (FR-001, FR-016, research.md D9) — el nombre del método
                queda DEBAJO del bloque de total y ENCIMA del bloque de datos
-               bancarios. Hasta esta spec era lo primero bajo el encabezado;
-               moverlo no es una libertad de diseño, lo exige FR-001.
+               bancarios.
                spec 130: en un pago mixto, este es el método de transferencia
                REAL elegido para el resto ('transfer_method_id'), no "Pago
                mixto" en sí (data-model.md: ese no tiene cuenta propia). -->
           <h1 class="text-lg font-bold text-gray-900 mb-1">{{ method()!.name }}</h1>
-          <p class="text-sm text-gray-500 mb-4">
-            Transfiere el valor exacto y sube tu comprobante para enviar el pedido.
-          </p>
+          <p class="text-sm text-gray-500 mb-4">Transfiere el valor exacto para enviar el pedido.</p>
 
           <div
             data-testid="bank-info"
@@ -155,11 +152,11 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
           </div>
 
           <!-- spec 092 (FR-005, FR-016) — el resumen va ENTRE los datos
-               bancarios y la zona de comprobante. En modo colapsable: con más
+               bancarios y el aviso del comprobante. En modo colapsable: con más
                de UMBRAL_EXPANDIDO_POR_DEFECTO líneas llega contraído, que es lo
-               que evita que la suma de QR + lista entierre el botón de enviar
-               (RN-002, FR-017). El total NO es parte de este componente: vive
-               arriba, fuera de toda zona colapsable (FR-002). -->
+               que evita que la lista entierre el botón de enviar (RN-002,
+               FR-017). El total NO es parte de este componente: vive arriba,
+               fuera de toda zona colapsable (FR-002). -->
           <div class="mt-4">
             <app-checkout-order-summary
               [lines]="cart.lines()"
@@ -170,94 +167,37 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
             />
           </div>
 
-          <div class="mt-4 space-y-2.5">
-            <div class="flex items-center gap-2.5">
-              <span
-                class="w-6 h-6 rounded-full bg-violet-600 text-white text-xs font-bold flex items-center justify-center shrink-0"
-              >
-                1
-              </span>
-              <p class="text-base font-semibold text-gray-900">Sube tu comprobante</p>
-            </div>
-
-            @if (previewUrl(); as preview) {
-              <div class="flex items-center gap-3 p-3 border border-emerald-500 rounded-2xl bg-white">
-                <img
-                  [src]="preview"
-                  alt="Comprobante de pago"
-                  class="w-16 h-16 rounded-lg object-cover shrink-0"
-                />
-                <div class="flex-1 min-w-0">
-                  <p class="flex items-center gap-1.5 text-sm font-semibold text-emerald-600">
-                    <span class="w-4 h-4"><app-icon name="check-circle" /></span>
-                    Comprobante cargado
-                  </p>
-                  <p class="text-xs text-gray-400 truncate">{{ receiptFileName() }}</p>
-                </div>
-                <label
-                  class="px-1 text-sm font-semibold text-violet-600 hover:text-violet-700 cursor-pointer shrink-0"
-                >
-                  {{ uploading() ? 'Subiendo…' : 'Cambiar' }}
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    (change)="onFileSelected($event)"
-                    [disabled]="uploading() || submitting()"
-                    class="hidden"
-                  />
-                </label>
-                <button
-                  type="button"
-                  (click)="removeReceipt()"
-                  [disabled]="uploading() || submitting()"
-                  aria-label="Quitar comprobante"
-                  title="Quitar comprobante"
-                  class="w-10 h-10 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
-                >
-                  <span class="w-4 h-4"><app-icon name="close" /></span>
-                </button>
-              </div>
-            } @else {
-              <label
-                class="min-h-[96px] p-4 border-2 border-dashed border-gray-300 rounded-2xl cursor-pointer flex flex-col items-center justify-center gap-1.5 text-center hover:border-violet-400 hover:bg-violet-50 transition-colors"
-              >
-                <span class="w-6 h-6 text-violet-600"><app-icon name="upload" /></span>
-                <span class="text-sm font-semibold text-gray-900">Elige una imagen del comprobante</span>
-                <span class="text-xs text-gray-400">Foto o captura de pantalla · JPG o PNG</span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  (change)="onFileSelected($event)"
-                  class="hidden"
-                />
-              </label>
-            }
+          <!-- spec 132 (FR-008/FR-023): aviso de mostrar el comprobante al
+               cajero en la entrega, en vez del paso de subida retirado. -->
+          <div
+            class="mt-4 flex items-start gap-2.5 p-3.5 bg-violet-50 border border-violet-100 rounded-xl"
+          >
+            <span class="w-5 h-5 text-violet-600 shrink-0 mt-0.5"><app-icon name="check-circle" /></span>
+            <p class="text-sm text-violet-900">
+              Al recibir tu pedido, muestra el comprobante desde la app de tu banco al cajero.
+              No necesitas subir ningún archivo ahora.
+            </p>
           </div>
 
           <div class="mt-4 space-y-2">
             <button
               (click)="confirmSend()"
-              [disabled]="!previewUrl() || uploading() || submitting()"
+              [disabled]="submitting()"
               class="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl transition-colors disabled:bg-gray-200 disabled:text-gray-400"
             >
-              @if (uploading()) {
-                Subiendo comprobante…
-              } @else if (submitting()) {
+              @if (submitting()) {
                 Enviando pedido…
               } @else {
                 Enviar pedido
               }
             </button>
-            <p class="text-center text-xs text-gray-400">
-              {{ previewUrl() ? 'Listo para enviar.' : 'Sube el comprobante para enviar el pedido.' }}
-            </p>
           </div>
         }
       </div>
     </div>
   `,
 })
-export class TransferDetailsStepComponent implements OnInit, OnDestroy {
+export class TransferDetailsStepComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly api = inject(DinerService);
@@ -271,15 +211,6 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
   private readonly token = this.route.snapshot.paramMap.get('token') ?? '';
 
   readonly method = signal<DinerPaymentMethod | null>(null);
-  /** Archivo elegido, todavía no subido — `null` si la vista previa viene de
-   *  una URL ya hidratada del store (nada que subir de nuevo). */
-  readonly pendingImage = signal<File | null>(null);
-  /** Lo que pinta el `<img>`: un blob local recién elegido, o la URL pública
-   *  ya subida (hidratada o resultado de un intento de envío previo). */
-  readonly previewUrl = signal<string | null>(null);
-  /** URL pública ya subida — lo único que se manda a `submitCart`. */
-  readonly uploadedReceiptUrl = signal<string | null>(null);
-  readonly uploading = signal(false);
   readonly submitting = signal(false);
   readonly error = signal<string | null>(null);
   /** Spec 130 (FR-007): monto en efectivo del pago mixto — `null` ⇔ no es mixto. */
@@ -328,22 +259,6 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
     const method = this.method();
     return this.mixedCashAmount() !== null && method ? `Transfiere por ${method.name}` : 'Total a pagar';
   });
-  /** Nombre a mostrar junto al comprobante ya cargado: el del archivo recién
-   *  elegido, o el de la URL ya subida cuando se hidrata desde el store (sin
-   *  `File` disponible). */
-  readonly receiptFileName = computed(() => {
-    const file = this.pendingImage();
-    if (file) return file.name;
-    const url = this.uploadedReceiptUrl();
-    if (!url) return '';
-    const path = url.split('?')[0];
-    const last = path.substring(path.lastIndexOf('/') + 1);
-    try {
-      return decodeURIComponent(last);
-    } catch {
-      return last;
-    }
-  });
 
   async ngOnInit(): Promise<void> {
     const record = this.progress.read();
@@ -384,108 +299,29 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
       ? methods.find((m) => m.id === this.submitTransferMethodId) ?? found
       : found;
     this.method.set(displayMethod);
-
-    // Comprobante ya subido antes de esta entrada (recarga, o volver del
-    // paso anterior sin haber enviado) — se hidrata la vista previa; nunca se
-    // pide seleccionar el archivo de nuevo (FR-006).
-    if (record?.receipt_file_url) {
-      this.uploadedReceiptUrl.set(record.receipt_file_url);
-      this.previewUrl.set(record.receipt_file_url);
-    }
   }
 
-  ngOnDestroy(): void {
-    this.revokePreview();
-  }
-
-  /**
-   * Solo prepara la vista previa (`URL.createObjectURL`); NO sube nada
-   * todavía — la subida ocurre recién al presionar "Enviar pedido"
-   * (`confirmSend`), para que el comensal pueda revisar o cambiar la imagen
-   * antes de que se cree cualquier pedido.
-   */
-  onFileSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = ''; // permite reelegir el mismo archivo
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      this.error.set('El archivo debe ser una imagen.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      this.error.set('La imagen supera el máximo de 5 MB.');
-      return;
-    }
-    this.error.set(null);
-    this.revokePreview();
-    this.pendingImage.set(file);
-    this.previewUrl.set(URL.createObjectURL(file));
-    this.uploadedReceiptUrl.set(null);
-    this.progress.write({ receipt_file_url: null }); // el reemplazo invalida lo ya subido
-  }
-
-  /** Quita el comprobante elegido (o ya subido) — vuelve al estado vacío. */
-  removeReceipt(): void {
-    this.revokePreview();
-    this.pendingImage.set(null);
-    this.previewUrl.set(null);
-    this.uploadedReceiptUrl.set(null);
-    this.progress.write({ receipt_file_url: null });
-    this.error.set(null);
-  }
-
-  /**
-   * Único disparador de red de este paso: sube el comprobante si todavía no
-   * se había subido, y envía el pedido. Si ya había una URL subida (un
-   * intento anterior falló solo en `submitCart`, o se hidrató del store), no
-   * vuelve a subir el archivo — solo reintenta el envío.
-   */
+  /** Único disparador de red de este paso: envía el pedido directamente — spec
+   *  132 (FR-023) retira la subida de comprobante que antes ocurría aquí. */
   async confirmSend(): Promise<void> {
     const method = this.method();
     if (!method) return;
     this.error.set(null);
-
-    let receiptUrl = this.uploadedReceiptUrl();
-    if (!receiptUrl) {
-      const file = this.pendingImage();
-      if (!file) return;
-      this.uploading.set(true);
-      try {
-        const presign = await this.api.presignPaymentReceipt(file.type);
-        await this.api.uploadReceiptFile(presign.upload_url, file);
-        receiptUrl = presign.public_url;
-        this.uploadedReceiptUrl.set(receiptUrl);
-        // FR-006: se guarda antes de enviar el pedido — una recarga desde
-        // aquí ya hidrata la vista previa sin pedir el archivo de nuevo.
-        this.progress.write({ receipt_file_url: receiptUrl });
-      } catch (err) {
-        this.uploading.set(false);
-        if (err instanceof DinerSessionExpiredError) {
-          this.expireSession();
-          return;
-        }
-        this.error.set(this.api.extractError(err, 'No se pudo subir el comprobante.'));
-        return;
-      }
-      this.uploading.set(false);
-    }
-
     this.submitting.set(true);
     try {
       // spec 130: el `payment_method_id` a enviar es "Pago mixto" en un pago
       // mixto (`submitPaymentMethodId`), no el método de transferencia que
       // `method()` muestra para los datos bancarios.
-      await this.submit(this.submitPaymentMethodId ?? method.id, receiptUrl);
+      await this.submit(this.submitPaymentMethodId ?? method.id);
     } finally {
       this.submitting.set(false);
     }
   }
 
-  private async submit(methodId: string, receiptFileUrl: string): Promise<void> {
+  private async submit(methodId: string): Promise<void> {
     try {
       const order = await this.api.submitCart(
-        methodId, receiptFileUrl, this.mixedCashAmount(), this.submitTransferMethodId,
+        methodId, null, this.mixedCashAmount(), this.submitTransferMethodId,
       );
       this.progress.clear();
       this.progress.activeOrder.set(order);
@@ -496,18 +332,11 @@ export class TransferDetailsStepComponent implements OnInit, OnDestroy {
         this.expireSession();
         return;
       }
-      // El comprobante ya subido se conserva a propósito: un segundo click en
-      // "Enviar pedido" no debe volver a subir el archivo.
       this.error.set(this.api.extractError(err, 'No se pudo enviar el pedido.'));
       // spec 128 (FR-007): mismo motivo que payment-method-step -- sincroniza
       // el carrito local con lo que el servidor ya quitó.
       await this.cart.load().catch(() => undefined);
     }
-  }
-
-  private revokePreview(): void {
-    const url = this.previewUrl();
-    if (url) URL.revokeObjectURL(url);
   }
 
   /** Copia un valor de texto ya mostrado (p. ej. número de cuenta/celular) al

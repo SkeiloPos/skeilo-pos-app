@@ -138,21 +138,38 @@ export function esperaConfirmacion(order: Pick<DiningOrder, 'status'>): boolean 
 }
 
 /**
+ * El personal ya "aceptó" el pedido para que cocina empiece
+ * (`POST /orders/{id}/start-preparation`), aunque el pago siga sin
+ * confirmarse. `status` sigue en `recibida` a propósito -- aceptar para
+ * cocina y cobrar son decisiones separadas (no se descuenta inventario ni se
+ * genera venta solo por esto). La señal es que ya hay algún ítem fuera de
+ * `pendiente`/`anulado` mientras el pedido sigue `recibida`.
+ */
+export function pedidoAceptadoSinCobrar(order: Pick<DiningOrder, 'status' | 'items'>): boolean {
+  if (order.status !== 'recibida') return false;
+  const items = order.items ?? [];
+  return items.some((it) => it.estado_cocina !== 'pendiente' && it.estado_cocina !== 'anulado');
+}
+
+/**
  * ¿Puede el **comensal** cancelar este pedido?
  *
  * Solo si nada se ha empezado a preparar: en `recibida` (nunca tocó inventario)
- * o en `abierta` con todos sus ítems aún `pendiente`. En cuanto cocina arranca,
- * el insumo ya se consumió y la cancelación es pérdida — decisión del personal,
- * no del cliente.
+ * o en `abierta` con todos sus ítems aún `pendiente`. En cuanto cocina arranca
+ * -- incluido el caso de `pedidoAceptadoSinCobrar` arriba, donde `status`
+ * sigue en `recibida` pero ya hay ítems en curso -- el insumo ya se consumió
+ * (o está a punto de) y la cancelación es pérdida: decisión del personal, no
+ * del cliente.
  *
  * Es la misma regla que aplica el backend; la UI la replica para ocultar el
  * botón en vez de dejar que el usuario choque con un `409`.
  */
 export function puedeCancelarComensal(order: Pick<DiningOrder, 'status' | 'items'>): boolean {
-  if (order.status === 'recibida') return true;
-  if (order.status !== 'abierta') return false;
   const items = order.items ?? [];
-  return items.every((it) => it.estado_cocina === 'pendiente' || it.estado_cocina === 'anulado');
+  const enCocina = items.some((it) => it.estado_cocina !== 'pendiente' && it.estado_cocina !== 'anulado');
+  if (enCocina) return false;
+  if (order.status === 'recibida') return true;
+  return order.status === 'abierta';
 }
 
 /**

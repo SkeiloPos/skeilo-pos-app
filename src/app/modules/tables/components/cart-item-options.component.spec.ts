@@ -99,8 +99,13 @@ describe('CartItemOptionsComponent', () => {
     expect(clases.contains('italic')).toBe(false);
     expect(clases.contains('rounded-full')).toBe(false);
     expect(clases.contains('rounded-lg')).toBe(true);
-    expect(clases.contains('bg-amber-100')).toBe(true);
-    expect(clases.contains('text-amber-900')).toBe(true);
+    // Rediseño (design/nueva-orden.html): el fondo/color de alto contraste
+    // vienen de los tokens --terminal-color-* (inline style), no de clases
+    // Tailwind planas -- mismo criterio de alto contraste (texto
+    // --terminal-color-text-primary sobre --terminal-color-warning-soft).
+    const style = notas()[0].getAttribute('style') ?? '';
+    expect(style).toContain('--terminal-color-warning-soft');
+    expect(style).toContain('--terminal-color-text-primary');
     expect(notas()[0].textContent).toContain('Nota:');
     expect(notas()[0].textContent).toContain('sin azúcar');
   });
