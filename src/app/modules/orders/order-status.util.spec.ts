@@ -1,4 +1,11 @@
-import { displayOrderStatus, orderDisplayCode, orderLocationLabel, orderTypeLabel } from './order-status.util';
+import {
+  displayOrderStatus,
+  orderDisplayCode,
+  orderLocationLabel,
+  orderTypeLabel,
+  pedidoAceptadoSinCobrar,
+  puedeCancelarComensal,
+} from './order-status.util';
 
 /**
  * Panel de Control → Órdenes reportó "Abierta" para un pedido QR ya cobrado
@@ -51,6 +58,88 @@ describe('orderDisplayCode', () => {
 
   it('ignora los guiones del UUID al tomar los últimos caracteres', () => {
     expect(orderDisplayCode({ id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0012' })).toBe('#EE0012');
+  });
+});
+
+/**
+ * "Aceptar pedido" sin cobrar (`POST /orders/{id}/start-preparation`): deja
+ * que cocina empiece mientras `status` sigue en `recibida`, sin esperar a que
+ * el pago se confirme.
+ */
+describe('pedidoAceptadoSinCobrar', () => {
+  it('false mientras todos los ítems siguen pendiente', () => {
+    expect(
+      pedidoAceptadoSinCobrar({
+        status: 'recibida',
+        items: [{ estado_cocina: 'pendiente' } as any],
+      }),
+    ).toBe(false);
+  });
+
+  it('true en recibida con al menos un ítem ya en_preparacion', () => {
+    expect(
+      pedidoAceptadoSinCobrar({
+        status: 'recibida',
+        items: [
+          { estado_cocina: 'pendiente' } as any,
+          { estado_cocina: 'en_preparacion' } as any,
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it('false fuera de recibida (abierta ya pasó por el camino normal de confirmar)', () => {
+    expect(
+      pedidoAceptadoSinCobrar({
+        status: 'abierta',
+        items: [{ estado_cocina: 'en_preparacion' } as any],
+      }),
+    ).toBe(false);
+  });
+});
+
+/**
+ * ¿Puede el comensal cancelar? Misma regla que aplica el backend
+ * (`cart/service.py::cancel_my_order`) -- incluido el fix del bug real: antes
+ * solo miraba `estado_cocina` cuando `status !== 'recibida'`, así que un
+ * pedido aceptado para cocina sin cobrar (status aún `recibida`, ítems ya
+ * `en_preparacion`) seguía mostrando el botón.
+ */
+describe('puedeCancelarComensal', () => {
+  it('recibida sin ítems en curso: se puede cancelar', () => {
+    expect(
+      puedeCancelarComensal({ status: 'recibida', items: [{ estado_cocina: 'pendiente' } as any] }),
+    ).toBe(true);
+  });
+
+  it('recibida pero ya aceptado para cocina (bugfix): NO se puede cancelar', () => {
+    expect(
+      puedeCancelarComensal({
+        status: 'recibida',
+        items: [{ estado_cocina: 'en_preparacion' } as any],
+      }),
+    ).toBe(false);
+  });
+
+  it('abierta con todos los ítems pendiente: se puede cancelar', () => {
+    expect(
+      puedeCancelarComensal({ status: 'abierta', items: [{ estado_cocina: 'pendiente' } as any] }),
+    ).toBe(true);
+  });
+
+  it('abierta con algún ítem en_preparacion: no se puede cancelar', () => {
+    expect(
+      puedeCancelarComensal({
+        status: 'abierta',
+        items: [{ estado_cocina: 'en_preparacion' } as any],
+      }),
+    ).toBe(false);
+  });
+
+  it('bloqueada: no se puede cancelar sin importar los ítems', () => {
+    expect(
+      puedeCancelarComensal({ status: 'bloqueada', items: [{ estado_cocina: 'pendiente' } as any] }),
+    ).toBe(false);
   });
 });
 

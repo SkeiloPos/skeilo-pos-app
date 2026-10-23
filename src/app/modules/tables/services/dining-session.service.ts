@@ -16,6 +16,8 @@ import {
   OrderCreatePayload,
   OrderItemPayload,
   PaymentAttempt,
+  PaymentEvent,
+  RejectionReason,
 } from '../interfaces/dining.interface';
 import { Sale } from '../../sales/interfaces/sales.interface';
 
@@ -166,6 +168,19 @@ export class DiningSessionService {
     return firstValueFrom(this.http.post<DiningOrder>(`${this.api}/orders/${orderId}/ready`, {}));
   }
 
+  /**
+   * "Aceptar pedido" sin cobrar: pasa a `en_preparacion` todos los ítems
+   * `pendiente` de la orden, en una sola petición. NO toca el `status` del
+   * pedido ni descuenta inventario — sigue pudiendo cobrarse después por el
+   * camino normal (`confirmCashPaymentAttempt`/`approvePaymentAttempt`). Deja
+   * que cocina empiece mientras el pago sigue pendiente de revisión.
+   */
+  async acceptOrderForKitchen(orderId: string): Promise<DiningOrder> {
+    return firstValueFrom(
+      this.http.post<DiningOrder>(`${this.api}/orders/${orderId}/start-preparation`, {}),
+    );
+  }
+
   // ── Intentos de pago (cajero, spec 024) ──────────────────────────────────
 
   /** Historial completo de intentos de pago de una orden (incluye rechazados
@@ -192,13 +207,45 @@ export class DiningSessionService {
     );
   }
 
-  /** Rechaza un comprobante de transferencia; el motivo es obligatorio. */
-  async rejectPaymentAttempt(attemptId: string, reason: string): Promise<PaymentAttempt> {
+  /** Rechaza un comprobante de transferencia con un motivo del conjunto
+   *  cerrado (spec 132, FR-015) — `422` si no pertenece a `RejectionReason`. */
+  async rejectPaymentAttempt(attemptId: string, reason: RejectionReason): Promise<PaymentAttempt> {
     return firstValueFrom(
       this.http.post<PaymentAttempt>(
         `${this.api}/orders/payment-attempts/${attemptId}/reject`,
         { reason },
       ),
+    );
+  }
+
+  /** Reajusta la división efectivo/transferencia de un intento `pendiente`
+   *  al confirmar (spec 132, FR-013) — convierte transferencia total ↔ mixto
+   *  ↔ efectivo total sin crear un intento nuevo. `409` si la suma no
+   *  coincide con el total del pedido, o si el intento ya fue resuelto. */
+  async adjustSplitPaymentAttempt(
+    attemptId: string,
+    cashAmount: number,
+    transferAmount: number,
+    transferMethodId: string | null = null,
+    paymentMethodId: string | null = null,
+  ): Promise<PaymentAttempt> {
+    return firstValueFrom(
+      this.http.post<PaymentAttempt>(
+        `${this.api}/orders/payment-attempts/${attemptId}/adjust-split`,
+        {
+          cash_amount: cashAmount,
+          transfer_amount: transferAmount,
+          transfer_method_id: transferMethodId,
+          payment_method_id: paymentMethodId,
+        },
+      ),
+    );
+  }
+
+  /** Historial de auditoría consultable de un pedido (spec 132, FR-019). */
+  async listPaymentEvents(orderId: string): Promise<PaymentEvent[]> {
+    return firstValueFrom(
+      this.http.get<PaymentEvent[]>(`${this.api}/orders/${orderId}/payment-events`),
     );
   }
 

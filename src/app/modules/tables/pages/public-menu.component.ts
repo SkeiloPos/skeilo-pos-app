@@ -37,6 +37,7 @@ import {
   kitchenStatusLabel,
   orderStatusClass,
   orderStatusLabel,
+  pedidoAceptadoSinCobrar,
   puedeCancelarComensal,
 } from '../../orders/order-status.util';
 import { CartComponent } from '../components/cart.component';
@@ -353,7 +354,11 @@ const REFRESH_DEBOUNCE_MS = 250;
                       <span class="text-sm text-gray-400 tabular-nums">{{ orderTime(order) }}</span>
                     </div>
 
-                    @if (esperaConfirmacion(order)) {
+                    @if (aceptadoSinCobrar(order)) {
+                      <p class="text-sm text-blue-600">
+                        Tu pedido está en preparación.
+                      </p>
+                    } @else if (esperaConfirmacion(order)) {
                       <p class="text-sm text-violet-600">
                         Esperando a que el personal lo acepte.
                       </p>
@@ -420,7 +425,7 @@ const REFRESH_DEBOUNCE_MS = 250;
                               </div>
                             }
                             <app-cart-item-options [options]="itemOptionLines(item)" [notes]="item.notes ?? null" />
-                            @if (!esperaConfirmacion(order) && item.estado_cocina !== 'anulado') {
+                            @if ((!esperaConfirmacion(order) || aceptadoSinCobrar(order)) && item.estado_cocina !== 'anulado') {
                               <span class="inline-block px-2 py-0.5 rounded-full text-xs" [class]="kitchenClass(item)">
                                 {{ kitchenLabel(item) }}
                               </span>
@@ -805,7 +810,9 @@ const REFRESH_DEBOUNCE_MS = 250;
                   </div>
                 }
               } @else if (!selectedMethod()?.is_cash) {
-                <!-- Paso 2 (transferencia): datos de pago + subir comprobante -->
+                <!-- Paso 2 (transferencia): datos de pago — spec 132 (FR-023)
+                     retira la subida de comprobante; la verificación queda a
+                     cargo del cajero en persona al recibir el pedido. -->
                 @if (selectedMethod()?.payment_info; as info) {
                   <div class="bg-violet-50 rounded-xl p-3 space-y-1">
                     @for (key of objectKeys(info); track key) {
@@ -815,19 +822,17 @@ const REFRESH_DEBOUNCE_MS = 250;
                     }
                   </div>
                 }
-                <label class="block">
-                  <span class="text-xs font-medium text-gray-700">Sube tu comprobante</span>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    (change)="onReceiptSelected($event)"
-                    [disabled]="paymentSubmitting()"
-                    class="mt-1 w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700"
-                  />
-                </label>
-                @if (paymentSubmitting()) {
-                  <p class="text-xs text-gray-400 text-center">Subiendo comprobante…</p>
-                }
+                <p class="text-xs text-gray-500">
+                  Muestra el comprobante desde la app de tu banco al cajero cuando te entreguen
+                  el pedido.
+                </p>
+                <button
+                  type="button"
+                  (click)="closePayment()"
+                  class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition-colors"
+                >
+                  Listo
+                </button>
               } @else {
                 <p class="text-sm text-gray-600 text-center py-2">
                   Elegiste efectivo — el personal confirmará el pago cuando recibas tu pedido.
@@ -1433,11 +1438,19 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     return esperaConfirmacion(order);
   }
 
+  /** El personal ya aceptó el pedido para cocina sin cobrarlo todavía --
+   *  `status` sigue en 'recibida' a propósito (ver util). */
+  aceptadoSinCobrar(order: DiningOrder): boolean {
+    return pedidoAceptadoSinCobrar(order);
+  }
+
   statusLabel(order: DiningOrder): string {
+    if (this.aceptadoSinCobrar(order)) return kitchenStatusLabel('en_preparacion');
     return orderStatusLabel(order.status);
   }
 
   statusClass(order: DiningOrder): string {
+    if (this.aceptadoSinCobrar(order)) return kitchenStatusClass('en_preparacion');
     return orderStatusClass(order.status);
   }
 
@@ -1537,28 +1550,6 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     }
   }
 
-  async onReceiptSelected(event: Event): Promise<void> {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    const attempt = this.activeAttempt();
-    if (!file || !attempt) return;
-
-    this.paymentSubmitting.set(true);
-    this.paymentError.set(null);
-    try {
-      const presign = await this.api.presignReceipt(attempt.id, file.type);
-      await this.api.uploadReceiptFile(presign.upload_url, file);
-      await this.api.attachReceipt(attempt.id, presign.public_url);
-      await this.refreshOrders();
-      this.closePayment();
-    } catch (err) {
-      if (this.handleSessionError(err)) return;
-      this.paymentError.set(this.api.extractError(err, 'No se pudo subir el comprobante.'));
-    } finally {
-      this.paymentSubmitting.set(false);
-      input.value = '';
-    }
-  }
 
   /**
    * Salida del comensal.

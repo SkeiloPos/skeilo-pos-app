@@ -10,7 +10,14 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { CheckoutPreview, DiningOrder, lineTotal, PaymentAttempt } from '../interfaces/dining.interface';
+import {
+  CheckoutPreview,
+  DiningOrder,
+  lineTotal,
+  PaymentAttempt,
+  REJECTION_REASON_OPTIONS,
+  RejectionReason,
+} from '../interfaces/dining.interface';
 import { DiningSessionService } from '../services/dining-session.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
 import { MoneyInputComponent } from '../../../shared/money-input/money-input.component';
@@ -144,8 +151,15 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
             pedido nunca salía de 'recibida'.
           -->
           @if (attempt.status === 'pendiente') {
-            @if (attempt.receipt_file_url) {
-              <div class="flex items-center gap-2 flex-wrap">
+            <!-- spec 132 (A-144, FR-012): el comprobante ya no es obligatorio
+                 para aprobar -- la verificación real es la del cajero en
+                 persona en la mesa, no un archivo. "Ver comprobante" solo
+                 aparece si el cajero mismo adjuntó una foto opcional. -->
+            <p class="text-sm text-gray-700">
+              Transferencia a confirmar: <strong>{{ money(attempt.transfer_amount) }}</strong>
+            </p>
+            <div class="flex items-center gap-2 flex-wrap">
+              @if (attempt.receipt_file_url) {
                 <button
                   type="button"
                   (click)="receiptPreviewOpen.set(true)"
@@ -153,43 +167,44 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                 >
                   Ver comprobante
                 </button>
-                <button
-                  (click)="approve(attempt)"
-                  [disabled]="busy() || !cashShiftId || actionsBlocked()"
-                  class="min-h-11 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition-colors"
+              }
+              <button
+                (click)="approve(attempt)"
+                [disabled]="busy() || !cashShiftId || actionsBlocked()"
+                class="min-h-11 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition-colors"
+              >
+                Aprobar transferencia
+              </button>
+              <button
+                (click)="showReject.set(!showReject())"
+                [disabled]="busy()"
+                class="min-h-11 px-4 py-2 text-sm font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-colors"
+              >
+                Rechazar
+              </button>
+            </div>
+            @if (!cashShiftId) {
+              <p class="text-sm text-red-600">Abre un turno de caja para poder aprobar el pago.</p>
+            }
+            @if (showReject()) {
+              <div class="flex items-center gap-2 pt-1 flex-wrap">
+                <select
+                  [(ngModel)]="rejectReason"
+                  class="flex-1 min-h-11 px-2 py-1 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-300"
                 >
-                  Aprobar transferencia
-                </button>
+                  <option value="" disabled>Motivo del rechazo (obligatorio)</option>
+                  @for (o of rejectionReasonOptions; track o.value) {
+                    <option [value]="o.value">{{ o.label }}</option>
+                  }
+                </select>
                 <button
-                  (click)="showReject.set(!showReject())"
-                  [disabled]="busy()"
-                  class="min-h-11 px-4 py-2 text-sm font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-colors"
+                  (click)="reject(attempt)"
+                  [disabled]="busy() || !rejectReason"
+                  class="min-h-11 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors"
                 >
-                  Rechazar
+                  Confirmar rechazo
                 </button>
               </div>
-              @if (!cashShiftId) {
-                <p class="text-sm text-red-600">Abre un turno de caja para poder aprobar el pago.</p>
-              }
-              @if (showReject()) {
-                <div class="flex items-center gap-2 pt-1 flex-wrap">
-                  <input
-                    type="text"
-                    [(ngModel)]="rejectReason"
-                    placeholder="Motivo del rechazo (obligatorio)"
-                    class="flex-1 min-h-11 px-2 py-1 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-300"
-                  />
-                  <button
-                    (click)="reject(attempt)"
-                    [disabled]="busy() || !rejectReason.trim()"
-                    class="min-h-11 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors"
-                  >
-                    Confirmar rechazo
-                  </button>
-                </div>
-              }
-            } @else {
-              <p class="text-sm text-amber-700">Esperando que el comensal suba el comprobante de la transferencia…</p>
             }
           } @else {
             <p class="text-sm text-emerald-700 font-medium inline-flex items-center gap-1.5">
@@ -356,16 +371,21 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
           @if (!cashShiftId) {
             <p class="text-sm text-red-600">Abre un turno de caja para poder confirmar el pago.</p>
           }
-        } @else if (attempt.receipt_file_url) {
-          <!-- Transferencia con comprobante ya subido: aprobar o rechazar. -->
+        } @else {
+          <!-- spec 132 (A-144, FR-012): el comprobante ya no es obligatorio
+               para aprobar -- la verificación real es la del cajero en
+               persona en la mesa. "Ver comprobante" solo aparece si el
+               cajero mismo adjuntó una foto opcional. -->
           <div class="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              (click)="receiptPreviewOpen.set(true)"
-              class="text-sm font-medium hover:underline" style="color:var(--terminal-color-primary,#4f46e5)"
-            >
-              Ver comprobante
-            </button>
+            @if (attempt.receipt_file_url) {
+              <button
+                type="button"
+                (click)="receiptPreviewOpen.set(true)"
+                class="text-sm font-medium hover:underline" style="color:var(--terminal-color-primary,#4f46e5)"
+              >
+                Ver comprobante
+              </button>
+            }
             <button
               (click)="approve(attempt)"
               [disabled]="busy() || !cashShiftId || actionsBlocked()"
@@ -387,32 +407,24 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
 
           @if (showReject()) {
             <div class="flex items-center gap-2 pt-1 flex-wrap">
-              <input
-                type="text"
+              <select
                 [(ngModel)]="rejectReason"
-                placeholder="Motivo del rechazo (obligatorio)"
                 class="flex-1 min-h-11 px-2 py-1 text-base border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-300"
-              />
+              >
+                <option value="" disabled>Motivo del rechazo (obligatorio)</option>
+                @for (o of rejectionReasonOptions; track o.value) {
+                  <option [value]="o.value">{{ o.label }}</option>
+                }
+              </select>
               <button
                 (click)="reject(attempt)"
-                [disabled]="busy() || !rejectReason.trim()"
+                [disabled]="busy() || !rejectReason"
                 class="min-h-11 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors"
               >
                 Confirmar rechazo
               </button>
             </div>
           }
-        } @else {
-          <p class="text-sm text-amber-700">Esperando que el comensal suba el comprobante…</p>
-          <div class="flex items-center gap-2 flex-wrap">
-            <button
-              (click)="showRejectOrder.set(!showRejectOrder())"
-              [disabled]="busy()"
-              class="min-h-11 px-4 py-2 text-sm font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-colors"
-            >
-              Rechazar pedido
-            </button>
-          </div>
         }
 
         @if (showRejectOrder()) {
@@ -454,7 +466,46 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
           </p>
         }
       } @else {
-        <p class="text-sm text-gray-400">Sin pago confirmado — el último intento fue rechazado.</p>
+        <!-- spec 132 (US5): el pago quedó rechazado -- el comensal puede
+             corregir y reintentar la transferencia (un único reintento) o
+             pagar el total en efectivo desde "¿Cómo vas a pagar?" en el QR;
+             si ninguna de las dos funciona, el cajero cancela por impago. -->
+        <p class="text-sm text-gray-400">
+          Sin pago confirmado — el último intento fue rechazado
+          @if (last.rejection_reason) {
+            ({{ rejectionReasonLabel(last.rejection_reason) }})
+          }.
+        </p>
+        <p class="text-xs text-gray-400 mt-1">
+          El comensal puede corregir y reintentar la transferencia, o pagar el total en
+          efectivo, desde "¿Cómo vas a pagar?" en su QR.
+        </p>
+        @if (showCancelImpago()) {
+          <div class="flex items-center gap-2 pt-1 flex-wrap">
+            <button
+              (click)="cancelAsImpago(order)"
+              [disabled]="busy()"
+              class="min-h-11 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors"
+            >
+              Confirmar cancelación por impago
+            </button>
+            <button
+              (click)="showCancelImpago.set(false)"
+              [disabled]="busy()"
+              class="min-h-11 px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        } @else {
+          <button
+            (click)="showCancelImpago.set(true)"
+            [disabled]="busy()"
+            class="mt-2 min-h-11 px-4 py-2 text-sm font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40 transition-colors"
+          >
+            Cancelar pedido por impago
+          </button>
+        }
       }
     } @else {
       <p class="text-sm text-gray-400">El comensal aún no inició el pago.</p>
@@ -505,13 +556,18 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
   readonly busy = signal(false);
   readonly showReject = signal(false);
   readonly receiptPreviewOpen = signal(false);
-  rejectReason = '';
+  /** spec 132 (FR-015): conjunto cerrado — `''` ⇔ nada seleccionado aún. */
+  readonly rejectionReasonOptions = REJECTION_REASON_OPTIONS;
+  rejectReason: RejectionReason | '' = '';
   amountReceived: number | null = null;
   /** Spec 044 — rechazo de pedido completo (efectivo / sin comprobante aún).
    *  Nombres distintos de `showReject`/`rejectReason` (que siguen siendo solo
    *  del rechazo de intento con reintento, transferencia con comprobante). */
   readonly showRejectOrder = signal(false);
   rejectOrderReason = '';
+  /** Spec 132 (US5, FR-018): confirmación de cancelar por impago tras un
+   *  rechazo sin otra salida -- mismo patrón de doble clic que `showReject`. */
+  readonly showCancelImpago = signal(false);
 
   /**
    * spec 073, US7 (FR-021/FR-022): desglose autoritativo del cobro del pedido
@@ -547,6 +603,8 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
     this.checkoutPreview.set(null);
     this.checkoutPreviewError.set(null);
     this.totalChangeNotice.set(null);
+    this.showCancelImpago.set(false);
+    this.rejectReason = '';
     if (this.order) {
       this.load();
       void this.loadCheckoutPreview();
@@ -744,10 +802,10 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
   }
 
   async reject(attempt: PaymentAttempt): Promise<void> {
-    if (!this.rejectReason.trim()) return;
+    if (!this.rejectReason) return;
     this.busy.set(true);
     try {
-      await this.api.rejectPaymentAttempt(attempt.id, this.rejectReason.trim());
+      await this.api.rejectPaymentAttempt(attempt.id, this.rejectReason);
       this.toast.info('Comprobante rechazado');
       this.rejectReason = '';
       this.showReject.set(false);
@@ -848,6 +906,32 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
       this.resolved.emit();
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo rechazar el pedido.'));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** Etiqueta legible de un `RejectionReason` ya persistido (spec 132, FR-015). */
+  rejectionReasonLabel(reason: string): string {
+    return this.rejectionReasonOptions.find((o) => o.value === reason)?.label ?? reason;
+  }
+
+  /**
+   * US5, Acceptance Scenario 4 (FR-017/FR-018): tercera y última salida tras
+   * un rechazo sin otra resolución -- reutiliza `cancelOrder` (mismo
+   * endpoint que `rejectOrder`), con el motivo distintivo que el reporte de
+   * mermas usa para diferenciar esta causa de una cancelación ordinaria
+   * (research.md Decisión 6).
+   */
+  async cancelAsImpago(order: DiningOrder): Promise<void> {
+    this.busy.set(true);
+    try {
+      await this.api.cancelOrder(order.id, 'impago_transferencia_rechazada');
+      this.toast.info('Pedido cancelado por impago');
+      this.showCancelImpago.set(false);
+      this.resolved.emit();
+    } catch (err) {
+      this.toast.error(this.api.extractError(err, 'No se pudo cancelar el pedido.'));
     } finally {
       this.busy.set(false);
     }

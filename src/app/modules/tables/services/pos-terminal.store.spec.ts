@@ -197,10 +197,27 @@ describe('deriveTableStatus', () => {
       expect(deriveTableStatus([order('o1', 'abierta', ['listo'], true)], 'ocupada')).toBe('listo');
     });
 
-    it('pagado pero cocina todavía en curso → no muestra "Listo"', () => {
+    it('pagado pero cocina todavía en curso → "Pagado", no "Listo" ni "En preparación"', () => {
+      // Bugfix: antes esto se veía IGUAL que un pedido sin pagar todavía
+      // (ambos 'en_preparacion'), perdiendo la señal de que el pago ya
+      // entró. El caso real: "Aceptar pedido" sin cobrar (POST
+      // /orders/{id}/start-preparation) seguido de confirmar el pago antes
+      // de que cocina termine.
       expect(
         deriveTableStatus([order('o1', 'abierta', ['en_preparacion'], true)], 'ocupada'),
+      ).toBe('pagado');
+    });
+
+    it('sin pagar y cocina en curso → sigue "En preparación"', () => {
+      expect(
+        deriveTableStatus([order('o1', 'abierta', ['en_preparacion'], false)], 'ocupada'),
       ).toBe('en_preparacion');
+    });
+
+    it('varios pedidos: uno pagado, otro sin pagar, ambos en curso → sigue "En preparación"', () => {
+      const pagado = order('o1', 'abierta', ['en_preparacion'], true);
+      const sinPagar = order('o2', 'abierta', ['pendiente'], false);
+      expect(deriveTableStatus([pagado, sinPagar], 'ocupada')).toBe('en_preparacion');
     });
 
     it('varios pedidos: uno pagado y listo, otro listo pero sin pagar → sigue "Pago pendiente"', () => {

@@ -77,6 +77,7 @@ export const ICON_CATALOG: Record<string, string> = {
   menu: 'menu',
   notifications: 'notifications',
   expand_more: 'expand_more',
+  expand_less: 'expand_less',
   lock: 'lock',
   add: 'add',
   add_circle: 'add_circle',
@@ -97,10 +98,16 @@ export const ICON_CATALOG: Record<string, string> = {
   chevron_left: 'chevron_left',
   chevron_right: 'chevron_right',
   tune: 'tune',
+  sticky_note_2: 'sticky_note_2',
 
   // spec 106: estrella de proveedor preferido (un solo glifo; el estado
   // "preferido" se distingue por color, no por una segunda ligadura).
   star: 'star',
+
+  // Ícono del encabezado del selector de producto rediseñado del cajero
+  // (product-select-pos.component.ts): sin foto de producto, siempre el
+  // mismo glifo genérico de heladería.
+  icecream: 'icecream',
 
   // Ícono de reserva para un `name` desconocido (contracts/icon-component-contract.md)
   help_outline: 'help_outline',

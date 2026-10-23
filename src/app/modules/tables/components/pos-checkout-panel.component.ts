@@ -9,7 +9,8 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
-import { getSidebarMode } from '../interfaces/dining.interface';
+import { DiningOrder, getSidebarMode } from '../interfaces/dining.interface';
+import { pedidoAceptadoSinCobrar } from '../../orders/order-status.util';
 import { SessionBillPanelComponent } from './session-bill-panel.component';
 import { PaymentInputComponent } from './payment-input.component';
 import { BillSummaryComponent } from './bill-summary.component';
@@ -148,6 +149,16 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                     Actualizar
                   </button>
                 </div>
+                @if (!alreadyAcceptedForKitchen(pending)) {
+                  <button
+                    (click)="store.acceptOrderForKitchen()"
+                    [disabled]="store.submitting()"
+                    class="w-full h-10 mb-3 text-[13px] font-semibold text-white rounded-xl transition-colors disabled:opacity-40"
+                    style="background:var(--terminal-color-info,#2563eb)"
+                  >
+                    Aceptar pedido (cocina ya puede empezar, sin cobrar)
+                  </button>
+                }
                 <app-payment-attempt-review-panel
                   [order]="pending"
                   [cashShiftId]="store.cashShiftId()"
@@ -488,11 +499,11 @@ export class PosCheckoutPanelComponent {
 
   /**
    * Spec 045: mesa destino del botón fijo "+ Crear pedido nuevo" -- la mesa
-   * libre ya seleccionada (estado informativo del panel central), o la
-   * primera mesa libre disponible si ninguna lo está. `null` (botón
-   * deshabilitado) si no hay ninguna mesa libre en absoluto. Vive en el
-   * store (`newOrderTableId`) porque `table-sessions.component.ts` necesita
-   * el mismo criterio para su propio CTA del estado vacío sin selección.
+   * libre ya seleccionada (estado informativo del panel central; este panel
+   * solo se muestra cuando hay una). `null` (botón deshabilitado) en
+   * cualquier otro caso. Vive en el store (`newOrderTableId`) porque
+   * `table-sessions.component.ts` necesita el mismo criterio para su propio
+   * CTA del estado vacío sin selección.
    */
   readonly newOrderTableId = this.store.newOrderTableId;
 
@@ -507,6 +518,13 @@ export class PosCheckoutPanelComponent {
 
   /** T004: qué panel de cobro va según el origen del pedido activo. */
   readonly sidebarMode = computed(() => getSidebarMode(this.store.selectedOrder()));
+
+  /** ¿Ya se aceptó este pedido para cocina sin cobrar? Oculta el botón para
+   *  no ofrecer una acción que ya no tiene efecto (`accept_order_for_kitchen`
+   *  es idempotente en el backend, pero no tiene sentido mostrarla dos veces). */
+  alreadyAcceptedForKitchen(order: DiningOrder): boolean {
+    return pedidoAceptadoSinCobrar(order);
+  }
 
   /**
    * Spec 029, hotfix #3: dentro de `terminal-pos`, un pedido que ya se envió

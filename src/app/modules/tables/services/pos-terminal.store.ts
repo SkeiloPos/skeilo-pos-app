@@ -121,6 +121,7 @@ type TableDisplayStatus =
   | 'libre'
   | 'por_confirmar'
   | 'en_preparacion'
+  | 'pagado'
   | 'listo'
   | 'pago_pendiente'
   | 'ocupada'
@@ -164,6 +165,13 @@ const STATUS_META: Record<TableDisplayStatus, { label: string; chip: string }> =
     chip:
       'bg-[var(--terminal-color-success-soft,rgba(0,255,135,0.1))] text-[var(--terminal-color-success,#00ff87)]',
   },
+  // Ya se cobró, pero cocina todavía no termina -- distinto de 'listo' (paga
+  // Y lista) y de 'en_preparacion' a secas (sin pagar todavía). Sin esto, un
+  // pedido ya pagado se veía igual que uno sin pagar mientras cocina sigue.
+  pagado: {
+    label: 'Pagado',
+    chip: 'bg-[var(--terminal-color-info-soft,rgba(96,165,250,0.12))] text-[var(--terminal-color-info,#60a5fa)]',
+  },
   listo: { label: 'Listo', chip: 'bg-green-100 text-green-700' },
   pago_pendiente: { label: 'Pago pendiente', chip: 'bg-violet-600 text-white' },
   ocupada: { label: 'Ocupada', chip: 'bg-sky-100 text-sky-700' },
@@ -181,6 +189,7 @@ const SHORT_STATUS_LABEL: Record<TableDisplayStatus, string> = {
   libre: 'Libre',
   por_confirmar: 'Por conf.',
   en_preparacion: 'En prep.',
+  pagado: 'Pagado',
   listo: 'Listo',
   pago_pendiente: 'Pago',
   ocupada: 'Ocupada',
@@ -249,7 +258,17 @@ export function deriveTableStatus(
   if (orders.some((o) => o.status === 'bloqueada')) return 'pago_pendiente';
 
   const items = orders.flatMap((o) => (o.items ?? []).filter((i) => i.estado_cocina !== 'anulado'));
-  if (items.some((i) => KITCHEN_NOT_READY.includes(i.estado_cocina))) return 'en_preparacion';
+  if (items.some((i) => KITCHEN_NOT_READY.includes(i.estado_cocina))) {
+    // Ya pagado pero cocina todavía en curso (p. ej. "Aceptar pedido" sin
+    // cobrar seguido de "Confirmar efectivo"/"Aprobar comprobante", o
+    // cualquier pedido cobrado antes de que cocina termine, spec 028): sin
+    // este chequeo se veía igual que uno sin pagar todavía.
+    const conConsumo = orders.filter((o) =>
+      (o.items ?? []).some((i) => i.estado_cocina !== 'anulado'),
+    );
+    if (conConsumo.length > 0 && conConsumo.every((o) => o.paid === true)) return 'pagado';
+    return 'en_preparacion';
+  }
   if (items.length > 0 && items.every((i) => i.estado_cocina === 'listo')) {
     // Spec 029, Historia 3: "Listo" exige pago Y cocina, las dos a la vez —
     // no basta con que cocina termine. La señal real sigue siendo
@@ -417,6 +436,18 @@ export class PosTerminalStore {
    *  pestaña "Promociones" — gobierna el `[fromPromotions]` de
    *  `<app-product-select>`, que a su vez decide el paso de cantidad forzado. */
   readonly configuringProductFromPromotions = signal(false);
+  /**
+   * Contador que sube en cada `openConfig`/`openConfigForEdit` (bugfix: reabrir el
+   * modal de selección para el mismo producto quedaba a merced de que Angular
+   * destruyera y recreara la instancia de `app-product-select-pos` entre una
+   * apertura y otra -- el `@if` del template normalmente sí lo hace, pero un
+   * reclic rápido puede coalescer las dos escrituras de señal (cerrar + volver a
+   * abrir) en un solo ciclo de detección de cambios, sin pasar por el estado
+   * falso intermedio, y la instancia se reutiliza con las adiciones/sabores de
+   * la sesión anterior todavía marcados. Un número que SIEMPRE cambia en cada
+   * apertura, ligado a `[openToken]`, obliga a `ngOnChanges` del modal a
+   * reiniciar su selección sin importar si la instancia se recreó o no. */
+  readonly configuringToken = signal(0);
   /** `key` de la línea de `draftLines` que se está editando (rediseño de
    *  `create-order/code.html`) -- `null` cuando `configuringProduct` abre el
    *  modal para AGREGAR un producto nuevo en vez de editar uno ya en el
@@ -531,13 +562,19 @@ export class PosTerminalStore {
    * `min_qty` que ya usa el modal de selección, importado del util
    * compartido en vez de reimplementarlo aquí.
    */
-  private cartLinePromo(variant: MenuVariant, quantity: number): CartLinePromo | null {
+  private cartLinePromo(variant: MenuVariant, quantity: number, addonsTotal = 0): CartLinePromo | null {
     const promo = variant.promotion;
     if (!promo || quantity < promo.min_qty) return null;
-    const originalAmount = variant.price * quantity;
-    const discountedAmount = promo.min_qty === 1
+    // Las adiciones (toppings/opciones "cantidad") se cobran a precio de catálogo,
+    // sin descuento -- se suman igual a ambos lados para que el tachado/insignia
+    // sigan reflejando solo el descuento de la presentación, pero el total con
+    // descuento ("$X") que ve el cajero sí cuadre con `it.subtotal` (que SÍ las
+    // incluye, ver `addDraftFromSelection`). Sin esto, "Subtotal"/"TOTAL ORDEN"
+    // quedaban más altos que la suma de los precios mostrados por línea.
+    const originalAmount = variant.price * quantity + addonsTotal;
+    const discountedAmount = (promo.min_qty === 1
       ? effectivePrice(variant.price, variant.discounted_price) * quantity
-      : packagePrice(variant.price, promo, quantity);
+      : packagePrice(variant.price, promo, quantity)) + addonsTotal;
     if (discountedAmount >= originalAmount) return null;
     return {
       badge: promo.short_condition,
@@ -794,20 +831,15 @@ export class PosTerminalStore {
   );
 
   /**
-   * Mesa destino del CTA fijo "+ Crear pedido nuevo" (mockup de referencia y
-   * `pos-checkout-panel.component.ts`): la mesa ya seleccionada, o la primera
-   * mesa libre disponible si ninguna lo está. `null` (botón deshabilitado) si
-   * no hay ninguna mesa libre en absoluto. Vive en el store (no en un
-   * componente) porque tanto la página (estado vacío unificado, sin
-   * selección) como el panel de cobro (mesa libre ya seleccionada) lo
-   * necesitan con el mismo criterio.
+   * Mesa destino del CTA "+ Crear pedido nuevo" cuando ya hay una mesa
+   * seleccionada (p. ej. panel de cobro con una mesa libre enfocada, o
+   * detalle de una mesa). `null` si no hay ninguna seleccionada -- en ese
+   * caso table-sessions.component.ts navega a la ruta genérica (sin
+   * `:tableId`) para que el usuario elija la mesa en el propio formulario, en
+   * vez de auto-asignar la primera mesa libre (bug: el cajero terminaba en el
+   * detalle de una mesa que nunca tocó).
    */
-  readonly newOrderTableId = computed(
-    () =>
-      this.selectedTableId() ??
-      this.tablesView().find((t) => t.statusLabel === 'Libre')?.id ??
-      null,
-  );
+  readonly newOrderTableId = computed(() => this.selectedTableId());
 
   /**
    * Pestañas de pedido (cuando la mesa tiene >1 orden viva). Rotuladas
@@ -1232,7 +1264,7 @@ export class PosTerminalStore {
       // del rediseño, con el mismo guardia de `min_qty` que ya usa
       // `product-select.component.ts` -- si no califica, no se muestra nada.
       const unitPrice = l.unitPrice;
-      const promo = this.cartLinePromo(l.variant, l.quantity);
+      const promo = this.cartLinePromo(l.variant, l.quantity, l.addonsTotal);
       return {
         kind: 'draft' as const,
         key: l.key,
@@ -1888,6 +1920,7 @@ export class PosTerminalStore {
   openConfig(product: MenuProduct, fromPromotions = false): void {
     this.configuringProduct.set(product);
     this.configuringProductFromPromotions.set(fromPromotions);
+    this.configuringToken.update((n) => n + 1);
   }
   closeConfig(): void {
     this.configuringProduct.set(null);
@@ -1908,6 +1941,7 @@ export class PosTerminalStore {
     if (!line) return;
     this.configuringProduct.set(line.product);
     this.editingDraftKey.set(key);
+    this.configuringToken.update((n) => n + 1);
   }
 
   /** Selección vigente en modo edición, en la forma que espera
@@ -2140,7 +2174,11 @@ export class PosTerminalStore {
    *  (cantidad múltiplo exacto de `min_qty`), el "+" no la rompe sumándole 1:
    *  esa unidad nace en una línea hermana nueva, junto a esta, para no volver
    *  a mezclar paquete con suelto en la misma línea (el problema que A-130/
-   *  A-133 tuvieron que parchar en la presentación en vez de resolver acá). */
+   *  A-133 tuvieron que parchar en la presentación en vez de resolver acá).
+   *  Esa línea hermana nace SIN nota ni adiciones: son elección manual del
+   *  cajero para una línea puntual, no algo que la unidad nueva deba heredar
+   *  en silencio con solo tocar "+" -- si el cajero quiere las mismas
+   *  adiciones ahí también, las agrega él mismo con "Editar". */
   incDraft(key: string): void {
     this.draftLines.update((lines) => {
       const idx = lines.findIndex((x) => x.key === key);
@@ -2152,13 +2190,16 @@ export class PosTerminalStore {
       if (!(minQty > 1 && target.quantity % minQty === 0)) {
         return lines.map((x) => (x.key === key ? { ...x, quantity: x.quantity + 1 } : x));
       }
-      const baseKey = this.productIdentityKey(
-        target.variant.id, target.options, target.notes, target.toppings,
-      );
+      const baseKey = this.productIdentityKey(target.variant.id, target.options, null, []);
       const sibling: ProductDraftLine = {
         ...target,
         quantity: 1,
         key: this.nextAvailableDraftKey(baseKey, lines),
+        notes: null,
+        toppings: [],
+        addonsTotal: target.options.reduce(
+          (s, c) => s + (c.selectionMode === 'cantidad' ? c.option.extra_price * c.quantity : 0), 0,
+        ),
       };
       const next = [...lines];
       next.splice(idx + 1, 0, sibling);
@@ -2255,6 +2296,17 @@ export class PosTerminalStore {
   }
   removeDraft(key: string): void {
     this.draftLines.update((l) => l.filter((x) => x.key !== key));
+  }
+
+  /** Rediseño (design/nueva-orden.html): edición rápida de la nota de una
+   *  línea ya agregada, directamente desde el carrito -- sin reabrir el
+   *  modal completo de sabor/opciones/toppings (`openConfigForEdit`, que
+   *  sigue disponible aparte para eso). No cambia `key`: la nota participa
+   *  de `productIdentityKey` solo al agregar/fusionar líneas nuevas, no al
+   *  editar una ya existente por su `key`. */
+  setDraftNote(key: string, notes: string | null): void {
+    const trimmed = notes?.trim() || null;
+    this.draftLines.update((l) => l.map((x) => (x.key === key ? { ...x, notes: trimmed } : x)));
   }
 
   /** Anexa el draft al pedido ya seleccionado (spec 087/A-85 — "Agregar
@@ -3098,6 +3150,28 @@ export class PosTerminalStore {
       await this.reload();
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo rechazar el pedido.'));
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /**
+   * "Aceptar pedido" sin cobrar: pasa sus ítems `pendiente` a
+   * `en_preparacion` para que cocina empiece, sin esperar a que el pago se
+   * confirme. No genera venta ni toca inventario -- eso sigue pasando
+   * únicamente al cobrar (`confirmCashPaymentAttempt`/`approvePaymentAttempt`).
+   * Reversible solo en el sentido de que no compromete nada: el pedido sigue
+   * pudiendo rechazarse o cobrarse después igual que antes.
+   */
+  async acceptOrderForKitchen(): Promise<void> {
+    const order = this.selectedOrder();
+    if (!order) return;
+    this.submitting.set(true);
+    try {
+      await this.api.acceptOrderForKitchen(order.id);
+      await this.reload();
+    } catch (err) {
+      this.toast.error(this.api.extractError(err, 'No se pudo aceptar el pedido.'));
     } finally {
       this.submitting.set(false);
     }

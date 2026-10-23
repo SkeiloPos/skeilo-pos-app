@@ -20,13 +20,21 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [OrderSummaryCardComponent, IconLucideComponent],
   template: `
-    <div class="w-full min-w-0 h-full flex flex-col" style="background:var(--terminal-color-surface)">
+    <div
+      class="w-full min-w-0 h-full flex flex-col bg-[var(--terminal-color-canvas,#f4f6f9)] sm:bg-[var(--terminal-color-surface)]"
+    >
       @if (store.orderTypeTab() === 'mesas') {
         <!-- Grilla que envuelve y hace scroll vertical (no un carrusel de una
              sola fila): auto-fill con celdas de 240px mínimo (mismo patrón que
-             el mockup de referencia, isTerminal). -->
-        <div class="flex-1 min-w-0 overflow-y-auto p-4">
-          <div data-testid="mesas-grid" class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr))">
+             el mockup de referencia, isTerminal). En móvil, fondo del body (no
+             el blanco de la tarjeta) para que las tarjetas de mesa resalten, y
+             celdas más angostas + menos espaciado (ver order-summary-card.
+             component.ts) para que quepan más mesas visibles a la vez. -->
+        <div class="flex-1 min-w-0 overflow-y-auto p-3 sm:p-4">
+          <div
+            data-testid="mesas-grid"
+            class="grid gap-2.5 sm:gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,150px),1fr))] sm:grid-cols-[repeat(auto-fill,minmax(min(100%,200px),1fr))]"
+          >
             @for (t of store.tablesView(); track t.id) {
               <app-order-summary-card
                 [title]="'Mesa ' + t.number"
@@ -49,8 +57,10 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
         <!-- Spec 059, Historia 2/3: pedidos Domicilio/Para llevar pendientes
              de cobro, mismo formato de tarjeta y de grilla que las mesas —
              seleccionar una abre su detalle y su cobro (Historia 3). -->
-        <div class="flex-1 min-w-0 overflow-y-auto p-4">
-          <div class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr))">
+        <div class="flex-1 min-w-0 overflow-y-auto p-3 sm:p-4">
+          <div
+            class="grid gap-2.5 sm:gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,150px),1fr))] sm:grid-cols-[repeat(auto-fill,minmax(min(100%,200px),1fr))]"
+          >
             @for (o of store.ordersByType(store.orderTypeTab()); track o.id) {
               <app-order-summary-card
                 [title]="o.title"

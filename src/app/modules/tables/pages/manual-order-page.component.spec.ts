@@ -436,7 +436,7 @@ describe('ManualOrderPageComponent', () => {
     expect(store.customerName()).toBe('Ana Torres');
   });
 
-  it('el campo "Mesa asignada" tiene su propia etiqueta, distinguible del encabezado "Nueva orden" (US3, FR-004/FR-005; rediseño create-order/code.html)', async () => {
+  it('el campo "Mesa asignada" tiene su propia etiqueta, distinguible del encabezado "Nueva orden" (US3, FR-004/FR-005; rediseño design/nueva-orden.html)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -454,7 +454,7 @@ describe('ManualOrderPageComponent', () => {
     expect(mesaHeading!.tagName).not.toBe(nuevaOrdenHeading!.tagName);
   });
 
-  it('la barra superior solo contiene "Volver a la Terminal", sin el encabezado "Nueva orden" (spec 052, US1, FR-005)', async () => {
+  it('el encabezado del catálogo fusiona "Volver a la Terminal" con el título "Nueva orden" (rediseño design/nueva-orden.html)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -463,13 +463,17 @@ describe('ManualOrderPageComponent', () => {
     fixture.detectChanges();
 
     const backButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.includes('Volver a la Terminal'),
+      (b as HTMLButtonElement).getAttribute('aria-label')?.includes('Volver a la Terminal'),
     ) as HTMLButtonElement;
-    const topBar = backButton.closest('div') as HTMLElement;
-    expect(topBar.textContent).not.toContain('Nueva orden');
+    expect(backButton).toBeTruthy();
+    const catalogColumn = fixture.nativeElement.querySelector(
+      '[data-testid="catalogo-column"]',
+    ) as HTMLElement;
+    expect(catalogColumn.contains(backButton)).toBe(true);
+    expect(catalogColumn.textContent).toContain('Nueva orden');
   });
 
-  it('"Nueva orden" y "Mesa asignada" viven en el mismo panel derecho (spec 052, US1, FR-001/FR-002/FR-006; rediseño create-order/code.html)', async () => {
+  it('"Mesa asignada" y "Crear pedido" viven en el mismo panel derecho (spec 052, US1, FR-001/FR-002/FR-006; rediseño design/nueva-orden.html)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -479,16 +483,15 @@ describe('ManualOrderPageComponent', () => {
 
     const rightPanel = fixture.nativeElement.querySelector('[data-testid="ticket-column"]') as HTMLElement | null;
     expect(rightPanel).toBeTruthy();
-    expect(rightPanel!.textContent).toContain('Nueva orden');
     expect(rightPanel!.textContent).toContain('Mesa asignada');
     expect(rightPanel!.textContent).toContain('Crear pedido');
-    expect(rightPanel!.textContent).not.toContain('Volver a la Terminal');
   });
 
-  /** Rediseño (`create-order/code.html`): el panel derecho ya no tiene un
-   *  ancho fijo en píxeles -- ocupa 35% desde `lg` (mismo mecanismo de
-   *  `table-sessions.component.ts`, ver `[data-testid="ticket-column"]`). */
-  it('el panel derecho ocupa 35% del ancho desde lg (rediseño create-order/code.html)', async () => {
+  /** A pedido del usuario: el panel derecho (resumen del pedido) ocupa 4 de
+   *  12 columnas del grid desde `lg` (antes un ancho fijo en píxeles, que se
+   *  veía muy angosto) -- el catálogo ocupa las 8 restantes (ver
+   *  `[data-testid="catalogo-column"]`/`[data-testid="ticket-column"]`). */
+  it('el panel derecho ocupa 4/12 columnas del grid desde lg, el catálogo 8/12', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -496,8 +499,10 @@ describe('ManualOrderPageComponent', () => {
     http.expectOne(`${API}/table-sessions`).flush([]);
     fixture.detectChanges();
 
+    const leftPanel = fixture.nativeElement.querySelector('[data-testid="catalogo-column"]') as HTMLElement;
     const rightPanel = fixture.nativeElement.querySelector('[data-testid="ticket-column"]') as HTMLElement;
-    expect(rightPanel.classList.contains('lg:w-[35%]')).toBe(true);
+    expect(leftPanel.classList.contains('lg:col-span-8')).toBe(true);
+    expect(rightPanel.classList.contains('lg:col-span-4')).toBe(true);
   });
 
   it('la tarjeta de catálogo muestra la imagen del producto cuando tiene image_url (US1, FR-001)', async () => {
@@ -538,7 +543,7 @@ describe('ManualOrderPageComponent', () => {
     expect(texto).toContain('Sin Foto');
   });
 
-  it('al seleccionar un producto con imagen desde el catálogo, el detalle también la muestra (US2, FR-003)', async () => {
+  it('al seleccionar un producto desde el catálogo, el detalle del cajero abre con el ícono genérico, sin foto (rediseño)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     const menuService = TestBed.inject(MenuService);
@@ -557,30 +562,11 @@ describe('ManualOrderPageComponent', () => {
     card.click();
     fixture.detectChanges();
 
-    const modalImg = fixture.nativeElement.querySelector('app-product-select img') as HTMLImageElement | null;
-    expect(modalImg).toBeTruthy();
-    expect(modalImg!.src).toContain('fresa.jpg');
-  });
-
-  it('al seleccionar un producto sin imagen desde el catálogo, el detalle se abre sin imagen rota (US2)', async () => {
-    createComponent('t1');
-    tableService.tables.set([table({ id: 't1', number: 3 })]);
-    const menuService = TestBed.inject(MenuService);
-    menuService.categories.set([menuCategory([menuProduct({ id: 'p1', name: 'Sin Foto', image_url: null })])]);
-    store.setCatalogCategory('c1');
-    fixture.detectChanges();
-    await Promise.resolve();
-    http.expectOne(`${API}/table-sessions`).flush([]);
-    fixture.detectChanges();
-
-    const card = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.includes('Sin Foto'),
-    ) as HTMLButtonElement;
-    card.click();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('app-product-select')).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('app-product-select img')).toBeNull();
+    const modal = fixture.nativeElement.querySelector('app-product-select-pos');
+    expect(modal).toBeTruthy();
+    // Rediseño del selector del cajero (a diferencia del menú QR): nunca muestra la
+    // foto del producto, siempre el ícono genérico de heladería en el encabezado.
+    expect(fixture.nativeElement.querySelector('app-product-select-pos img')).toBeNull();
   });
 
   // ── Pestaña "Todos" (rediseño create-order/code.html) ──────────────────────
@@ -604,7 +590,7 @@ describe('ManualOrderPageComponent', () => {
     const todosButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
       (b as HTMLButtonElement).textContent?.includes('Todos'),
     ) as HTMLButtonElement;
-    expect(todosButton.className).toContain('bg-gray-100');
+    expect(todosButton.className).toContain('bg-[var(--terminal-color-surface-soft,#edf1f5)]');
   });
 
   it('elegir una categoría puntual filtra el grid; volver a "Todos" restaura la lista combinada', async () => {
@@ -1142,7 +1128,7 @@ describe('ManualOrderPageComponent', () => {
     expect(confirmButton.textContent).toContain('Guardando…');
   });
 
-  it('"← Volver a la Terminal" navega de vuelta sin crear ningún pedido', async () => {
+  it('"Volver a la Terminal de Mesas" navega de vuelta sin crear ningún pedido', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1154,7 +1140,7 @@ describe('ManualOrderPageComponent', () => {
     const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     const backButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.includes('Volver a la Terminal'),
+      (b as HTMLButtonElement).getAttribute('aria-label')?.includes('Volver a la Terminal'),
     ) as HTMLButtonElement;
     backButton.click();
 
@@ -1330,7 +1316,7 @@ describe('ManualOrderPageComponent', () => {
 
   // ── Rediseño responsive (create-order/code.html): una sola tarjeta a la
   // vez por debajo de lg, mismo mecanismo que table-sessions.component.ts ──
-  it('por debajo de lg muestra el catálogo por defecto; "Ver pedido" pasa al ticket y "Volver al catálogo" regresa (rediseño responsive)', async () => {
+  it('por debajo de lg el catálogo siempre está visible; "Ver pedido" abre la hoja inferior y la X la cierra (rediseño design/nueva-orden.html)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1339,11 +1325,12 @@ describe('ManualOrderPageComponent', () => {
     fixture.detectChanges();
 
     const catalogo = () => fixture.nativeElement.querySelector('[data-testid="catalogo-column"]') as HTMLElement;
-    const ticket = () => fixture.nativeElement.querySelector('[data-testid="ticket-column"]') as HTMLElement;
+    const sheet = () => fixture.nativeElement.querySelector('[role="dialog"][aria-label="Tu pedido"]') as HTMLElement | null;
 
+    // El catálogo nunca se oculta (ya no alterna con el carrito a pantalla completa).
     expect(catalogo().classList.contains('hidden')).toBe(false);
-    expect(ticket().classList.contains('hidden')).toBe(true);
-    // Carrito vacío: el botón flotante "Ver pedido" no se muestra.
+    expect(sheet()).toBeNull();
+    // Carrito vacío: la barra fija "Ver pedido" no se muestra.
     expect(
       Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
         (b as HTMLButtonElement).textContent?.includes('Ver pedido'),
@@ -1366,16 +1353,15 @@ describe('ManualOrderPageComponent', () => {
     verPedido.click();
     fixture.detectChanges();
 
-    expect(catalogo().classList.contains('hidden')).toBe(true);
-    expect(ticket().classList.contains('hidden')).toBe(false);
+    expect(catalogo().classList.contains('hidden')).toBe(false);
+    expect(sheet()).toBeTruthy();
 
-    const backButton = fixture.nativeElement.querySelector('[data-testid="page-back-button"]') as HTMLButtonElement;
-    expect(backButton).toBeTruthy();
-    backButton.click();
+    const closeButton = fixture.nativeElement.querySelector('[aria-label="Cerrar"]') as HTMLButtonElement;
+    expect(closeButton).toBeTruthy();
+    closeButton.click();
     fixture.detectChanges();
 
-    expect(catalogo().classList.contains('hidden')).toBe(false);
-    expect(ticket().classList.contains('hidden')).toBe(true);
+    expect(sheet()).toBeNull();
   });
 
   // ── Nuevo: editar una línea del carrito ya agregada ────────────────────────
@@ -1406,28 +1392,24 @@ describe('ManualOrderPageComponent', () => {
 
     const editSpy = vi.spyOn(store, 'openConfigForEdit');
     const draftKey = store.draftLines()[0].key;
-    // Rediseño (create-order/code.html): dos íconos por línea ("Ver/Editar
-    // Notas" y "Modificar Toppings"), ambos abren el mismo modal unificado
-    // -- esta app no separa notas y toppings en dos modales distintos.
-    const notesButton = fixture.nativeElement.querySelector(
-      '[title="Ver/Editar Notas"]',
+    // Rediseño (design/nueva-orden.html): "Editar" (ícono "tune") reabre el
+    // modal completo de sabor/opciones/toppings -- distinto del enlace/caja
+    // "Nota" (edición rápida inline, sin reabrir el modal).
+    const editButton = fixture.nativeElement.querySelector(
+      '[title="Editar sabor, opciones y toppings"]',
     ) as HTMLButtonElement;
-    const toppingsButton = fixture.nativeElement.querySelector(
-      '[title="Modificar Toppings"]',
-    ) as HTMLButtonElement;
-    expect(notesButton).toBeTruthy();
-    expect(toppingsButton).toBeTruthy();
-    notesButton.click();
+    expect(editButton).toBeTruthy();
+    editButton.click();
     fixture.detectChanges();
 
     expect(editSpy).toHaveBeenCalledWith(draftKey);
-    const modal = fixture.nativeElement.querySelector('app-product-select');
+    const modal = fixture.nativeElement.querySelector('app-product-select-pos');
     expect(modal).toBeTruthy();
     expect((modal as HTMLElement).textContent).toContain('Guardar cambios');
   });
 
-  // ── Fila de carrito responsive (apilada en mobile, tabla desde sm) ────────
-  it('cada línea del carrito renderiza dos variantes (tabla desde sm, tarjeta apilada por debajo de sm) con las mismas acciones', async () => {
+  // ── Fila de carrito (una sola, para cualquier ancho) ──────────────────────
+  it('cada línea del carrito muestra el producto y permite eliminarla con cantidad 1', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1443,32 +1425,25 @@ describe('ManualOrderPageComponent', () => {
     });
     fixture.detectChanges();
 
-    // El encabezado de columnas también es ".hidden.sm\:grid.grid-cols-12" --
-    // se distingue por ".items-center", que solo llevan las filas de ítem.
-    const tabla = fixture.nativeElement.querySelector(
-      '.hidden.sm\\:grid.grid-cols-12.items-center',
-    ) as HTMLElement;
-    const tarjeta = fixture.nativeElement.querySelector('.flex.sm\\:hidden.flex-col') as HTMLElement;
-    expect(tabla).toBeTruthy();
-    expect(tarjeta).toBeTruthy();
-    expect(tabla.textContent).toContain('Mango Tropical');
-    expect(tarjeta.textContent).toContain('Mango Tropical');
+    const lineas = fixture.nativeElement.querySelectorAll('[data-testid="ticket-column"] .divide-y > div');
+    expect(lineas.length).toBe(1);
+    expect((lineas[0] as HTMLElement).textContent).toContain('Mango Tropical');
 
-    // Los botones de eliminar/editar de la variante apilada funcionan igual
-    // que los de la tabla (mismos (click), solo cambia el marcado/tamaño).
-    const removeButtons = Array.from(
-      fixture.nativeElement.querySelectorAll('[title="Eliminar ítem"]'),
-    ) as HTMLButtonElement[];
-    expect(removeButtons.length).toBe(2);
+    // A pedido del usuario: sin botón de eliminar aparte -- con cantidad 1,
+    // el propio botón "−" se vuelve el de eliminar (mismo (click) que el
+    // decremento normal, solo cambia el ícono/título cuando it.qty === 1).
+    const removeButton = fixture.nativeElement.querySelector(
+      '[title="Eliminar ítem"]',
+    ) as HTMLButtonElement;
+    expect(removeButton).toBeTruthy();
 
     const draftKey = store.draftLines()[0].key;
-    const removeSpy = vi.spyOn(store, 'removeDraft');
-    removeButtons[1].click(); // el de la tarjeta apilada (segundo en el DOM)
-    expect(removeSpy).toHaveBeenCalledWith(draftKey);
+    removeButton.click();
+    expect(store.draftLines().find((l) => l.key === draftKey)).toBeUndefined();
   });
 
   // ── spec 113: la presentación elegida se muestra en la línea del ítem ────
-  it('[T008] spec 113: la fila de escritorio muestra un pill con la presentación elegida cuando el producto tiene más de una', async () => {
+  it('spec 113: la línea del carrito muestra la presentación elegida en línea junto al nombre cuando el producto tiene más de una (rediseño design/nueva-orden.html)', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1489,46 +1464,14 @@ describe('ManualOrderPageComponent', () => {
     });
     fixture.detectChanges();
 
-    const tabla = fixture.nativeElement.querySelector(
-      '.hidden.sm\\:grid.grid-cols-12.items-center',
+    const linea = fixture.nativeElement.querySelector(
+      '[data-testid="ticket-column"] .divide-y > div',
     ) as HTMLElement;
-    expect(tabla.textContent).toContain('Ojo de Diablo');
-    const pill = Array.from(tabla.querySelectorAll('span')).find(
-      (el) => el.className.includes('rounded-full') && el.textContent?.trim() === '12 oz',
-    );
-    expect(pill).toBeTruthy();
+    expect(linea.textContent).toContain('Ojo de Diablo');
+    expect(linea.textContent).toContain('12 oz');
   });
 
-  it('[T009] spec 113: la tarjeta apilada (mobile) muestra el mismo pill de presentación que la fila de escritorio', async () => {
-    createComponent('t1');
-    tableService.tables.set([table({ id: 't1', number: 3 })]);
-    fixture.detectChanges();
-    await Promise.resolve();
-    http.expectOne(`${API}/table-sessions`).flush([]);
-
-    const ojoDeDiabloVariants = [
-      { id: 'v-8oz', name: '8 oz', price: 8000 },
-      { id: 'v-12oz', name: '12 oz', price: 11000 },
-      { id: 'v-16oz', name: '16 oz', price: 15000 },
-    ];
-    store.addDraftFromSelection({
-      product: { id: 'p1', name: 'Ojo de Diablo', variants: ojoDeDiabloVariants } as never,
-      variant: ojoDeDiabloVariants[1] as never,
-      options: [],
-      quantity: 1,
-      notes: null,
-    });
-    fixture.detectChanges();
-
-    const tarjeta = fixture.nativeElement.querySelector('.flex.sm\\:hidden.flex-col') as HTMLElement;
-    expect(tarjeta.textContent).toContain('Ojo de Diablo');
-    const pill = Array.from(tarjeta.querySelectorAll('span')).find(
-      (el) => el.className.includes('rounded-full') && el.textContent?.trim() === '12 oz',
-    );
-    expect(pill).toBeTruthy();
-  });
-
-  it('spec 113 (FR-003): un producto con una sola presentación configurada no muestra ningún pill de presentación', async () => {
+  it('spec 113 (FR-003): un producto con una sola presentación configurada no muestra ninguna presentación junto al nombre', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1544,10 +1487,10 @@ describe('ManualOrderPageComponent', () => {
     });
     fixture.detectChanges();
 
-    const pills = Array.from(fixture.nativeElement.querySelectorAll('span')).filter(
-      (el) => (el as HTMLElement).className.includes('rounded-full') && (el as HTMLElement).textContent?.trim() === 'Único',
-    );
-    expect(pills.length).toBe(0);
+    const linea = fixture.nativeElement.querySelector(
+      '[data-testid="ticket-column"] .divide-y > div',
+    ) as HTMLElement;
+    expect(linea.textContent).not.toContain('Único');
   });
 
   it('el botón "Limpiar todo" ya no existe en el detalle del pedido', async () => {
@@ -1602,39 +1545,6 @@ describe('ManualOrderPageComponent', () => {
     expect(ligaduras).toEqual(
       expect.arrayContaining(['arrow_back', 'search', 'table_restaurant', 'shopping_bag', 'delivery_dining']),
     );
-  });
-
-  it('"Modificar Toppings" (antes con forma de cono de helado) renderiza la ligadura "tune", no el ícono de reserva (spec 082)', async () => {
-    createComponent('t1');
-    tableService.tables.set([table({ id: 't1', number: 3 })]);
-    fixture.detectChanges();
-    await Promise.resolve();
-    http.expectOne(`${API}/table-sessions`).flush([]);
-
-    const product = {
-      id: 'p1',
-      name: 'Mango Tropical',
-      description: null,
-      image_url: null,
-      available: true,
-      option_groups: [],
-      variants: [{ id: 'v1', name: 'Única', price: 5000, option_groups: [], available: true }],
-    };
-    store.addDraftFromSelection({
-      product: product as never,
-      variant: product.variants[0] as never,
-      options: [],
-      quantity: 1,
-      notes: null,
-    });
-    fixture.detectChanges();
-
-    const toppingsButton = fixture.nativeElement.querySelector(
-      '[title="Modificar Toppings"]',
-    ) as HTMLButtonElement;
-    expect(toppingsButton).toBeTruthy();
-    const icon = toppingsButton.querySelector('.material-icons-outlined');
-    expect(icon?.textContent?.trim()).toBe('tune');
   });
 
   // spec 091 (A-99, FR-003): al enfocar el campo Cliente en Mesa/Para llevar, su contenido queda
@@ -1932,6 +1842,53 @@ describe('ManualOrderPageComponent — pestaña "Promociones" (spec 115)', () =>
     fixture.detectChanges();
   }
 
+  it('bugfix: reabrir el modal para el mismo producto arranca sin las adiciones de la línea anterior (no las hereda al crear una línea hermana)', () => {
+    setup();
+    const producto = menuProduct({
+      id: 'p1', name: 'Ojo de Diablo', variants: [promoVariant()],
+      toppings: [{ id: 'top1', name: 'Gomitas', unit_price: 1000, available: true }],
+    });
+    menuService.categories.set([menuCategory([producto], { id: 'c1', name: 'Bebidas' })]);
+    fixture.detectChanges();
+
+    const addButton = () =>
+      Array.from(fixture.nativeElement.querySelectorAll('app-product-select-pos button')).find((b) =>
+        (b as HTMLButtonElement).textContent?.includes('Agregar'),
+      ) as HTMLButtonElement;
+    const toppingPlus = () =>
+      fixture.nativeElement.querySelector('app-product-select-pos [data-testid="topping-plus"]') as HTMLButtonElement;
+    const toppingQtyText = () =>
+      (fixture.nativeElement.querySelector('app-product-select-pos [data-testid="topping-qty-value"]') as HTMLElement | null)
+        ?.textContent?.trim();
+
+    // 1ra unidad: con la adición elegida.
+    clickCardByName('Ojo de Diablo');
+    toppingPlus().click();
+    fixture.detectChanges();
+    addButton().click();
+    fixture.detectChanges();
+
+    // 2da unidad: misma adición -- completa el paquete (min_qty 2) y fusiona en la misma línea.
+    clickCardByName('Ojo de Diablo');
+    toppingPlus().click();
+    fixture.detectChanges();
+    addButton().click();
+    fixture.detectChanges();
+    expect(store.draftLines()).toHaveLength(1);
+    expect(store.draftLines()[0].quantity).toBe(2);
+
+    // 3ra unidad: el modal reabierto debe arrancar en 0, sin la adición de la línea ya completa.
+    clickCardByName('Ojo de Diablo');
+    expect(toppingQtyText()).toBe('0');
+    addButton().click();
+    fixture.detectChanges();
+
+    const lines = store.draftLines() as Array<{ toppings?: unknown[] }>;
+    expect(lines).toHaveLength(2);
+    expect(lines[0].toppings).toHaveLength(1);
+    expect(lines[1].toppings ?? []).toHaveLength(0);
+  });
+
   it('T006: la navegación del catálogo incluye el botón "Promociones" junto a "Todos" y las categorías', () => {
     setup();
     menuService.categories.set([menuCategory([menuProduct({ id: 'p1', name: 'Fresa' })], { id: 'c1', name: 'Bebidas' })]);
@@ -2025,7 +1982,7 @@ describe('ManualOrderPageComponent — pestaña "Promociones" (spec 115)', () =>
     clickCardByName('Malteada Promo');
     fixture.detectChanges();
 
-    const masBtn = fixture.nativeElement.querySelector('app-product-select [aria-label="Añadir uno"]') as HTMLElement;
+    const masBtn = fixture.nativeElement.querySelector('app-product-select-pos [aria-label="Añadir uno"]') as HTMLElement;
     const modalQty = masBtn.previousElementSibling as HTMLElement;
     expect(modalQty.textContent?.trim()).toBe('2');
   });
@@ -2039,7 +1996,7 @@ describe('ManualOrderPageComponent — pestaña "Promociones" (spec 115)', () =>
 
     clickCardByName('Malteada Promo');
     fixture.detectChanges();
-    const addBtn = Array.from(fixture.nativeElement.querySelectorAll('app-product-select button')).find((b) =>
+    const addBtn = Array.from(fixture.nativeElement.querySelectorAll('app-product-select-pos button')).find((b) =>
       (b as HTMLButtonElement).textContent?.includes('Agregar'),
     ) as HTMLButtonElement;
     addBtn.click();
@@ -2059,7 +2016,7 @@ describe('ManualOrderPageComponent — pestaña "Promociones" (spec 115)', () =>
     fixture.detectChanges();
     clickCardByName('Malteada Promo');
     fixture.detectChanges();
-    const addBtn = Array.from(fixture.nativeElement.querySelectorAll('app-product-select button')).find((b) =>
+    const addBtn = Array.from(fixture.nativeElement.querySelectorAll('app-product-select-pos button')).find((b) =>
       (b as HTMLButtonElement).textContent?.includes('Agregar'),
     ) as HTMLButtonElement;
     addBtn.click();

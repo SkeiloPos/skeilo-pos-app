@@ -344,9 +344,15 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                           </span>
                         }
                         <!-- Un pedido ya pagado se asume entregado: no se anula
-                           (spec 029, FR-007). Mismo tratamiento outline que
-                           "Marcar listo", en su color de peligro. -->
-                        @if (!store.selectedOrder()?.paid) {
+                           (spec 029, FR-007). Tampoco una línea ya lista: una
+                           vez preparada ya consumió su inventario y el cajero
+                           la trata como entregada, igual que "Producto ya
+                           preparado" de arriba bloquea tocarla de nuevo --
+                           antes solo el pago bloqueaba "Anular", y una línea
+                           lista en un pedido sin pagar aún mostraba el botón.
+                           Mismo tratamiento outline que "Marcar listo", en su
+                           color de peligro. -->
+                        @if (!store.selectedOrder()?.paid && !it.ready) {
                           <button
                             (click)="
                               it.comboId

@@ -84,7 +84,42 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
            entre ellas -- antes el header y la sub-barra vivían fuera de
            cualquier tarjeta, y la grilla tenía su propia tarjeta con borde
            redondeado propio, dando un efecto de "caja dentro de caja". -->
-      <div class="flex-1 flex flex-col p-3 min-h-0 overflow-hidden">
+      <div class="flex-1 flex flex-col p-3 gap-3 min-h-0 overflow-hidden">
+        <!-- Encabezado "Pedido de la mesa" (mismo diseño que "Nueva orden" en
+             manual-order-page.component.ts): vive POR FUERA de la tarjeta
+             blanca de abajo, directo sobre el fondo de la página -- antes
+             estaba dentro de la sub-barra, que a su vez vivía dentro de la
+             tarjeta, dando el efecto visual de "encabezado metido en la
+             tarjeta" reportado por el usuario. -->
+        @if (showingDetail()) {
+          <div class="h-11 shrink-0 flex items-center gap-3">
+            <button
+              type="button"
+              data-testid="page-back-button"
+              (click)="store.cancelSelection()"
+              aria-label="Volver a mesas"
+              title="Volver a mesas"
+              class="w-11 h-11 shrink-0 border rounded-[8px] flex items-center justify-center transition-colors"
+              style="border-color:var(--terminal-color-border-strong);background:var(--terminal-color-surface);color:var(--terminal-color-text-primary)"
+            >
+              <app-lucide-icon name="arrow-left" [size]="18" />
+            </button>
+            <div class="min-w-0 leading-tight">
+              <div
+                class="text-[11px] font-semibold uppercase tracking-wider"
+                style="color:var(--terminal-color-text-muted)"
+              >
+                Terminal de mesas
+              </div>
+              <h2
+                class="text-[18px] font-semibold tracking-tight truncate m-0"
+                style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;color:var(--terminal-color-text-primary)"
+              >
+                Pedido de la mesa
+              </h2>
+            </div>
+          </div>
+        }
         <div
           class="flex-1 flex flex-col min-h-0 rounded-[16px] border overflow-hidden"
           style="background:var(--terminal-color-surface);border-color:var(--terminal-color-border)"
@@ -112,115 +147,101 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                (antes el botón de volver vivía en una fila propia, solo dentro
                de la tarjeta de detalle, y encima las pestañas desaparecían del
                todo para domicilio/para llevar en vez de dejar paso al botón). -->
-          <div
-            class="border-b px-4 py-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0"
-            style="border-color:var(--terminal-color-border);background:var(--terminal-color-surface)"
-          >
-            <!-- spec 131 (FR-002/FR-003, fidelidad al mockup): buscador +
+          @if (!(showingDetail() && store.selectedTableId())) {
+            <div
+              class="px-4 py-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0"
+              style="border-bottom:1px solid var(--terminal-color-border);background:var(--terminal-color-surface)"
+            >
+              <!-- spec 131 (FR-002/FR-003, fidelidad al mockup): buscador +
                  pestañas + filtro de ocupación viven en LA MISMA franja
                  (isTerminal del mockup los pone todos juntos en una sola fila) —
                  antes el buscador/filtro vivían un nivel abajo, dentro de
                  pos-tables-panel.component.ts, dando el efecto de "caja dentro
                  de caja" reportado contra el diseño de referencia. -->
-            <div class="flex items-center gap-3 flex-wrap min-w-0 w-full sm:w-auto">
-              @if (showingDetail()) {
-                <button
-                  data-testid="page-back-button"
-                  (click)="store.cancelSelection()"
-                  class="h-9 px-3 text-[13px] font-semibold rounded-[8px] border flex items-center gap-1.5 transition-colors shrink-0"
-                  style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-secondary);background:var(--terminal-color-surface)"
-                >
-                  <app-lucide-icon name="arrow-left" [size]="16" />
-                  Volver a mesas
-                </button>
-                <span
-                  class="shrink-0"
-                  style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-size:18px;font-weight:600;color:var(--terminal-color-text-primary)"
-                  >Pedido de la mesa</span
-                >
-              } @else {
-                @if (store.orderTypeTab() === 'mesas') {
-                  <!-- spec 131 (fidelidad responsive al mockup): el buscador de
+              <div class="flex items-center gap-3 flex-wrap min-w-0 w-full sm:w-auto">
+                @if (!showingDetail()) {
+                  @if (store.orderTypeTab() === 'mesas') {
+                    <!-- spec 131 (fidelidad responsive al mockup): el buscador de
                        texto solo se muestra desde el breakpoint "sm" -- en móvil
                        el mockup no lo ofrece en esta franja (se llega a él con
                        el atajo F2); el ancho estrecho lo prioriza para las
                        pestañas. -->
-                  <div class="relative shrink-0 hidden sm:block">
-                    <span
-                      class="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none"
-                      style="color:var(--terminal-color-text-muted)"
-                    >
-                      <app-lucide-icon name="search" [size]="16" />
-                    </span>
-                    <input
-                      #searchInput
-                      type="text"
-                      [value]="store.search()"
-                      (input)="store.search.set($any($event.target).value)"
-                      placeholder="Buscar mesa…"
-                      class="w-44 sm:w-52 h-9 pl-9 pr-12 rounded-[8px] text-[14px] border focus:outline-none"
-                      style="background:var(--terminal-color-surface);border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-primary)"
-                    />
-                    <span
-                      class="hidden sm:inline absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 border text-[11px] font-semibold rounded-[4px] pointer-events-none"
-                      style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-muted)"
-                    >
-                      F2
-                    </span>
-                  </div>
-                }
-                <!-- Pestañas: ocupan todo el ancho de su propia fila en móvil
+                    <div class="relative shrink-0 hidden sm:block">
+                      <span
+                        class="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none"
+                        style="color:var(--terminal-color-text-muted)"
+                      >
+                        <app-lucide-icon name="search" [size]="16" />
+                      </span>
+                      <input
+                        #searchInput
+                        type="text"
+                        [value]="store.search()"
+                        (input)="store.search.set($any($event.target).value)"
+                        placeholder="Buscar mesa…"
+                        class="w-44 sm:w-52 h-9 pl-9 pr-12 rounded-[8px] text-[14px] border focus:outline-none"
+                        style="background:var(--terminal-color-surface);border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-primary)"
+                      />
+                      <span
+                        class="hidden sm:inline absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 border text-[11px] font-semibold rounded-[4px] pointer-events-none"
+                        style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-muted)"
+                      >
+                        F2
+                      </span>
+                    </div>
+                  }
+                  <!-- Pestañas: ocupan todo el ancho de su propia fila en móvil
                      (mismo patrón que el mockup de referencia en pantallas
                      angostas), auto-ancho desde sm. -->
-                <nav
-                  class="flex items-center gap-1 p-1 rounded-[10px] overflow-x-auto sm:overflow-visible shrink-0 w-full sm:w-auto"
-                  style="background:var(--terminal-color-surface-soft)"
-                >
-                  @for (t of orderTypeTabs; track t.key) {
-                    <button
-                      (click)="store.setOrderTypeTab(t.key)"
-                      class="flex-1 sm:flex-none h-9 px-3.5 rounded-[8px] text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
-                      [style]="
-                        store.orderTypeTab() === t.key
-                          ? 'background:var(--terminal-color-surface);color:var(--terminal-color-text-primary);box-shadow:0 1px 2px rgba(15,23,42,.08)'
-                          : 'background:transparent;color:var(--terminal-color-text-secondary)'
-                      "
-                    >
-                      {{ t.label }}
-                    </button>
-                  }
-                </nav>
-                @if (store.orderTypeTab() === 'mesas') {
-                  <!-- Filtro de ocupación (FR-003): un único selector en vez de
+                  <nav
+                    class="flex items-center gap-1 p-1 rounded-[10px] overflow-x-auto sm:overflow-visible shrink-0 w-full sm:w-auto"
+                    style="background:var(--terminal-color-surface-soft)"
+                  >
+                    @for (t of orderTypeTabs; track t.key) {
+                      <button
+                        (click)="store.setOrderTypeTab(t.key)"
+                        class="flex-1 sm:flex-none h-9 px-3.5 rounded-[8px] text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
+                        [style]="
+                          store.orderTypeTab() === t.key
+                            ? 'background:var(--terminal-color-surface);color:var(--terminal-color-text-primary);box-shadow:0 1px 2px rgba(15,23,42,.08)'
+                            : 'background:transparent;color:var(--terminal-color-text-secondary)'
+                        "
+                      >
+                        {{ t.label }}
+                      </button>
+                    }
+                  </nav>
+                  @if (store.orderTypeTab() === 'mesas') {
+                    <!-- Filtro de ocupación (FR-003): un único selector en vez de
                        un botón por opción (mockup: tPills como <select>), misma
                        exclusividad mutua y mismos conteos que antes. Oculto en
                        móvil -- su versión compacta (solo ícono) vive junto al
                        CTA "Crear pedido nuevo", como en el mockup de referencia
                        a ese ancho. -->
-                  <label class="relative shrink-0 hidden sm:block">
-                    <select
-                      aria-label="Filtrar por estado"
-                      [value]="store.filter()"
-                      (change)="store.filter.set($any($event.target).value)"
-                      class="h-9 pl-3 pr-9 rounded-[8px] text-[13px] font-semibold border appearance-none cursor-pointer focus:outline-none"
-                      style="background:var(--terminal-color-surface);border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-primary)"
-                    >
-                      @for (f of filters; track f.key) {
-                        <option [value]="f.key">{{ f.label }} · {{ countFor(f.key) }}</option>
-                      }
-                    </select>
-                    <span
-                      class="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
-                      style="color:var(--terminal-color-text-secondary)"
-                    >
-                      <app-lucide-icon name="chevron-down" [size]="16" />
-                    </span>
-                  </label>
+                    <label class="relative shrink-0 hidden sm:block">
+                      <select
+                        aria-label="Filtrar por estado"
+                        [value]="store.filter()"
+                        (change)="store.filter.set($any($event.target).value)"
+                        class="h-9 pl-3 pr-9 rounded-[8px] text-[13px] font-semibold border appearance-none cursor-pointer focus:outline-none"
+                        style="background:var(--terminal-color-surface);border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-primary)"
+                      >
+                        @for (f of filters; track f.key) {
+                          <option [value]="f.key">{{ f.label }} · {{ countFor(f.key) }}</option>
+                        }
+                      </select>
+                      <span
+                        class="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                        style="color:var(--terminal-color-text-secondary)"
+                      >
+                        <app-lucide-icon name="chevron-down" [size]="16" />
+                      </span>
+                    </label>
+                  }
                 }
-              }
-            </div>
+              </div>
 
-            <!-- spec 078 (US2, FR-007/FR-013/FR-015): el CTA "Crear pedido nuevo"
+              <!-- spec 078 (US2, FR-007/FR-013/FR-015): el CTA "Crear pedido nuevo"
                  está fuera del guard de pestaña — visible y habilitado en las tres
                  pestañas y en los tres anchos, con etiqueta de texto siempre (nunca
                  solo el ícono +). Solo en "Mesas" exige una mesa libre; Domicilio y
@@ -236,53 +257,48 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                  "Nueva cuenta" ahí dentro. Se seguía mostrando aquí para
                  Domicilio/Para llevar (sin mesa, sin esas pestañas) y para la
                  grilla principal (sin selección). -->
-            @if (!(showingDetail() && store.selectedTableId())) {
-              <div data-testid="sub-bar-new-order-cta" class="flex items-center gap-2 shrink-0">
-                @if (!showingDetail() && store.orderTypeTab() === 'mesas') {
-                  <!-- Botón "Filtros" (solo ícono) en móvil (spec 131,
+              @if (!(showingDetail() && store.selectedTableId())) {
+                <div data-testid="sub-bar-new-order-cta" class="flex items-center gap-2 shrink-0">
+                  @if (!showingDetail() && store.orderTypeTab() === 'mesas') {
+                    <!-- Botón "Filtros" (solo ícono) en móvil (spec 131,
                        fidelidad responsive): despliega el buscador + el
                        filtro de ocupación debajo de esta franja (mismo
                        patrón que el mockup de referencia, tToggleFilt/
                        tFiltOpen) -- en vez del truco de <select> transparente
                        que usaba antes, ahora es un botón real que muestra/
                        oculta el panel de abajo. -->
+                    <button
+                      type="button"
+                      aria-label="Filtros"
+                      [attr.aria-expanded]="mobileFiltersOpen()"
+                      (click)="mobileFiltersOpen.set(!mobileFiltersOpen())"
+                      class="sm:hidden shrink-0 w-11 h-11 rounded-[8px] border flex items-center justify-center transition-colors"
+                      [style]="
+                        mobileFiltersOpen()
+                          ? 'border-color:var(--terminal-color-primary-border);background:var(--terminal-color-primary-soft);color:var(--terminal-color-primary-text)'
+                          : 'border-color:var(--terminal-color-border-strong);background:var(--terminal-color-surface);color:var(--terminal-color-text-secondary)'
+                      "
+                    >
+                      <app-lucide-icon name="list-filter" [size]="20" />
+                    </button>
+                  }
                   <button
                     type="button"
-                    aria-label="Filtros"
-                    [attr.aria-expanded]="mobileFiltersOpen()"
-                    (click)="mobileFiltersOpen.set(!mobileFiltersOpen())"
-                    class="sm:hidden shrink-0 w-11 h-11 rounded-[8px] border flex items-center justify-center transition-colors"
-                    [style]="
-                      mobileFiltersOpen()
-                        ? 'border-color:var(--terminal-color-primary-border);background:var(--terminal-color-primary-soft);color:var(--terminal-color-primary-text)'
-                        : 'border-color:var(--terminal-color-border-strong);background:var(--terminal-color-surface);color:var(--terminal-color-text-secondary)'
-                    "
+                    (click)="goToNewOrder()"
+                    class="flex-1 sm:flex-none h-9 sm:h-11 px-3 sm:px-4 rounded-[8px] text-[13px] font-semibold flex items-center justify-center gap-2 whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    style="background:var(--terminal-color-primary);color:var(--terminal-color-on-primary)"
                   >
-                    <app-lucide-icon name="list-filter" [size]="20" />
+                    <app-lucide-icon name="circle-plus" [size]="16" class="shrink-0" />
+                    <span>Crear pedido nuevo</span>
+                    <span
+                      class="hidden md:inline px-1.5 py-0.5 bg-white/20 rounded-[6px] text-[10px] font-semibold uppercase tracking-wider"
+                      >[F3]</span
+                    >
                   </button>
-                }
-                <button
-                  type="button"
-                  (click)="goToNewOrder()"
-                  [disabled]="store.orderTypeTab() === 'mesas' && !store.newOrderTableId()"
-                  [title]="
-                    store.orderTypeTab() === 'mesas' && !store.newOrderTableId()
-                      ? 'No hay ninguna mesa libre disponible'
-                      : ''
-                  "
-                  class="flex-1 sm:flex-none h-9 sm:h-11 px-3 sm:px-4 rounded-[8px] text-[13px] font-semibold flex items-center justify-center gap-2 whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  style="background:var(--terminal-color-primary);color:var(--terminal-color-on-primary)"
-                >
-                  <app-lucide-icon name="circle-plus" [size]="16" class="shrink-0" />
-                  <span>Crear pedido nuevo</span>
-                  <span
-                    class="hidden md:inline px-1.5 py-0.5 bg-white/20 rounded-[6px] text-[10px] font-semibold uppercase tracking-wider"
-                    >[F3]</span
-                  >
-                </button>
-              </div>
-            }
-          </div>
+                </div>
+              }
+            </div>
+          }
 
           @if (mobileFiltersOpen() && !showingDetail() && store.orderTypeTab() === 'mesas') {
             <!-- Panel desplegable del botón "Filtros" en móvil (spec 131,
@@ -333,7 +349,10 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
           }
 
           @if (store.loading()) {
-            <div class="flex-1 flex items-center justify-center text-sm" style="color:var(--terminal-color-text-muted)">
+            <div
+              class="flex-1 flex items-center justify-center text-sm"
+              style="color:var(--terminal-color-text-muted)"
+            >
               Cargando terminal…
             </div>
           } @else {
@@ -382,8 +401,8 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                 class="flex-col min-h-0 min-w-0 flex-1 overflow-hidden"
                 [class]="showingDetail() ? 'flex' : 'hidden'"
               >
-            @if (showingDetail()) {
-              <!-- spec 078 (US3, FR-016 a FR-021; research.md D4): la columna de
+                @if (showingDetail()) {
+                  <!-- spec 078 (US3, FR-016 a FR-021; research.md D4): la columna de
                    detalle es UNA sola columna flex vertical acotada. Se
                    eliminaron el scroll externo (overflow-y-auto) y el div
                    redundante que hoy scrolleaban el panel central + el de cobro
@@ -391,7 +410,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                    scroll horizontal de página en tablet/móvil). Ahora: secciones
                    fijas shrink-0, una única región flex-1 min-h-0 que scrollea, y
                    app-pos-checkout-panel shrink-0 (su host ya lo lleva). -->
-              <!--
+                  <!--
                 A pedido del usuario: el botón "Volver a mesas" y el título
                 "Pedido de la mesa" ya no viven en filas separadas (antes se
                 veían apilados, uno encima del otro) -- ahora el título vive
@@ -400,7 +419,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                 ambos aparezcan lado a lado en una sola franja.
               -->
 
-              <!-- Por debajo de lg: una única región de scroll para toda la
+                  <!-- Por debajo de lg: una única región de scroll para toda la
                    columna de detalle (antes el carrito, el desglose de
                    app-pos-checkout-panel y el bloque de validar-pago tenían
                    CADA UNO su propio overflow-y-auto -- varias cajas internas
@@ -425,23 +444,23 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                    no aplican antes de confirmar el pago) y
                    app-pos-checkout-panel muestra ahí mismo el
                    comprobante/confirmación en vez de cobro. -->
-              <div
-                class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden"
-              >
-                <!-- Columna izquierda (pedido), 60% desde lg. -->
-                <div class="flex flex-col lg:w-[60%] lg:shrink-0 lg:min-h-0 lg:overflow-y-auto">
-                  <app-pos-order-panel />
-                </div>
-                <!-- Columna derecha (cobro), 40% desde lg -- el borde pasa de
+                  <div
+                    class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden"
+                  >
+                    <!-- Columna izquierda (pedido), 60% desde lg. -->
+                    <div class="flex flex-col lg:w-[60%] lg:shrink-0 lg:min-h-0 lg:overflow-y-auto">
+                      <app-pos-order-panel />
+                    </div>
+                    <!-- Columna derecha (cobro), 40% desde lg -- el borde pasa de
                      arriba (apilado, por debajo de lg) a la izquierda (al
                      lado, desde lg) vía las clases lg: propias de
                      app-pos-checkout-panel. -->
-                <app-pos-checkout-panel />
+                    <app-pos-checkout-panel />
+                  </div>
+                }
               </div>
-            }
-          </div>
-        </div>
-      }
+            </div>
+          }
         </div>
       </div>
     </div>
@@ -598,9 +617,11 @@ export class TableSessionsComponent implements OnInit, OnDestroy {
    *  El destino depende de la pestaña activa:
    *  - "Domicilios" / "Para llevar" → ruta sin `:tableId` con `?tipo=` (no
    *    exigen mesa; `createManualOrderFromDraft()` lo contempla).
-   *  - "Mesas" → comportamiento de siempre: navega con `newOrderTableId()` (la
-   *    mesa libre seleccionada), y el `[disabled]` del botón ya cubre el caso
-   *    de que no haya ninguna. */
+   *  - "Mesas" → navega con `newOrderTableId()` si hay una mesa ya
+   *    seleccionada; si no hay ninguna, va a la ruta genérica (sin
+   *    `:tableId`) para que el usuario elija la mesa en el formulario --
+   *    bugfix: antes auto-asignaba la primera mesa libre y el cajero
+   *    terminaba en el detalle de una mesa que nunca tocó. */
   goToNewOrder(): void {
     const tab = this.store.orderTypeTab();
     if (tab === 'domicilios' || tab === 'para-llevar') {
@@ -609,8 +630,11 @@ export class TableSessionsComponent implements OnInit, OnDestroy {
       return;
     }
     const tableId = this.store.newOrderTableId();
-    if (!tableId) return;
-    this.router.navigate(['/dashboard/mesas-sesiones', tableId, 'orden-manual']);
+    if (tableId) {
+      this.router.navigate(['/dashboard/mesas-sesiones', tableId, 'orden-manual']);
+    } else {
+      this.router.navigate(['/dashboard/mesas-sesiones/orden-manual']);
+    }
   }
 
   /** A pedido del usuario: una mesa libre sin ningún pedido no cuenta como
@@ -626,8 +650,9 @@ export class TableSessionsComponent implements OnInit, OnDestroy {
 
   /** Destino del atajo F3 (spec 078, US2, Edge Case "el cajero pulsa el
    *  atajo…"): en "Domicilios" / "Para llevar" navega a la ruta sin `:tableId`
-   *  con el `?tipo=` correspondiente; en "Mesas" el comportamiento no cambia —
-   *  solo navega si hay una mesa seleccionada. */
+   *  con el `?tipo=` correspondiente; en "Mesas" navega con la mesa
+   *  seleccionada, o a la ruta genérica si no hay ninguna (mismo criterio que
+   *  `goToNewOrder()`). */
   private openNewOrderFromShortcut(): void {
     const tab = this.store.orderTypeTab();
     if (tab === 'domicilios' || tab === 'para-llevar') {
@@ -636,7 +661,11 @@ export class TableSessionsComponent implements OnInit, OnDestroy {
       return;
     }
     const tableId = this.store.selectedTableId();
-    if (tableId) this.router.navigate(['/dashboard/mesas-sesiones', tableId, 'orden-manual']);
+    if (tableId) {
+      this.router.navigate(['/dashboard/mesas-sesiones', tableId, 'orden-manual']);
+    } else {
+      this.router.navigate(['/dashboard/mesas-sesiones/orden-manual']);
+    }
   }
 
   @HostListener('window:keydown', ['$event'])

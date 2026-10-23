@@ -41,7 +41,7 @@ export interface SearchableSelectOption {
         type="button"
         (click)="toggle()"
         [disabled]="disabled()"
-        class="w-full flex items-center justify-between gap-2 px-3 py-2 border rounded-lg text-sm text-left bg-white
+        class="w-full h-11 flex items-center justify-between gap-2 px-3 border rounded-[8px] text-sm text-left bg-white
           focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-400"
         [class.border-gray-200]="true"
       >
@@ -50,7 +50,7 @@ export interface SearchableSelectOption {
       </button>
 
       @if (open()) {
-        <div class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+        <div class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-[8px] shadow-lg overflow-hidden">
           <input #filterInput [value]="query()" (input)="onQueryInput($any($event.target).value)"
             (keydown)="onKeydown($event)" placeholder="Buscar…"
             class="w-full px-3 py-2 text-sm border-b border-gray-100 focus:outline-none" />

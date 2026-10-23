@@ -189,6 +189,12 @@ describe('TableSessionsComponent — diálogo de éxito (spec 029 + spec 125)', 
  * vista dedicada `manual-order-page.component.ts`. No se llama
  * `fixture.detectChanges()` a propósito (mismo motivo que el bloque F4 de
  * arriba): evita `ngOnInit()`/`store.init()`.
+ *
+ * Bugfix posterior: sin mesa seleccionada, F3 ya no se queda sin hacer nada
+ * -- navega a la ruta genérica (sin `:tableId`) para que el usuario elija la
+ * mesa en el propio formulario, en vez de quedar inútil (o, en la versión
+ * previa a este bugfix, auto-asignar la primera mesa libre sin que el
+ * usuario la tocara).
  */
 describe('TableSessionsComponent — atajo F3 navega a la vista de armado de pedido (ajuste posterior)', () => {
   let fixture: ComponentFixture<TableSessionsComponent>;
@@ -222,13 +228,13 @@ describe('TableSessionsComponent — atajo F3 navega a la vista de armado de ped
     expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones', 't1', 'orden-manual']);
   });
 
-  it('sin mesa seleccionada, F3 no navega', () => {
+  it('sin mesa seleccionada, F3 navega a la ruta genérica (sin mesa preasignada)', () => {
     const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     const event = new KeyboardEvent('keydown', { key: 'F3', cancelable: true });
     fixture.componentInstance.onKey(event);
 
-    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones/orden-manual']);
   });
 });
 
@@ -573,21 +579,20 @@ describe('TableSessionsComponent — columna de detalle: una sola columna flex a
     expect(scrollWrappers).toHaveLength(1);
   });
 
-  // Reescrito: el título "Pedido de la mesa" se unificó con el botón "Volver
-  // a mesas" en la misma fila de la sub-barra (mockup de referencia, tDetOn:
-  // un solo renglón con ambos) -- antes vivían en filas separadas, una
-  // dentro de la columna de detalle con su propio shrink-0. Ahora el shrink-0
-  // vive en el propio <span> del título (no hace falta en su padre, que
-  // además contiene el botón de volver y comparte su layout).
-  it('el título "Pedido de la mesa" sigue shrink-0, junto al botón de volver en la sub-barra', () => {
+  // Reescrito: el encabezado "Pedido de la mesa" ahora sigue el mismo
+  // diseño que "Nueva orden" (manual-order-page.component.ts) -- botón de
+  // volver cuadrado (ícono solo) + bloque de texto con rótulo "Terminal de
+  // mesas" arriba y el título como <h2> debajo, en vez del botón con label
+  // inline + <span> suelto que tenía antes.
+  it('el título "Pedido de la mesa" vive en un <h2>, junto al botón de volver en la sub-barra', () => {
     store.orders.set([conPedido()]);
     store.selectedTableId.set('t1');
     fixture.detectChanges();
 
-    const titulo = Array.from(fixture.nativeElement.querySelectorAll('span')).find(
+    const titulo = Array.from(fixture.nativeElement.querySelectorAll('h2')).find(
       (s) => (s as HTMLElement).textContent?.trim() === 'Pedido de la mesa',
     ) as HTMLElement;
-    expect(titulo.className).toContain('shrink-0');
+    expect(titulo).toBeTruthy();
     expect(
       fixture.nativeElement.querySelector('[data-testid="page-back-button"]'),
     ).not.toBeNull();
@@ -888,10 +893,10 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
     expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones', 't1', 'orden-manual']);
   });
 
-  it("el CTA solo se deshabilita por falta de mesa libre en la pestaña 'mesas' (FR-007, FR-012)", () => {
+  it("el CTA nunca se deshabilita por falta de mesa seleccionada (FR-007, FR-012; bugfix: sin mesa navega a la ruta genérica en vez de auto-asignar una)", () => {
     store.setOrderTypeTab('mesas');
     fixture.detectChanges();
-    expect(cta()!.disabled).toBe(true); // sin mesa libre seleccionada
+    expect(cta()!.disabled).toBe(false); // sin mesa seleccionada, pero habilitado
 
     store.setOrderTypeTab('domicilios');
     fixture.detectChanges();
@@ -900,6 +905,16 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
     store.setOrderTypeTab('para-llevar');
     fixture.detectChanges();
     expect(cta()!.disabled).toBe(false);
+  });
+
+  it("pulsarlo con la pestaña en 'mesas' y SIN mesa seleccionada navega a la ruta genérica, sin preasignar mesa", () => {
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    store.setOrderTypeTab('mesas');
+    fixture.detectChanges();
+
+    cta()!.click();
+
+    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones/orden-manual']);
   });
 
   it(

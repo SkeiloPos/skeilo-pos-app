@@ -8,14 +8,14 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { PosTerminalStore } from '../services/pos-terminal.store';
-import { ProductSelectComponent } from '../components/product-select.component';
+import { CartOptionLine, PosTerminalStore } from '../services/pos-terminal.store';
+import { ProductSelectPosComponent } from '../components/product-select-pos.component';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { PosTerminalHeaderComponent } from '../components/pos-terminal-header.component';
 import { BillSummaryComponent } from '../components/bill-summary.component';
-import { CartItemOptionsComponent } from '../components/cart-item-options.component';
 import { splitVariantLabel } from '../services/menu-lookup';
 import {
   SearchableSelectComponent,
@@ -46,147 +46,136 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
  * `@Injectable()` sin `providedIn`) porque esta vista vive en una ruta
  * aparte de `table-sessions.component.ts` — mismo patrón que esa página.
  *
- * Rediseño (`create-order/code.html`/`screen.png`): réplica fiel del mockup
- * -- cabecera de terminal compartida con `table-sessions.component.ts`
- * (`app-pos-terminal-header`), barra de búsqueda + contadores, nav de
- * categorías con pestaña "Todos" (`showingAllCategories`,
- * `store.catalogProductsAllFiltered()` -- computed nuevo y aparte, no
- * cambia el significado de `catalogCategoryId`/`catalogProductsFiltered`
- * que también usa `pos-catalog-drawer.component.ts`), tarjetas de producto,
- * y el panel de ticket con la tabla de líneas (Producto/Cant./Costo/
- * Acciones) incluyendo insignia + tachado + "Ahorras $X" por línea cuando la
- * variante tiene promoción vigente y la cantidad ya califica
- * (`store.cartLinePromo`, puramente presentacional -- ver comentario en
- * `pos-terminal.store.ts`, el total real lo sigue calculando el backend).
- * Por debajo de `lg` se muestra una sola tarjeta (catálogo/ticket) a la vez
- * (`viewingCart`), con un botón "Ver pedido" flotante y uno de volver;
- * desde `lg` van lado a lado (65%/35%), mismo mecanismo que
- * `table-sessions.component.ts`. Cada línea del carrito tiene botones de
- * editar que reabren `app-product-select` precargado
- * (`store.openConfigForEdit`/`store.editingSelection`).
+ * Rediseño (`design/nueva-orden.html`): sigue el lenguaje visual de tokens
+ * `--terminal-color-*` (`src/styles.css`, clase `terminal-theme` en el
+ * contenedor raíz) ya consolidado en `table-sessions.component.ts`,
+ * `bill-summary.component.ts` y `product-select.component.ts` -- antes esta
+ * pantalla usaba colores Tailwind planos y nunca aplicaba `terminal-theme`,
+ * por lo que esos dos últimos renderizaban su color de *fallback* en vez del
+ * tema real. Encabezado de volver + título fusionados (antes una franja
+ * aparte "Volver a la Terminal"); sin la fila de contadores
+ * (pendientes/mesas/para-llevar/domicilios) ni el escáner de código del
+ * buscador -- ninguno está en el mockup de referencia. Nav de categorías con
+ * pestaña "Todos" (`showingAllCategories`, `store.catalogProductsAllFiltered()`
+ * -- computed aparte, no cambia el significado de
+ * `catalogCategoryId`/`catalogProductsFiltered` que también usa
+ * `pos-catalog-drawer.component.ts`), tarjetas de producto, y el panel de
+ * ticket con una sola fila apilada por línea (nombre + variante/opciones
+ * inline, precio, nota rápida, stepper de cantidad) incluyendo insignia +
+ * tachado por línea cuando la variante tiene promoción vigente y la
+ * cantidad ya califica (`store.cartLinePromo`, puramente presentacional --
+ * ver comentario en `pos-terminal.store.ts`, el total real lo sigue
+ * calculando el backend). El contenido del carrito (tabs de tipo de orden,
+ * campos condicionales, líneas, resumen y botones) vive en un único
+ * `<ng-template #ticketBody>` para no duplicarlo: desde `lg` se renderiza
+ * siempre en la barra lateral (grid 12 columnas, catálogo 8/ticket 4 -- a
+ * pedido del usuario, un ancho fijo en píxeles se veía muy angosto); por
+ * debajo de `lg` el catálogo es siempre visible y el carrito
+ * vive en una hoja inferior (`viewingCart`, bottom sheet con backdrop,
+ * manija y botón X) que se abre desde una barra fija al fondo de la pantalla
+ * ("Ver pedido" + total / "Crear orden" directo) -- ya no el mecanismo
+ * anterior de alternar catálogo/carrito a pantalla completa. Cada línea del
+ * carrito tiene botones de editar que reabren `app-product-select`
+ * precargado (`store.openConfigForEdit`/`store.editingSelection`), sin
+ * limitarse a cantidad/nota como el mockup -- decisión explícita del
+ * usuario, es funcionalidad existente que no se quita.
  */
 @Component({
   selector: 'app-manual-order-page',
   standalone: true,
   providers: [PosTerminalStore],
   imports: [
+    NgTemplateOutlet,
     FormsModule,
-    ProductSelectComponent,
+    ProductSelectPosComponent,
     IconMiComponent,
     SearchableSelectComponent,
     PosTerminalHeaderComponent,
     BillSummaryComponent,
-    CartItemOptionsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="flex flex-col -m-4 md:-m-6 bg-gray-50 overflow-x-hidden">
-      <app-pos-terminal-header />
-
-      <!-- Barra secundaria: solo volver (spec 052 — el resto vive en el
-           encabezado "Nueva orden" del panel derecho). -->
-      <div class="h-10 bg-white border-b border-gray-200 px-4 flex items-center shrink-0">
-        <button
-          type="button"
-          (click)="backToTerminal()"
-          class="flex items-center gap-1 text-[13px] font-medium text-gray-500 hover:text-gray-900 transition-colors"
-        >
-          <app-mi-icon name="arrow_back" [size]="16" />
-          Volver a la Terminal
-        </button>
+    <div class="terminal-theme flex flex-col -m-4 md:-m-6 overflow-x-hidden bg-[var(--terminal-color-canvas,#f4f6f9)]">
+      <!-- Oculto en móvil (mismo criterio que table-sessions.component.ts):
+           en pantallas angostas no aporta nada aquí y resta alto útil al
+           catálogo/carrito -- el encabezado "Nueva orden" de la columna
+           izquierda ya trae el botón de volver. -->
+      <div class="hidden sm:contents">
+        <app-pos-terminal-header />
       </div>
 
-      <!-- Catálogo (izquierda) + panel de configuración y pedido (derecha):
-           una sola tarjeta a la vez por debajo de lg, lado a lado desde lg
-           (mismo mecanismo que table-sessions.component.ts). -->
+      <!-- Catálogo (izquierda, siempre visible) + carrito (derecha): barra
+           lateral fija desde lg (grid 12 columnas, 8/4 -- a pedido del
+           usuario, el resumen de la orden se veía muy angosto con el ancho
+           fijo anterior); por debajo de lg el carrito vive en la hoja
+           inferior (ver más abajo) -- el padding inferior reserva el alto de
+           la barra fija "Ver pedido"/"Crear orden". -->
       <div
-        class="flex-1 flex flex-col lg:flex-row p-3 gap-3 min-h-0 overflow-y-auto lg:overflow-hidden"
+        class="flex-1 flex flex-col lg:grid lg:grid-cols-12 p-3 pb-20 lg:pb-3 gap-3 min-h-0 overflow-y-auto lg:overflow-hidden"
       >
-        <div
-          data-testid="catalogo-column"
-          class="flex-col min-h-0 flex-1 lg:flex-1 gap-3"
-          [class]="viewingCart() ? 'hidden lg:flex' : 'flex'"
-        >
-          <!-- Barra de búsqueda + contadores (mockup: una sola caja blanca). -->
+        <div data-testid="catalogo-column" class="flex flex-col min-h-0 flex-1 lg:col-span-8 gap-3">
+          <!-- Encabezado: botón de volver fusionado con el título "Nueva
+               orden" (mockup: una sola franja, sin la barra "Volver a la
+               Terminal" aparte que tenía antes esta pantalla). -->
+          <div class="h-11 shrink-0 flex items-center gap-3">
+            <button
+              type="button"
+              (click)="backToTerminal()"
+              aria-label="Volver a la Terminal de Mesas"
+              title="Volver a la Terminal de Mesas"
+              class="w-11 h-11 shrink-0 border border-[var(--terminal-color-border,#e5e9ef)] bg-[var(--terminal-color-surface,#fff)] hover:bg-[var(--terminal-color-surface-elevated,#f1f5f9)] text-[var(--terminal-color-text-primary,#090d16)] rounded-[8px] flex items-center justify-center transition-colors"
+            >
+              <app-mi-icon name="arrow_back" [size]="18" />
+            </button>
+            <div class="min-w-0 leading-tight">
+              <div
+                class="text-[11px] font-semibold uppercase tracking-wider text-[var(--terminal-color-text-muted,#64748b)]"
+              >
+                Terminal de mesas
+              </div>
+              <h2
+                class="text-[18px] font-semibold tracking-tight truncate text-[var(--terminal-color-text-primary,#090d16)] m-0"
+                style="font-family:Sora,ui-sans-serif,system-ui,sans-serif"
+              >
+                Nueva orden
+              </h2>
+            </div>
+          </div>
+
+          <!-- Buscador -->
           <div
-            class="h-11 shrink-0 bg-white border border-gray-200 rounded-[6px] px-3 flex items-center gap-2"
+            class="h-11 shrink-0 bg-[var(--terminal-color-surface,#fff)] border border-[var(--terminal-color-border,#e5e9ef)] rounded-[8px] px-3 flex items-center gap-2"
           >
-            <div class="flex-1 flex items-center gap-2 min-w-0 pr-3 border-r border-gray-200">
-              <app-mi-icon name="search" [size]="18" class="text-gray-500 shrink-0" />
-              <input
-                type="text"
-                [value]="store.catalogSearchText()"
-                (input)="store.setCatalogSearchText($any($event.target).value)"
-                placeholder="Buscar producto, sabor o código... [F2]"
-                class="flex-1 min-w-0 bg-transparent border-none text-[13px] text-gray-900 placeholder-gray-500 focus:outline-none h-full"
-              />
-              <div class="flex items-center gap-1.5 shrink-0">
-                <kbd
-                  class="font-mono text-[11px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 border border-gray-200 rounded-[6px]"
-                  >[F2]</kbd
-                >
-                <button
-                  type="button"
-                  title="Escanear código"
-                  aria-label="Escanear código"
-                  class="w-7 h-7 rounded-[6px] flex items-center justify-center text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
-                >
-                  <app-mi-icon name="qr_code_scanner" [size]="17" />
-                </button>
-              </div>
-            </div>
-            <div class="hidden sm:flex items-center gap-1.5 shrink-0 pl-1 overflow-x-auto">
-              <div
-                class="flex items-center gap-1.5 px-2 py-1 bg-amber-50 border border-amber-100 rounded-[6px] text-[11px] font-semibold text-amber-700 whitespace-nowrap"
-              >
-                <span class="w-1.5 h-1.5 bg-amber-500 rounded-full inline-block"></span>
-                <span>{{ store.tableCounts().pendientes }} Por atender</span>
-              </div>
-              <div
-                class="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded-[6px] text-[11px] text-gray-600 font-medium whitespace-nowrap"
-              >
-                <app-mi-icon name="table_restaurant" [size]="14" class="text-gray-500" />
-                <span class="text-gray-900 font-semibold">{{ store.tableCounts().ocupadas }}</span>
-                <span>Mesas</span>
-              </div>
-              <div
-                class="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded-[6px] text-[11px] text-gray-600 font-medium whitespace-nowrap"
-              >
-                <app-mi-icon name="shopping_bag" [size]="14" class="text-gray-500" />
-                <span class="text-gray-900 font-semibold">{{
-                  store.ordersByType('para-llevar').length
-                }}</span>
-                <span>Llevar</span>
-              </div>
-              <div
-                class="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded-[6px] text-[11px] text-gray-600 font-medium whitespace-nowrap"
-              >
-                <app-mi-icon name="delivery_dining" [size]="14" class="text-violet-600" />
-                <span class="text-gray-900 font-semibold">{{
-                  store.ordersByType('domicilios').length
-                }}</span>
-                <span>Domicilios</span>
-              </div>
-            </div>
+            <app-mi-icon name="search" [size]="18" class="text-[var(--terminal-color-text-muted,#64748b)] shrink-0" />
+            <input
+              type="text"
+              [value]="store.catalogSearchText()"
+              (input)="store.setCatalogSearchText($any($event.target).value)"
+              placeholder="Buscar producto, sabor o código…"
+              class="flex-1 min-w-0 bg-transparent border-none text-[13px] text-[var(--terminal-color-text-primary,#090d16)] placeholder-[var(--terminal-color-text-muted,#64748b)] focus:outline-none h-full"
+            />
+            <kbd
+              class="font-mono text-[11px] font-semibold text-[var(--terminal-color-text-muted,#64748b)] bg-[var(--terminal-color-surface-soft,#edf1f5)] px-1.5 py-0.5 border border-[var(--terminal-color-border,#e5e9ef)] rounded-[6px] shrink-0"
+              >F2</kbd
+            >
           </div>
 
           <!-- Nav de categorías: "Todos" junta todas las categorías (nuevo,
                computed aparte catalogProductsAllFiltered), igual al mockup. -->
           <nav
-            class="h-12 shrink-0 bg-white border border-gray-200 rounded-[6px] p-1 flex items-center gap-1 overflow-x-auto"
+            class="h-12 shrink-0 bg-[var(--terminal-color-surface,#fff)] border border-[var(--terminal-color-border,#e5e9ef)] rounded-[8px] p-1 flex items-center gap-1 overflow-x-auto"
           >
             <button
               type="button"
               (click)="selectAllCategories()"
-              class="h-full px-3.5 text-[13px] whitespace-nowrap rounded-[6px] flex items-center gap-1.5 transition-colors"
+              class="h-full px-3.5 text-[13px] whitespace-nowrap rounded-[6px] flex items-center transition-colors"
               [class]="
                 showingAllCategories()
-                  ? 'bg-gray-100 border border-gray-200 text-gray-900 font-semibold'
-                  : 'bg-white hover:bg-gray-50 border border-transparent hover:border-gray-200 text-gray-600 hover:text-gray-900 font-medium'
+                  ? 'bg-[var(--terminal-color-surface-soft,#edf1f5)] text-[var(--terminal-color-text-primary,#090d16)] font-semibold'
+                  : 'bg-transparent hover:bg-[var(--terminal-color-surface-soft,#edf1f5)] text-[var(--terminal-color-text-secondary,#334155)] font-medium'
               "
             >
-              <span class="text-[11px] text-gray-500 font-mono">[F1]</span>
-              <span>Todos</span>
+              Todos
             </button>
             <button
               type="button"
@@ -194,8 +183,8 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               class="h-full px-3.5 text-[13px] whitespace-nowrap rounded-[6px] flex items-center transition-colors"
               [class]="
                 showingPromotions()
-                  ? 'bg-gray-100 border border-gray-200 text-gray-900 font-semibold'
-                  : 'bg-white hover:bg-gray-50 border border-transparent hover:border-gray-200 text-gray-600 hover:text-gray-900 font-medium'
+                  ? 'bg-[var(--terminal-color-surface-soft,#edf1f5)] text-[var(--terminal-color-text-primary,#090d16)] font-semibold'
+                  : 'bg-transparent hover:bg-[var(--terminal-color-surface-soft,#edf1f5)] text-[var(--terminal-color-text-secondary,#334155)] font-medium'
               "
             >
               Promociones
@@ -207,8 +196,8 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 class="h-full px-3.5 text-[13px] whitespace-nowrap rounded-[6px] flex items-center transition-colors"
                 [class]="
                   !showingAllCategories() && !showingPromotions() && store.catalogCategoryId() === c.id
-                    ? 'bg-gray-100 border border-gray-200 text-gray-900 font-semibold'
-                    : 'bg-white hover:bg-gray-50 border border-transparent hover:border-gray-200 text-gray-600 hover:text-gray-900 font-medium'
+                    ? 'bg-[var(--terminal-color-surface-soft,#edf1f5)] text-[var(--terminal-color-text-primary,#090d16)] font-semibold'
+                    : 'bg-transparent hover:bg-[var(--terminal-color-surface-soft,#edf1f5)] text-[var(--terminal-color-text-secondary,#334155)] font-medium'
                 "
               >
                 {{ c.name }}
@@ -217,56 +206,97 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
           </nav>
 
           <div class="flex-1 min-h-0 overflow-y-auto pr-0.5">
-            <div class="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))] gap-3">
               @for (p of catalogProducts(); track p.id) {
+                <!-- Tarjeta horizontal (mockup design/nueva-orden.html, líneas
+                     222-228): ícono/foto a la izquierda, nombre + precio al
+                     centro, botón "+" decorativo a la derecha -- ya no la
+                     tarjeta vertical con la foto a todo el ancho arriba. -->
                 <button
                   type="button"
                   (click)="store.openConfig(p, showingPromotions())"
-                  class="relative p-2.5 bg-white border border-gray-200 hover:bg-gray-50 active:bg-gray-100 rounded-[6px] flex flex-col gap-2 text-left transition-colors"
+                  [attr.aria-label]="'Agregar ' + p.name"
+                  class="relative min-h-[76px] p-2.5 border rounded-[12px] flex flex-col text-left transition-colors hover:bg-[var(--terminal-color-surface-elevated,#f1f5f9)]"
+                  [style]="
+                    store.cardPromotionText(p.variants)
+                      ? 'background:var(--terminal-color-surface,#fff);border-color:var(--terminal-color-primary-border,#7c3aed)'
+                      : 'background:var(--terminal-color-surface,#fff);border-color:var(--terminal-color-border,#e5e9ef)'
+                  "
                 >
-                  <div class="relative w-full h-28 overflow-hidden bg-gray-100 rounded-[6px]">
-                    @if (store.cardPromotionText(p.variants); as promo) {
-                      <!-- spec 073, FR-016: condición legible del backend (spec 066), no la insignia local. -->
-                      <span
-                        class="absolute top-1 left-1 text-[10px] font-bold px-1.5 py-0.5 rounded-[6px] bg-amber-50 text-amber-700 border border-amber-100 z-10"
-                        >{{ promo }}</span
-                      >
-                    }
+                  @if (store.cardPromotionText(p.variants)) {
+                    <!-- Insignia genérica (el detalle de la condición, p. ej.
+                         "2 x $12.000", ya se lee abajo del nombre en vez de
+                         repetirse aquí). En el flujo normal del layout -- no
+                         absoluta -- para que nunca quede pegada al botón "+"
+                         decorativo que viene más abajo en la misma tarjeta. -->
+                    <span
+                      class="self-end -mt-2.5 -mr-2.5 mb-1 text-[9px] font-bold tracking-wide px-2 py-1 rounded-bl-[10px] rounded-tr-[11px] text-white"
+                      style="background:var(--terminal-color-primary,#7c3aed)"
+                      >% PROMO</span
+                    >
+                  }
+                  <span class="flex-1 flex items-center gap-3">
+                  <span
+                    class="relative w-[52px] h-[52px] shrink-0 rounded-[10px] overflow-hidden flex items-center justify-center bg-[var(--terminal-color-surface-soft,#edf1f5)]"
+                  >
                     @if (p.image_url) {
                       <img [src]="p.image_url" [alt]="p.name" class="w-full h-full object-cover" />
                     } @else {
-                      <span class="w-full h-full flex items-center justify-center text-gray-300"
-                        ><app-mi-icon name="image-off" [size]="40" ariaLabel="Sin imagen"
-                      /></span>
+                      <app-mi-icon
+                        name="image-off"
+                        [size]="22"
+                        ariaLabel="Sin imagen"
+                        class="text-[var(--terminal-color-text-subtle,#94a3b8)]"
+                      />
                     }
-                  </div>
-                  <div class="flex flex-col justify-between flex-1 min-w-0 w-full">
+                  </span>
+                  @if (cartQtyByProduct().get(p.id); as qty) {
+                    <!-- Cuántas unidades de este producto ya hay en el carrito
+                         (suma de todas sus líneas/variantes) -- va sobre la
+                         tarjeta (relative), no dentro del ícono: ese contenedor
+                         tiene overflow-hidden para recortar la foto, y recortaba
+                         también la mitad del contador al tener offset negativo. -->
                     <span
-                      class="text-[14px] font-semibold text-gray-900 tracking-tight leading-tight truncate"
+                      class="absolute top-1 left-1 z-10 min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center text-[11px] font-bold text-white bg-[var(--terminal-color-primary,#7c3aed)] border-2 border-[var(--terminal-color-surface,#fff)]"
+                      >{{ qty }}</span
+                    >
+                  }
+                  <span class="flex-1 min-w-0 flex flex-col gap-1">
+                    <span
+                      class="text-[14px] font-semibold text-[var(--terminal-color-text-primary,#090d16)] tracking-tight leading-tight truncate"
                       >{{ p.name }}</span
                     >
-                    <div class="flex items-center justify-between mt-2">
-                      <div class="flex flex-col">
-                        <span class="text-[11px] text-gray-500 leading-none">Desde</span>
-                        <span class="font-mono font-bold text-[15px] text-gray-900">{{
+                    @if (store.cardPromotionText(p.variants); as promo) {
+                      <!-- spec 073, FR-016: condición legible del backend (spec 066). -->
+                      <span class="flex flex-col leading-tight">
+                        <span class="text-[11px] text-[var(--terminal-color-text-muted,#64748b)] leading-none">desde</span>
+                        <span class="font-mono font-bold text-[15px] text-[var(--terminal-color-primary-text,#6d28d9)]">{{
+                          promo
+                        }}</span>
+                      </span>
+                    } @else {
+                      <span class="flex items-baseline gap-1.5 whitespace-nowrap">
+                        <span class="text-[11px] text-[var(--terminal-color-text-muted,#64748b)] leading-none">Desde</span>
+                        <span class="font-mono font-bold text-[15px] text-[var(--terminal-color-primary-text,#6d28d9)]">{{
                           store.fmt(minPrice(p))
                         }}</span>
-                      </div>
-                      <!-- Solo decorativo: el click de agregar es el de toda la
-                           tarjeta, no un botón anidado (evita <button> dentro
-                           de <button>). -->
-                      <span
-                        class="w-9 h-9 rounded-[6px] flex items-center justify-center bg-violet-600 text-white shrink-0"
-                        aria-hidden="true"
-                      >
-                        <app-mi-icon name="shopping_cart" [size]="18" />
                       </span>
-                    </div>
-                  </div>
+                    }
+                  </span>
+                  <!-- Solo decorativo: el click de agregar es el de toda la
+                       tarjeta, no un botón anidado (evita <button> dentro
+                       de <button>). -->
+                  <span
+                    class="w-9 h-9 rounded-[8px] flex items-center justify-center bg-[var(--terminal-color-primary,#7c3aed)] text-white shrink-0"
+                    aria-hidden="true"
+                  >
+                    <app-mi-icon name="add" [size]="18" />
+                  </span>
+                  </span>
                 </button>
               }
               @if (catalogProducts().length === 0) {
-                <p class="col-span-full text-center text-[13px] text-gray-400 py-10">
+                <p class="col-span-full text-center text-[13px] text-[var(--terminal-color-text-subtle,#94a3b8)] py-10">
                   @if (showingPromotions()) {
                     No hay promociones activas en este momento.
                   } @else {
@@ -277,44 +307,108 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
             </div>
           </div>
 
-          <!-- Botón flotante "Ver pedido": solo por debajo de lg, con el carrito no vacío. -->
-          @if (!store.cartEmpty()) {
-            <div class="lg:hidden shrink-0">
-              <button
-                type="button"
-                (click)="viewingCart.set(true)"
-                class="w-full h-11 rounded-[6px] bg-violet-600 hover:bg-violet-700 text-white text-[14px] font-semibold flex items-center justify-between px-4 transition-colors"
-              >
-                <span>Ver pedido ({{ store.cartView().length }})</span>
-                <span>{{ store.fmt(store.subtotal()) }}</span>
-              </button>
-            </div>
-          }
         </div>
 
+        <!-- Barra lateral fija desde lg (misma tarjeta de siempre); por debajo
+             de lg el carrito no vive aquí -- ver la hoja inferior después de
+             este contenedor, que renderiza el mismo ticketBody. -->
         <div
           data-testid="ticket-column"
-          class="flex-col min-h-0 lg:w-[35%] lg:shrink-0 lg:flex-none bg-white rounded-[6px] border border-gray-200 lg:overflow-hidden"
-          [class]="viewingCart() ? 'flex flex-1' : 'hidden lg:flex'"
+          class="hidden lg:flex lg:flex-col min-h-0 lg:col-span-4 bg-[var(--terminal-color-surface,#fff)] rounded-[8px] border border-[var(--terminal-color-border,#e5e9ef)] lg:overflow-hidden"
         >
-          <div class="lg:hidden shrink-0 px-3 pt-3">
+          <ng-container *ngTemplateOutlet="ticketBody" />
+        </div>
+      </div>
+
+      <!-- Hoja inferior del carrito (solo <lg): mismo contenido que la barra
+           lateral de escritorio, vía el ng-template compartido. -->
+      @if (viewingCart()) {
+        <div
+          class="lg:hidden fixed inset-0 z-40"
+          style="background:rgba(9,13,22,.6)"
+          (click)="viewingCart.set(false)"
+        ></div>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Tu pedido"
+          class="lg:hidden fixed inset-x-0 bottom-0 z-50 max-h-[88vh] flex flex-col overflow-hidden rounded-t-[20px]"
+          style="background:var(--terminal-color-surface,#fff)"
+        >
+          <div class="shrink-0 flex justify-center pt-2">
+            <span class="w-10 h-1 rounded-full" style="background:var(--terminal-color-border-strong,#cbd5e1)"></span>
+          </div>
+          <div class="shrink-0 flex items-center justify-between px-4 py-2">
+            <h2
+              class="text-[18px] font-semibold tracking-tight"
+              style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;color:var(--terminal-color-text-primary,#090d16)"
+            >
+              Tu pedido
+            </h2>
             <button
               type="button"
-              data-testid="page-back-button"
               (click)="viewingCart.set(false)"
-              class="px-3 py-1.5 text-[13px] border border-gray-200 rounded-[6px] text-gray-600 hover:bg-gray-100"
+              aria-label="Cerrar"
+              class="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--terminal-color-surface-soft,#edf1f5)]"
+              style="color:var(--terminal-color-text-secondary,#334155)"
             >
-              ← Volver al catálogo
+              <app-mi-icon name="close" [size]="18" />
             </button>
           </div>
+          <ng-container *ngTemplateOutlet="ticketBody" />
+        </div>
+      }
 
+      <!-- Barra fija "Ver pedido"/"Crear orden" (solo <lg, con carrito no
+           vacío y la hoja cerrada): reemplaza el botón flotante anterior --
+           queda pegada al fondo de la pantalla en vez de vivir dentro del
+           flujo de la columna de catálogo. -->
+      @if (!store.cartEmpty() && !viewingCart()) {
+        <div
+          class="lg:hidden fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 px-3 py-2"
+          style="background:var(--terminal-color-surface,#fff);border-top:1px solid var(--terminal-color-border,#e5e9ef)"
+        >
+          <button
+            type="button"
+            (click)="viewingCart.set(true)"
+            [attr.aria-label]="'Ver pedido, ' + store.cartView().length + ' ítems, ' + store.fmt(store.subtotal())"
+            class="flex-1 min-w-0 flex items-center gap-3 text-left"
+          >
+            <span
+              class="w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0"
+              style="background:var(--terminal-color-surface-soft,#edf1f5);border:1px solid var(--terminal-color-border,#e5e9ef);color:var(--terminal-color-text-primary,#090d16)"
+            >
+              {{ store.cartView().length }}
+            </span>
+            <span class="min-w-0 flex flex-col leading-tight">
+              <span class="flex items-center gap-1 text-[13px]" style="color:var(--terminal-color-text-secondary,#334155)">
+                Ver pedido <app-mi-icon name="expand_less" [size]="16" />
+              </span>
+              <b class="text-[18px]" style="color:var(--terminal-color-text-primary,#090d16)">{{ store.fmt(store.subtotal()) }}</b>
+            </span>
+          </button>
+          <button
+            type="button"
+            (click)="confirm()"
+            [disabled]="orderDisabled()"
+            class="shrink-0 h-12 px-5 rounded-[10px] font-semibold flex items-center gap-2 text-white disabled:opacity-50 transition-colors"
+            style="background:var(--terminal-color-primary,#7c3aed)"
+          >
+            <app-mi-icon name="check" [size]="18" />
+            Crear orden
+          </button>
+        </div>
+      }
+    </div>
+
+    <!-- Contenido del carrito/ticket: compartido entre la barra lateral de
+         escritorio y la hoja inferior de móvil (ver arriba) -- mismo
+         formulario, misma lista de líneas, mismo resumen, un solo origen de
+         verdad para no duplicar ~400 líneas de plantilla. -->
+    <ng-template #ticketBody>
           <!-- Encabezado + tipo de orden + campos (mockup: una sola sección). -->
-          <div class="border-b border-gray-200 bg-white shrink-0 p-3 flex flex-col gap-2.5">
-            <div class="flex items-center justify-between">
-              <h2 class="text-[14px] font-bold tracking-tight text-gray-900">Nueva orden</h2>
-            </div>
-
-            <div class="grid grid-cols-3 p-0.5 bg-gray-100 border border-gray-200 rounded-[6px]">
+          <div class="border-b border-[var(--terminal-color-border,#e5e9ef)] bg-[var(--terminal-color-surface,#fff)] shrink-0 p-3 flex flex-col gap-2.5">
+            <div class="grid grid-cols-3 p-0.5 bg-[var(--terminal-color-surface-soft,#edf1f5)] border border-[var(--terminal-color-border,#e5e9ef)] rounded-[8px]">
               <button
                 type="button"
                 (click)="setOrderTypeTab('mesas')"
@@ -327,14 +421,14 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 [class]="
                   store.orderTypeTab() === 'mesas'
-                    ? 'bg-white text-gray-900 font-semibold border border-gray-200'
-                    : 'text-gray-600 hover:text-gray-900 font-medium'
+                    ? 'bg-[var(--terminal-color-surface,#fff)] text-[var(--terminal-color-text-primary,#090d16)] font-semibold shadow-[0_1px_2px_rgba(15,23,42,.08)]'
+                    : 'text-[var(--terminal-color-text-secondary,#334155)] font-medium'
                 "
               >
                 <app-mi-icon
                   name="table_restaurant"
                   [size]="18"
-                  [class]="store.orderTypeTab() === 'mesas' ? 'text-violet-600' : ''"
+                  [class]="store.orderTypeTab() === 'mesas' ? 'text-[var(--terminal-color-primary-text,#6d28d9)]' : ''"
                 />
                 Mesa
               </button>
@@ -350,14 +444,14 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 [class]="
                   store.orderTypeTab() === 'para-llevar'
-                    ? 'bg-white text-gray-900 font-semibold border border-gray-200'
-                    : 'text-gray-600 hover:text-gray-900 font-medium'
+                    ? 'bg-[var(--terminal-color-surface,#fff)] text-[var(--terminal-color-text-primary,#090d16)] font-semibold shadow-[0_1px_2px_rgba(15,23,42,.08)]'
+                    : 'text-[var(--terminal-color-text-secondary,#334155)] font-medium'
                 "
               >
                 <app-mi-icon
                   name="shopping_bag"
                   [size]="18"
-                  [class]="store.orderTypeTab() === 'para-llevar' ? 'text-violet-600' : ''"
+                  [class]="store.orderTypeTab() === 'para-llevar' ? 'text-[var(--terminal-color-primary-text,#6d28d9)]' : ''"
                 />
                 Para llevar
               </button>
@@ -373,14 +467,14 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 class="h-11 text-[13px] rounded-[6px] flex items-center justify-center gap-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 [class]="
                   store.orderTypeTab() === 'domicilios'
-                    ? 'bg-white text-gray-900 font-semibold border border-gray-200'
-                    : 'text-gray-600 hover:text-gray-900 font-medium'
+                    ? 'bg-[var(--terminal-color-surface,#fff)] text-[var(--terminal-color-text-primary,#090d16)] font-semibold shadow-[0_1px_2px_rgba(15,23,42,.08)]'
+                    : 'text-[var(--terminal-color-text-secondary,#334155)] font-medium'
                 "
               >
                 <app-mi-icon
                   name="delivery_dining"
                   [size]="18"
-                  [class]="store.orderTypeTab() === 'domicilios' ? 'text-violet-600' : ''"
+                  [class]="store.orderTypeTab() === 'domicilios' ? 'text-[var(--terminal-color-primary-text,#6d28d9)]' : ''"
                 />
                 Domicilio
               </button>
@@ -390,9 +484,9 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               <!-- Solo las mesas libres se pueden elegir: esta vista arma un
                    pedido nuevo, no edita una mesa ya ocupada (spec 053: mesas
                    ocupadas siguen visibles en el select, no seleccionables). -->
-              <div class="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:items-end">
-                <div class="sm:col-span-7 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
+              <div class="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-1.5">
+                <div class="flex flex-col gap-0.5">
+                  <label class="text-[10px] font-semibold text-[var(--terminal-color-text-muted,#64748b)] uppercase tracking-wider"
                     >Cliente</label
                   >
                   <input
@@ -401,14 +495,14 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     (input)="store.customerName.set($any($event.target).value)"
                     (focus)="$any($event.target).select()"
                     placeholder="Ej: Juan Pérez"
-                    class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] text-gray-900 font-medium focus:outline-none focus:border-gray-900 focus:bg-white"
+                    class="h-11 px-3 bg-[var(--terminal-color-surface-soft,#edf1f5)] border border-[var(--terminal-color-border,#e5e9ef)] rounded-[8px] text-[13px] text-[var(--terminal-color-text-primary,#090d16)] font-medium focus:outline-none focus:border-[var(--terminal-color-primary-border,#7c3aed)] focus:bg-[var(--terminal-color-surface,#fff)]"
                   />
                   @if (mostrarErrorNombre()) {
-                    <span class="text-[11px] text-red-600">El nombre del cliente es obligatorio.</span>
+                    <span class="text-[11px] text-[var(--terminal-color-error,#e11d48)]">El nombre del cliente es obligatorio.</span>
                   }
                 </div>
-                <div class="sm:col-span-5 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
+                <div class="flex flex-col gap-0.5">
+                  <label class="text-[10px] font-semibold text-[var(--terminal-color-text-muted,#64748b)] uppercase tracking-wider"
                     >Mesa asignada</label
                   >
                   <app-searchable-select
@@ -427,7 +521,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                    seleccionado por completo al enfocarlo, pero siempre editable -- a diferencia
                    de "Domicilio", si queda vacío se guarda con ese valor por defecto. -->
               <div class="flex flex-col gap-0.5">
-                <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
+                <label class="text-[10px] font-semibold text-[var(--terminal-color-text-muted,#64748b)] uppercase tracking-wider"
                   >Cliente / Para llevar</label
                 >
                 <input
@@ -436,10 +530,10 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                   (input)="store.customerName.set($any($event.target).value)"
                   (focus)="$any($event.target).select()"
                   placeholder="Ej: Juan Pérez"
-                  class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] text-gray-900 font-medium focus:outline-none focus:border-gray-900 focus:bg-white"
+                  class="h-11 px-3 bg-[var(--terminal-color-surface-soft,#edf1f5)] border border-[var(--terminal-color-border,#e5e9ef)] rounded-[8px] text-[13px] text-[var(--terminal-color-text-primary,#090d16)] font-medium focus:outline-none focus:border-[var(--terminal-color-primary-border,#7c3aed)] focus:bg-[var(--terminal-color-surface,#fff)]"
                 />
                 @if (mostrarErrorNombre()) {
-                  <span class="text-[11px] text-red-600">El nombre del cliente es obligatorio.</span>
+                  <span class="text-[11px] text-[var(--terminal-color-error,#e11d48)]">El nombre del cliente es obligatorio.</span>
                 }
               </div>
             }
@@ -451,9 +545,9 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                    (no hay nada que proteger, FR-003). Dirección y valor del
                    domicilio son obligatorios (FR-004, FR-006); teléfono
                    siempre opcional (FR-008). -->
-              <div class="grid grid-cols-1 sm:grid-cols-12 gap-1.5">
-                <div class="sm:col-span-7 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
+              <div class="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-1.5">
+                <div class="flex flex-col gap-0.5">
+                  <label class="text-[10px] font-semibold text-[var(--terminal-color-text-muted,#64748b)] uppercase tracking-wider"
                     >Nombre cliente</label
                   >
                   <input
@@ -461,14 +555,14 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     [value]="store.customerName()"
                     (input)="store.customerName.set($any($event.target).value)"
                     placeholder="Ej: Juan Pérez"
-                    class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] text-gray-900 font-medium focus:outline-none focus:border-gray-900 focus:bg-white"
+                    class="h-11 px-3 bg-[var(--terminal-color-surface-soft,#edf1f5)] border border-[var(--terminal-color-border,#e5e9ef)] rounded-[8px] text-[13px] text-[var(--terminal-color-text-primary,#090d16)] font-medium focus:outline-none focus:border-[var(--terminal-color-primary-border,#7c3aed)] focus:bg-[var(--terminal-color-surface,#fff)]"
                   />
                   @if (mostrarErrorNombre()) {
-                    <span class="text-[11px] text-red-600">El nombre del cliente es obligatorio.</span>
+                    <span class="text-[11px] text-[var(--terminal-color-error,#e11d48)]">El nombre del cliente es obligatorio.</span>
                   }
                 </div>
-                <div class="sm:col-span-5 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
+                <div class="flex flex-col gap-0.5">
+                  <label class="text-[10px] font-semibold text-[var(--terminal-color-text-muted,#64748b)] uppercase tracking-wider"
                     >Teléfono</label
                   >
                   <input
@@ -476,13 +570,13 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     [value]="store.deliveryPhone()"
                     (input)="store.deliveryPhone.set($any($event.target).value)"
                     placeholder="Ej: 300 123 4567"
-                    class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] font-mono text-gray-900 focus:outline-none focus:border-gray-900 focus:bg-white"
+                    class="h-11 px-3 bg-[var(--terminal-color-surface-soft,#edf1f5)] border border-[var(--terminal-color-border,#e5e9ef)] rounded-[8px] text-[13px] font-mono text-[var(--terminal-color-text-primary,#090d16)] focus:outline-none focus:border-[var(--terminal-color-primary-border,#7c3aed)] focus:bg-[var(--terminal-color-surface,#fff)]"
                   />
                 </div>
               </div>
-              <div class="grid grid-cols-1 sm:grid-cols-12 gap-1.5">
-                <div class="sm:col-span-7 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
+              <div class="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-1.5">
+                <div class="flex flex-col gap-0.5">
+                  <label class="text-[10px] font-semibold text-[var(--terminal-color-text-muted,#64748b)] uppercase tracking-wider"
                     >Dirección de entrega</label
                   >
                   <input
@@ -490,11 +584,11 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     [value]="store.deliveryAddress()"
                     (input)="store.deliveryAddress.set($any($event.target).value)"
                     placeholder="Ej: Calle 45 # 22-10"
-                    class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] text-gray-900 focus:outline-none focus:border-gray-900 focus:bg-white"
+                    class="h-11 px-3 bg-[var(--terminal-color-surface-soft,#edf1f5)] border border-[var(--terminal-color-border,#e5e9ef)] rounded-[8px] text-[13px] text-[var(--terminal-color-text-primary,#090d16)] focus:outline-none focus:border-[var(--terminal-color-primary-border,#7c3aed)] focus:bg-[var(--terminal-color-surface,#fff)]"
                   />
                 </div>
-                <div class="sm:col-span-5 flex flex-col gap-0.5">
-                  <label class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider"
+                <div class="flex flex-col gap-0.5">
+                  <label class="text-[10px] font-semibold text-[var(--terminal-color-text-muted,#64748b)] uppercase tracking-wider"
                     >Tarifa Domicilio</label
                   >
                   <input
@@ -503,261 +597,188 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                     [value]="store.deliveryFee()"
                     (input)="onDeliveryFeeInput($any($event.target).value)"
                     placeholder="$5.000"
-                    class="h-11 px-3 bg-gray-50 border border-gray-200 rounded-[6px] text-[13px] font-mono font-semibold text-gray-900 focus:outline-none focus:border-gray-900 focus:bg-white"
+                    class="h-11 px-3 bg-[var(--terminal-color-surface-soft,#edf1f5)] border border-[var(--terminal-color-border,#e5e9ef)] rounded-[8px] text-[13px] font-mono font-semibold text-[var(--terminal-color-text-primary,#090d16)] focus:outline-none focus:border-[var(--terminal-color-primary-border,#7c3aed)] focus:bg-[var(--terminal-color-surface,#fff)]"
                   />
                 </div>
               </div>
             }
           </div>
 
-          <!-- Detalle del pedido: encabezado + tabla de líneas. Por debajo de
-               lg NO tiene scroll propio -- crece con su contenido y es la
-               tarjeta completa (ticket-column) + el contenedor externo los
-               que crecen/scrollean como una sola pieza (mismo criterio que
-               el usuario pidió para esta sección: nada se apiña en una caja
-               chica con su propio scroll). Desde lg sí necesita su scroll
-               interno (columna de ancho fijo, layout de escritorio del
-               mockup). -->
-          <div class="lg:flex-1 lg:overflow-y-auto px-4 py-3 flex flex-col bg-white">
-            <div class="flex items-center gap-2 flex-wrap pb-3 border-b border-gray-200">
+          <!-- Detalle del pedido: encabezado + tabla de líneas, con scroll
+               propio -- tanto en la barra lateral de escritorio como en la
+               hoja inferior de móvil, el contenedor que lo envuelve tiene
+               alto acotado (lg:overflow-hidden / max-h-[88vh]), así que
+               esta es la única pieza que scrollea; el encabezado de tabs/
+               campos y el footer de totales/botones quedan fijos arriba y
+               abajo. -->
+          <div class="flex-1 overflow-y-auto px-4 py-3 flex flex-col bg-[var(--terminal-color-surface,#fff)]">
+            <div class="flex items-center gap-2 flex-wrap pb-3 border-b border-[var(--terminal-color-border,#e5e9ef)]">
               <span
-                class="px-2 py-0.5 text-[12px] font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded-[6px] whitespace-nowrap"
+                class="px-2 py-0.5 text-[12px] font-medium text-[var(--terminal-color-text-secondary,#334155)] bg-[var(--terminal-color-surface-soft,#edf1f5)] border border-[var(--terminal-color-border,#e5e9ef)] rounded-[6px] whitespace-nowrap"
                 >Ítems: {{ store.cartView().length }}</span
               >
             </div>
 
-            @if (!store.cartEmpty()) {
-              <div
-                class="hidden sm:grid grid-cols-12 text-[13px] font-semibold text-gray-900 py-2.5 border-b border-gray-200"
-              >
-                <div class="col-span-5 text-left">Producto</div>
-                <div class="col-span-2 text-center">Cant.</div>
-                <div class="col-span-3 text-right pr-3">Costo</div>
-                <div class="col-span-2 text-right">Acciones</div>
-              </div>
-            }
-
-            <div class="flex flex-col divide-y divide-gray-200">
+            <div class="flex flex-col divide-y" style="border-color:var(--terminal-color-border,#e5e9ef)">
               @for (it of store.cartView(); track it.key) {
-                <!-- Envoltorio único por ítem: divide-y del contenedor padre
-                     necesita un solo hijo por iteración (si las dos variantes
-                     de abajo fueran hermanas sueltas, divide-y les pintaría
-                     un borde entre sí aunque una esté oculta por CSS, ya que
-                     su selector mira el atributo HTML hidden, no la clase). -->
-                <div>
-                  <!-- Tabla (desde sm/tablet+): pixel-igual al mockup. -->
-                  @let partsDesktop = splitVariantLabel(it.name);
-                  <div
-                    class="hidden sm:grid grid-cols-12 items-center py-3 gap-1"
-                    [class]="
-                      it.promo ? 'promo-line-highlight bg-amber-50/40 -mx-2 px-2 border-l-2 border-amber-500' : ''
-                    "
-                  >
-                    <div class="col-span-5 flex flex-col gap-1 min-w-0 pr-1">
-                      <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
-                        <span
-                          class="text-[14px] font-semibold text-gray-900 truncate leading-tight"
-                          >{{ partsDesktop.product }}</span
-                        >
-                        @if (partsDesktop.variant) {
-                          <span
-                            class="bg-gray-100 text-gray-600 text-[11px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
-                            >{{ partsDesktop.variant }}</span
-                          >
-                        }
-                        @if (it.promo; as promo) {
-                          <span
-                            class="promo-line-badge bg-amber-50 text-amber-700 border border-amber-100 text-[11px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
-                            >{{ promo.badge }}</span
-                          >
-                          <span class="line-through text-[12px] text-gray-500 font-mono shrink-0">{{
-                            store.fmt(promo.originalAmount)
-                          }}</span>
-                        }
-                      </div>
-                      <app-cart-item-options [options]="it.options" [notes]="it.notes" />
-                      @if (it.addonsTotal > 0) {
-                        <!-- spec 129: desglose del "+ $X adicionales" oculto en el total --
-                             sin esto, el cajero veía sumar el precio de las adiciones al
-                             Subtotal/Total sin saber de dónde salía la diferencia. -->
-                        <div class="text-[12px] text-gray-400">+ {{ store.fmt(it.addonsTotal) }} adicionales</div>
+                <!-- Rediseño (design/nueva-orden.html): una sola fila apilada
+                     para cualquier ancho -- ya no una tabla de 12 columnas
+                     desde sm y una tarjeta aparte por debajo (el carrito
+                     vive siempre en una columna angosta, sea la barra lateral
+                     de escritorio o la hoja inferior de móvil, así que nunca
+                     necesitó una fila de tabla ancha). Variante + opciones
+                     elegidas se resumen en una sola línea muted junto al
+                     nombre (cartLineDetail) en vez de la insignia de
+                     presentación + app-cart-item-options en caja aparte. -->
+                @let parts = splitVariantLabel(it.name);
+                @let detail = cartLineDetail(it.options, parts.variant);
+                <div
+                  class="py-3 flex flex-col gap-2"
+                  [class]="it.promo ? '-mx-2 px-2' : ''"
+                  [style]="it.promo ? 'background:var(--terminal-color-warning-soft,#fef3e2);border-left:2px solid var(--terminal-color-warning,#b45309)' : ''"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0 flex-1">
+                      <span class="text-[14px] font-semibold text-[var(--terminal-color-text-primary,#090d16)] leading-tight">{{
+                        parts.product
+                      }}</span>
+                      @if (detail) {
+                        <span class="text-[13px] text-[var(--terminal-color-text-secondary,#334155)]"> · {{ detail }}</span>
                       }
                     </div>
-                    <div class="col-span-2 flex items-center justify-center gap-1">
+                    @if (it.promo; as promo) {
+                      <div class="shrink-0 flex flex-col items-end gap-1">
+                        <span
+                          class="text-[11px] font-bold px-2 py-1 rounded-[4px] leading-none border"
+                          style="background:var(--terminal-color-warning-soft,#fef3e2);color:var(--terminal-color-warning,#b45309);border-color:var(--terminal-color-warning,#b45309)"
+                          >{{ promo.badge }}</span
+                        >
+                        <b class="font-mono text-[16px] text-[var(--terminal-color-primary-text,#6d28d9)]">{{
+                          store.fmt(promo.discountedAmount)
+                        }}</b>
+                      </div>
+                    } @else {
+                      <b class="shrink-0 font-mono text-[16px] text-[var(--terminal-color-text-primary,#090d16)]">{{ store.fmt(it.subtotal) }}</b>
+                    }
+                  </div>
+
+                  @if (it.notes && editingNoteKey() !== it.key) {
+                    <!-- Nota ya guardada: caja resaltada con "Editar" -- tocarla reabre el textarea de abajo.
+                         Ícono de nota (sticky_note_2), distinto del lápiz "edit" que usa el botón "Editar"
+                         de abajo (reabre el modal completo) -- antes ambos usaban el mismo ícono y
+                         confundían, a pesar de llevar textos distintos. -->
+                    <button
+                      type="button"
+                      (click)="openNoteEditor(it.key, it.notes)"
+                      class="flex items-center gap-2 w-full text-left px-3 py-2 rounded-[8px] border"
+                      style="background:var(--terminal-color-warning-soft,#fef3e2);border-color:var(--terminal-color-warning,#b45309)"
+                    >
+                      <app-mi-icon name="sticky_note_2" [size]="14" style="color:var(--terminal-color-warning,#b45309)" />
+                      <span class="flex-1 min-w-0 text-[13px] truncate" style="color:var(--terminal-color-text-primary,#090d16)">{{
+                        it.notes
+                      }}</span>
+                      <span class="shrink-0 text-[13px] font-semibold" style="color:var(--terminal-color-primary-text,#6d28d9)">Editar</span>
+                    </button>
+                  }
+
+                  @if (editingNoteKey() === it.key) {
+                    <div
+                      class="flex flex-col gap-2 p-2 rounded-[8px] border"
+                      style="background:var(--terminal-color-surface-soft,#edf1f5);border-color:var(--terminal-color-border,#e5e9ef)"
+                    >
+                      <textarea
+                        rows="2"
+                        [value]="noteDraft()"
+                        (input)="noteDraft.set($any($event.target).value)"
+                        placeholder="Observación para preparación…"
+                        class="w-full text-[13px] rounded-[6px] border p-2 focus:outline-none"
+                        style="background:var(--terminal-color-surface,#fff);border-color:var(--terminal-color-border,#e5e9ef);color:var(--terminal-color-text-primary,#090d16)"
+                      ></textarea>
+                      <button
+                        type="button"
+                        (click)="saveNote(it.key)"
+                        class="self-end h-9 px-4 rounded-[8px] text-white text-[13px] font-semibold"
+                        style="background:var(--terminal-color-primary,#7c3aed)"
+                      >
+                        Listo
+                      </button>
+                    </div>
+                  }
+
+                  <div class="flex items-center justify-between gap-2">
+                    <div
+                      class="inline-flex items-center gap-1.5 bg-[var(--terminal-color-surface-soft,#edf1f5)] border border-[var(--terminal-color-border,#e5e9ef)] rounded-full p-1"
+                    >
+                      <!-- A pedido del usuario: sin botón de eliminar aparte --
+                           al llegar a 1, "−" quita la línea (store.decDraft ya
+                           filtra las líneas en 0, ver pos-terminal.store.ts). -->
                       <button
                         (click)="store.decDraft(it.key)"
-                        class="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-[13px] font-bold transition-colors"
+                        [attr.aria-label]="it.qty === 1 ? 'Eliminar ítem' : 'Quitar uno'"
+                        [title]="it.qty === 1 ? 'Eliminar ítem' : ''"
+                        class="w-9 h-9 rounded-full flex items-center justify-center text-[16px] font-bold transition-colors hover:opacity-80"
+                        [style]="
+                          it.qty === 1
+                            ? 'color:var(--terminal-color-error,#e11d48)'
+                            : 'color:var(--terminal-color-text-secondary,#334155)'
+                        "
                       >
-                        −
+                        @if (it.qty === 1) {
+                          <app-mi-icon name="delete" ariaLabel="Eliminar ítem" [size]="18" />
+                        } @else {
+                          −
+                        }
                       </button>
                       <span
-                        class="font-mono font-medium text-[14px] text-gray-900 tabular-nums min-w-[12px] text-center"
+                        class="font-mono font-bold text-[16px] text-[var(--terminal-color-primary-text,#6d28d9)] tabular-nums min-w-[22px] text-center"
                         >{{ it.qty }}</span
                       >
                       <button
                         (click)="store.incDraft(it.key)"
-                        class="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-[13px] font-bold transition-colors"
+                        class="w-9 h-9 rounded-full flex items-center justify-center text-[16px] font-bold transition-colors hover:opacity-80"
+                        style="color:var(--terminal-color-text-secondary,#334155)"
                       >
                         +
                       </button>
                     </div>
-                    <div class="col-span-3 text-right pr-3">
-                      @if (it.promo; as promo) {
-                        <div
-                          class="font-semibold text-[16px] text-violet-600 tabular-nums font-mono"
+                    <div class="flex items-center gap-1.5">
+                      @if (it.kind === 'draft' && !it.comboId && !it.notes && editingNoteKey() !== it.key) {
+                        <button
+                          type="button"
+                          (click)="openNoteEditor(it.key, it.notes)"
+                          class="flex items-center gap-1.5 text-[12px] font-semibold rounded-[8px] px-2.5 py-1.5 border"
+                          style="background:var(--terminal-color-surface-soft,#edf1f5);border-color:var(--terminal-color-border,#e5e9ef);color:var(--terminal-color-text-secondary,#334155)"
                         >
-                          {{ store.fmt(promo.discountedAmount) }}
-                        </div>
-                      } @else {
-                        <div
-                          class="font-semibold text-[16px] text-gray-900 tabular-nums font-mono"
-                        >
-                          {{ store.fmt(it.subtotal) }}
-                        </div>
+                          <app-mi-icon name="sticky_note_2" [size]="16" />
+                          Nota
+                        </button>
                       }
-                    </div>
-                    <div class="col-span-2 flex items-center justify-end gap-0.5">
                       @if (it.kind === 'draft' && !it.comboId) {
                         <button
                           type="button"
                           (click)="store.openConfigForEdit(it.key)"
-                          title="Ver/Editar Notas"
-                          class="p-1 text-gray-500 hover:text-violet-600 hover:bg-gray-100 rounded-[6px] transition-colors"
+                          title="Editar sabor, opciones y toppings"
+                          class="flex items-center gap-1.5 text-[12px] font-semibold text-white rounded-[8px] px-2.5 py-1.5"
+                          style="background:var(--terminal-color-primary,#7c3aed)"
                         >
-                          <app-mi-icon name="edit" ariaLabel="Ver/Editar Notas" [size]="16" />
-                        </button>
-                        <button
-                          type="button"
-                          (click)="store.openConfigForEdit(it.key)"
-                          title="Modificar Toppings"
-                          class="p-1 text-gray-500 hover:text-violet-600 hover:bg-gray-100 rounded-[6px] transition-colors"
-                        >
-                          <app-mi-icon name="tune" ariaLabel="Modificar Toppings" [size]="16" />
+                          <app-mi-icon name="tune" [size]="16" />
+                          Editar
                         </button>
                       }
-                      <button
-                        (click)="store.removeDraft(it.key)"
-                        title="Eliminar ítem"
-                        class="p-1 text-gray-500 hover:text-red-600 hover:bg-gray-100 rounded-[6px] transition-colors"
-                      >
-                        <app-mi-icon name="delete" ariaLabel="Eliminar ítem" [size]="16" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <!-- Tarjeta apilada (por debajo de sm): crece verticalmente
-                     según su contenido en vez de apretar el stepper y los 3
-                     íconos en columnas angostas -- mismos datos/acciones. -->
-                  <div
-                    class="flex sm:hidden flex-col gap-2 py-3"
-                    [class]="
-                      it.promo ? 'promo-line-highlight bg-amber-50/40 -mx-2 px-2 border-l-2 border-amber-500' : ''
-                    "
-                  >
-                    @let partsMobile = splitVariantLabel(it.name);
-                    <div class="flex items-start justify-between gap-2">
-                      <div class="min-w-0 flex-1 flex flex-col gap-1">
-                        <div class="flex items-center gap-1.5 flex-wrap">
-                          <span class="text-[14px] font-semibold text-gray-900 leading-tight">{{
-                            partsMobile.product
-                          }}</span>
-                          @if (partsMobile.variant) {
-                            <span
-                              class="bg-gray-100 text-gray-600 text-[11px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
-                              >{{ partsMobile.variant }}</span
-                            >
-                          }
-                          @if (it.promo; as promo) {
-                            <span
-                              class="promo-line-badge bg-amber-50 text-amber-700 border border-amber-100 text-[11px] font-bold px-1 py-0.2 rounded-[6px] shrink-0 leading-none"
-                              >{{ promo.badge }}</span
-                            >
-                            <span class="line-through text-[12px] text-gray-500 font-mono shrink-0">{{
-                              store.fmt(promo.originalAmount)
-                            }}</span>
-                          }
-                        </div>
-                        <app-cart-item-options [options]="it.options" [notes]="it.notes" />
-                        @if (it.addonsTotal > 0) {
-                          <div class="text-[12px] text-gray-400">+ {{ store.fmt(it.addonsTotal) }} adicionales</div>
-                        }
-                      </div>
-                      <div class="text-right shrink-0">
-                        @if (it.promo; as promo) {
-                          <div
-                            class="font-semibold text-[16px] text-violet-600 tabular-nums font-mono"
-                          >
-                            {{ store.fmt(promo.discountedAmount) }}
-                          </div>
-                        } @else {
-                          <div
-                            class="font-semibold text-[16px] text-gray-900 tabular-nums font-mono"
-                          >
-                            {{ store.fmt(it.subtotal) }}
-                          </div>
-                        }
-                      </div>
-                    </div>
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-2">
-                        <button
-                          (click)="store.decDraft(it.key)"
-                          class="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-[13px] font-bold transition-colors"
-                        >
-                          −
-                        </button>
-                        <span
-                          class="font-mono font-medium text-[14px] text-gray-900 tabular-nums min-w-[12px] text-center"
-                          >{{ it.qty }}</span
-                        >
-                        <button
-                          (click)="store.incDraft(it.key)"
-                          class="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center text-[13px] font-bold transition-colors"
-                        >
-                          +
-                        </button>
-                      </div>
-                      <div class="flex items-center gap-1">
-                        @if (it.kind === 'draft' && !it.comboId) {
-                          <button
-                            type="button"
-                            (click)="store.openConfigForEdit(it.key)"
-                            title="Ver/Editar Notas"
-                            class="p-1.5 text-gray-500 hover:text-violet-600 hover:bg-gray-100 rounded-[6px] transition-colors"
-                          >
-                            <app-mi-icon name="edit" ariaLabel="Ver/Editar Notas" [size]="16" />
-                          </button>
-                          <button
-                            type="button"
-                            (click)="store.openConfigForEdit(it.key)"
-                            title="Modificar Toppings"
-                            class="p-1.5 text-gray-500 hover:text-violet-600 hover:bg-gray-100 rounded-[6px] transition-colors"
-                          >
-                            <app-mi-icon name="tune" ariaLabel="Modificar Toppings" [size]="16" />
-                          </button>
-                        }
-                        <button
-                          (click)="store.removeDraft(it.key)"
-                          title="Eliminar ítem"
-                          class="p-1.5 text-gray-500 hover:text-red-600 hover:bg-gray-100 rounded-[6px] transition-colors"
-                        >
-                          <app-mi-icon name="delete" ariaLabel="Eliminar ítem" [size]="16" />
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </div>
               }
             </div>
             @if (store.cartEmpty()) {
-              <div class="text-center text-gray-400 py-10 text-[13px]">
+              <div class="text-center text-[var(--terminal-color-text-subtle,#94a3b8)] py-10 text-[13px]">
                 Agrega productos desde el catálogo.
               </div>
             }
           </div>
 
-          <div class="border-t border-gray-200 bg-white shrink-0 flex flex-col">
-            <div class="p-3 bg-gray-50 border-b border-gray-200 flex flex-col gap-1">
+          <div class="border-t border-[var(--terminal-color-border,#e5e9ef)] bg-[var(--terminal-color-surface,#fff)] shrink-0 flex flex-col">
+            <div class="p-3 bg-[var(--terminal-color-surface-soft,#edf1f5)] border-b border-[var(--terminal-color-border,#e5e9ef)] flex flex-col gap-1">
               @let tot = store.totals();
               @if (store.draftPreview(); as p) {
                 <!-- spec 073, FR-013/FR-014: el desglose (con descuento por
@@ -791,9 +812,9 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                   size="lg"
                 />
                 @if (store.draftPreviewError()) {
-                  <p class="text-[11px] text-amber-700">El descuento se confirma al cobrar.</p>
+                  <p class="text-[11px] text-[var(--terminal-color-warning,#b45309)]">El descuento se confirma al cobrar.</p>
                 } @else if (store.draftPreviewLoading()) {
-                  <p class="text-[11px] text-gray-400">Calculando el descuento…</p>
+                  <p class="text-[11px] text-[var(--terminal-color-text-subtle,#94a3b8)]">Calculando el descuento…</p>
                 }
               }
             </div>
@@ -806,7 +827,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 <div
                   data-testid="total-cambio-aviso"
                   role="status"
-                  class="rounded-[6px] border border-amber-100 bg-amber-50 px-3 py-2 text-[12px] text-amber-800"
+                  class="rounded-[6px] border border-[var(--terminal-color-warning,#b45309)] bg-[var(--terminal-color-warning-soft,#fef3e2)] px-3 py-2 text-[12px] text-[var(--terminal-color-text-primary,#78350f)]"
                 >
                   El total cambió: ahora es {{ store.fmt(n.now) }} (antes {{ store.fmt(n.before) }}).
                   Revisa el importe y vuelve a pulsar Crear pedido.
@@ -814,16 +835,8 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               }
               <button
                 (click)="confirm()"
-                [disabled]="
-                  store.cartEmpty() ||
-                  store.submitting() ||
-                  (store.orderTypeTab() === 'mesas' && !store.selectedTableId()) ||
-                  (store.orderTypeTab() === 'domicilios' &&
-                    (!store.customerName().trim() ||
-                      !store.deliveryAddress().trim() ||
-                      store.deliveryFee() == null))
-                "
-                class="w-full h-12 bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white font-semibold text-[15px] flex items-center justify-center gap-2 rounded-[6px] disabled:opacity-50 transition-colors"
+                [disabled]="orderDisabled()"
+                class="w-full h-12 bg-[var(--terminal-color-primary,#7c3aed)] hover:bg-[var(--terminal-color-primary-active,#6d28d9)] text-white font-semibold text-[15px] flex items-center justify-center gap-2 rounded-[8px] disabled:opacity-50 transition-colors"
               >
                 <app-mi-icon name="credit_card" [size]="20" />
                 <span>{{ store.submitting() ? 'Guardando…' : 'Crear pedido' }}</span>
@@ -831,21 +844,20 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               <button
                 type="button"
                 (click)="backToTerminal()"
-                class="w-full h-8 border border-gray-200 bg-white hover:bg-gray-100 text-gray-600 hover:text-gray-900 text-[12px] font-medium flex items-center justify-center gap-1.5 rounded-[6px] transition-colors"
+                class="w-full h-8 border border-[var(--terminal-color-border,#e5e9ef)] bg-[var(--terminal-color-surface,#fff)] hover:bg-[var(--terminal-color-surface-elevated,#f1f5f9)] text-[var(--terminal-color-text-secondary,#334155)] text-[12px] font-medium flex items-center justify-center gap-1.5 rounded-[6px] transition-colors"
               >
                 Regresar
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+    </ng-template>
 
     @if (store.configuringProduct(); as product) {
-      <app-product-select
+      <app-product-select-pos
         [product]="product"
         [initialSelection]="store.editingSelection()"
         [fromPromotions]="store.configuringProductFromPromotions()"
+        [openToken]="store.configuringToken()"
         (added)="store.addDraftFromSelection($event)"
         (cancelled)="store.closeConfig()"
       />
@@ -862,12 +874,14 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
    *  `pos-order-panel.component.ts`). */
   splitVariantLabel = splitVariantLabel;
 
-  /** Por debajo de `lg`, cuál de las dos tarjetas (catálogo/ticket) se
-   *  muestra -- mismo patrón que `store.hasActiveSelection()` en
-   *  `table-sessions.component.ts`, aquí como signal local porque no hay
-   *  ninguna selección de mesa/pedido que lo derive: el usuario alterna con
-   *  el botón "Ver pedido" y el de volver al catálogo. Desde `lg` ambas
-   *  tarjetas van lado a lado sin importar este valor. */
+  /** Por debajo de `lg`, si la hoja inferior del carrito ("Tu pedido") está
+   *  abierta -- el catálogo siempre está visible debajo (rediseño
+   *  `design/nueva-orden.html`: ya no alterna entre catálogo y carrito a
+   *  pantalla completa). El usuario la abre desde la barra fija "Ver
+   *  pedido"/"Crear orden" y la cierra con el botón X, tocando el fondo
+   *  oscurecido, o automáticamente desde `confirm()` cuando hay algo que
+   *  necesita ver (nombre de Domicilio vacío, aviso de total cambiado). Sin
+   *  efecto desde `lg`, donde el carrito vive siempre en la barra lateral. */
   readonly viewingCart = signal(false);
 
   /** Pestaña "Todos" del rediseño (`create-order/code.html`): activa por
@@ -891,6 +905,35 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
       : this.showingAllCategories()
         ? this.store.catalogProductsAllFiltered()
         : this.store.catalogProductsFiltered(),
+  );
+
+  /** Rediseño (`design/nueva-orden.html`): cuántas unidades de cada producto
+   *  ya hay en el carrito (sumando todas sus líneas -- distintas variantes/
+   *  sabores/opciones del mismo producto se cuentan juntas), para la burbuja
+   *  sobre la tarjeta del catálogo. Solo líneas de producto (`kind:
+   *  'product'`); los combos no tienen tarjeta propia en este grid. */
+  readonly cartQtyByProduct = computed(() => {
+    const map = new Map<string, number>();
+    for (const l of this.store.draftLines()) {
+      if (l.kind !== 'product') continue;
+      map.set(l.product.id, (map.get(l.product.id) ?? 0) + l.quantity);
+    }
+    return map;
+  });
+
+  /** Rediseño (`design/nueva-orden.html`): condición de deshabilitado del
+   *  botón "Crear orden" -- extraída a `computed` porque ahora vive en DOS
+   *  botones (el de `ticketBody`, compartido entre barra lateral y hoja
+   *  inferior, y el de la barra fija "Ver pedido"/"Crear orden" en móvil). */
+  readonly orderDisabled = computed(
+    () =>
+      this.store.cartEmpty() ||
+      this.store.submitting() ||
+      (this.store.orderTypeTab() === 'mesas' && !this.store.selectedTableId()) ||
+      (this.store.orderTypeTab() === 'domicilios' &&
+        (!this.store.customerName().trim() ||
+          !this.store.deliveryAddress().trim() ||
+          this.store.deliveryFee() == null)),
   );
 
   /**
@@ -950,6 +993,31 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
       !this.store.customerName().trim(),
   );
 
+  /** Rediseño (design/nueva-orden.html): edición rápida de la nota de una
+   *  línea del carrito, directamente ahí -- `key` de la línea cuyo textarea
+   *  está abierto, o `null` si ninguno. Solo una a la vez. */
+  readonly editingNoteKey = signal<string | null>(null);
+  readonly noteDraft = signal('');
+
+  openNoteEditor(key: string, current: string | null): void {
+    this.editingNoteKey.set(key);
+    this.noteDraft.set(current ?? '');
+  }
+
+  saveNote(key: string): void {
+    this.store.setDraftNote(key, this.noteDraft());
+    this.editingNoteKey.set(null);
+  }
+
+  /** Variante + opciones elegidas de una línea, en una sola cadena para
+   *  mostrar en línea junto al nombre del producto (p. ej. "Pequeño 8 onz +
+   *  Leche condensada, Chispas") -- ya no la insignia de presentación +
+   *  `app-cart-item-options` en una caja aparte debajo. */
+  cartLineDetail(options: CartOptionLine[], variant: string | null): string {
+    const optionsText = options.map((o) => o.text).join(', ');
+    return [variant, optionsText].filter((p): p is string => !!p).join(' + ');
+  }
+
   async ngOnInit(): Promise<void> {
     // spec 091 (A-99): esta pantalla arma SIEMPRE un pedido nuevo (nunca edita uno existente,
     // ver comentario de `selectTable()` abajo), así que es seguro reiniciar "Cliente" de cero en
@@ -1006,10 +1074,9 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
     // colaba el detalle de ese pedido PERSISTIDO en `cartView()` (que mezcla
     // pedido seleccionado + draft), precargando la orden nueva con ítems que
     // el usuario nunca agregó -- sobre todo notorio en una mesa ya ocupada
-    // (la única razón por la que "Crear pedido nuevo" puede apuntar aquí:
-    // `newOrderTableId()` cae a la mesa ya seleccionada si no hay ninguna
-    // libre). Un pedido nuevo nunca "edita" uno existente por selección de
-    // mesa, así que se limpia de una vez.
+    // (p. ej. "+ Crear pedido nuevo" invocado con una mesa ocupada ya
+    // seleccionada). Un pedido nuevo nunca "edita" uno existente por
+    // selección de mesa, así que se limpia de una vez.
     this.store.selectedOrderId.set(null);
   }
 
@@ -1037,7 +1104,13 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
     this.intentoGuardar.set(true);
     // spec 091 (A-99): solo Domicilio sigue exigiendo el nombre -- en Mesa/Para llevar, un campo
     // vacío se guarda como "Consumidor final" (lo resuelve el backend).
-    if (this.store.orderTypeTab() === 'domicilios' && !this.store.customerName().trim()) return;
+    if (this.store.orderTypeTab() === 'domicilios' && !this.store.customerName().trim()) {
+      // Rediseño (`design/nueva-orden.html`): en móvil, "Crear orden" se puede pulsar desde la
+      // barra fija con la hoja cerrada -- el error inline vive dentro de `ticketBody`, así que sin
+      // esto quedaría invisible. Sin efecto en escritorio (la barra lateral ya está siempre visible).
+      this.viewingCart.set(true);
+      return;
+    }
 
     // spec 073, FR-015a / research.md D11: doble chequeo del total antes de
     // crear el pedido — pero solo si la pantalla venía mostrando un total con
@@ -1056,6 +1129,7 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
       const fresh = this.store.draftPreview();
       if (fresh && Number(fresh.total) !== before) {
         this.totalChangeNotice.set({ now: Number(fresh.total), before });
+        this.viewingCart.set(true); // mismo motivo que el early-return de arriba
         return;
       }
     }

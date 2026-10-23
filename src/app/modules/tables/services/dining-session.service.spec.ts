@@ -77,6 +77,22 @@ describe('DiningSessionService', () => {
     expect(order.status).toBe('abierta');
   });
 
+  /**
+   * "Aceptar pedido" sin cobrar: deja que cocina empiece mientras el pago
+   * sigue pendiente de revisión. A diferencia de `confirmOrder`, NO descuenta
+   * inventario ni cambia `status` -- el pedido sigue `recibida`.
+   */
+  it('acepta un pedido para cocina sin cobrar', async () => {
+    const promise = service.acceptOrderForKitchen('o1');
+    const req = http.expectOne(`${API}/orders/o1/start-preparation`);
+
+    expect(req.request.method).toBe('POST');
+    req.flush({ id: 'o1', status: 'recibida', channel: 'QR_MENU', created_at: '2026-07-28' });
+
+    const order = await promise;
+    expect(order.status).toBe('recibida');
+  });
+
   it('cancela un pedido con motivo', async () => {
     const promise = service.cancelOrder('o1', 'Rechazado por el personal');
     const req = http.expectOne(`${API}/orders/o1/cancel`);

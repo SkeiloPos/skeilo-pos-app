@@ -243,22 +243,9 @@ describe('DinerService', () => {
     await promise;
   });
 
-  it('presigna el comprobante antes de enviar el pedido, sin ningún attempt_id (spec 025)', async () => {
-    const promise = service.presignPaymentReceipt('image/jpeg');
-    const req = http.expectOne(`${API}/cart/payment-receipt/presign`);
-    expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ content_type: 'image/jpeg' });
-
-    req.flush({
-      upload_url: 'https://r2.example/upload',
-      key: 'k1',
-      public_url: 'https://r2.example/k1.jpg',
-      expires_in: 300,
-    });
-
-    const res = await promise;
-    expect(res.public_url).toBe('https://r2.example/k1.jpg');
-  });
+  // spec 132 (A-144, FR-023): `presignPaymentReceipt`/`presignReceipt`/
+  // `attachReceipt`/`uploadReceiptFile` se retiraron de `DinerService` — el
+  // comensal ya no sube comprobante desde el flujo QR en ningún paso.
 
   /**
    * Para el comensal un 401 no es un error de programación: es "vuelve a
