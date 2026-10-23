@@ -103,6 +103,7 @@ export class InventoryService {
   readonly itemsType = signal<InventoryItemType | ''>('');
   readonly itemsActive = signal<'' | 'active' | 'inactive'>('');
   readonly itemsLowStock = signal(false);
+  readonly itemsSupplierId = signal<string>('');
   private readonly wantsItemsPage = signal(false);
   private readonly wantsAllItems = signal(false);
 
@@ -124,6 +125,7 @@ export class InventoryService {
         type: this.itemsType(),
         active: this.itemsActive(),
         lowStock: this.itemsLowStock(),
+        supplierId: this.itemsSupplierId(),
       },
     ],
     queryFn: () =>
@@ -134,6 +136,7 @@ export class InventoryService {
         this.itemsType(),
         this.itemsActive(),
         this.itemsLowStock(),
+        this.itemsSupplierId(),
       ),
     enabled: () => this.wantsItemsPage(),
   });
@@ -169,6 +172,7 @@ export class InventoryService {
     type: InventoryItemType | '',
     active: '' | 'active' | 'inactive',
     lowStock: boolean,
+    supplierId: string = '',
   ): Promise<Page<InventoryItemResponse>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (search) params = params.set('search', search);
@@ -176,6 +180,7 @@ export class InventoryService {
     if (active === 'active') params = params.set('active', 'true');
     if (active === 'inactive') params = params.set('active', 'false');
     if (lowStock) params = params.set('low_stock', 'true');
+    if (supplierId) params = params.set('supplier_id', supplierId);
     return firstValueFrom(this.http.get<Page<InventoryItemResponse>>(`${this.baseUrl}/items`, { params }));
   }
 
@@ -281,6 +286,11 @@ export class InventoryService {
 
   setItemsLowStock(value: boolean): void {
     this.itemsLowStock.set(value);
+    this.loadItems(1);
+  }
+
+  setItemsSupplierId(value: string): void {
+    this.itemsSupplierId.set(value);
     this.loadItems(1);
   }
 

@@ -148,6 +148,16 @@ type ActiveFilter = '' | 'active' | 'inactive';
                 </select>
                 <app-mi-icon name="expand_more" [size]="16" class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400" />
               </div>
+              <div class="relative">
+                <select [ngModel]="service.itemsSupplierId()" (ngModelChange)="onSupplierFilterChange($event)"
+                  class="appearance-none border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium pl-3 pr-8 py-2 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-colors">
+                  <option value="">Todos los proveedores</option>
+                  @for (s of suppliersService.suppliers(); track s.id) {
+                    <option [value]="s.id">{{ s.name }}</option>
+                  }
+                </select>
+                <app-mi-icon name="expand_more" [size]="16" class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400" />
+              </div>
               <button type="button" (click)="exportInventory()"
                 class="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors">
                 <app-mi-icon name="download" [size]="16" />
@@ -588,6 +598,9 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   }
   onActiveFilterChange(value: ActiveFilter): void {
     this.service.setItemsActive(value);
+  }
+  onSupplierFilterChange(value: string): void {
+    this.service.setItemsSupplierId(value);
   }
 
   // --- paginación de Compras ---
