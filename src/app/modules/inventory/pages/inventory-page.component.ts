@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   OnDestroy,
   OnInit,
   computed,
@@ -10,6 +11,12 @@ import {
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import {
+  CdkConnectedOverlay,
+  CdkOverlayOrigin,
+  ConnectionPositionPair,
+  Overlay,
+} from '@angular/cdk/overlay';
 import { UnitMeasureService } from '../../../core/services/unit-measure.service';
 import { SuppliersService } from '../../suppliers/services/suppliers.service';
 import {
@@ -49,6 +56,8 @@ type ActiveFilter = '' | 'active' | 'inactive';
     SearchableSelectComponent,
     PaginationBarComponent,
     IconMiComponent,
+    CdkConnectedOverlay,
+    CdkOverlayOrigin,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -166,6 +175,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-gray-100 bg-gray-50">
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Código</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
                     <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Unidad</th>
@@ -182,6 +192,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
                 <tbody class="divide-y divide-gray-50">
                   @for (i of service.items(); track i.id) {
                     <tr class="hover:bg-gray-50 transition-colors" [class.opacity-50]="!i.active">
+                      <td class="px-4 py-3 text-gray-500 whitespace-nowrap">{{ i.code }}</td>
                       <td class="px-4 py-3"><p class="font-medium text-gray-900">{{ i.name }}</p></td>
                       <td class="px-4 py-3 text-gray-600">{{ typeLabel(i.type) }}</td>
                       <td class="px-4 py-3 text-gray-600">{{ unitAbbr(i.unit_measure_id) }}</td>
@@ -208,21 +219,58 @@ type ActiveFilter = '' | 'active' | 'inactive';
                       <td class="px-4 py-3 text-gray-500 whitespace-nowrap">
                         {{ i.updated_at ? (i.updated_at | tenantDate:'short') : '—' }}
                       </td>
-                      <td class="px-4 py-3">
-                        <div class="flex items-center justify-end gap-1">
-                          <button (click)="openSuppliers(i)" title="Proveedores"
-                            class="px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">Proveedores</button>
-                          <button (click)="openAdjust(i)"
-                            class="px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors">Ajustar</button>
-                          <button (click)="openKardex(i)"
-                            class="px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">Kardex</button>
-                          <button (click)="openEdit(i)"
-                            class="px-2 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">Editar</button>
-                          <button (click)="service.toggleActive(i.id, i.active)"
-                            class="px-2 py-1 text-xs font-medium rounded-lg transition-colors"
-                            [class]="i.active ? 'text-gray-600 bg-gray-100 hover:bg-gray-200' : 'text-green-700 bg-green-50 hover:bg-green-100'">
-                            {{ i.active ? 'Desactivar' : 'Activar' }}
+                      <td class="px-4 py-3 text-right relative">
+                        <div class="relative inline-block text-left">
+                          <button
+                            #itemActionsOrigin="cdkOverlayOrigin"
+                            cdkOverlayOrigin
+                            type="button"
+                            aria-haspopup="true"
+                            aria-label="Opciones de insumo"
+                            (click)="toggleActionsMenu(i.id, $event)"
+                            class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
                           </button>
+                          <ng-template
+                            cdkConnectedOverlay
+                            [cdkConnectedOverlayOrigin]="itemActionsOrigin"
+                            [cdkConnectedOverlayOpen]="openActionsId() === i.id"
+                            [cdkConnectedOverlayPositions]="actionsMenuPositions"
+                            [cdkConnectedOverlayScrollStrategy]="actionsMenuScrollStrategy"
+                            (detach)="closeActionsMenu(i.id)"
+                          >
+                            <div
+                              (click)="$event.stopPropagation()"
+                              class="w-44 bg-white rounded-lg border border-gray-100 shadow-lg py-1 text-left"
+                            >
+                              <button type="button" (click)="openEdit(i); closeActionsMenu()"
+                                class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 transition-colors">
+                                Editar
+                              </button>
+                              <button type="button" (click)="openAdjust(i); closeActionsMenu()"
+                                class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors">
+                                Ajustar
+                              </button>
+                              <button type="button" (click)="openKardex(i); closeActionsMenu()"
+                                class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors">
+                                Kardex
+                              </button>
+                              <button type="button" (click)="openSuppliers(i); closeActionsMenu()"
+                                class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors">
+                                Proveedores
+                              </button>
+                              <div class="border-b border-gray-100 my-1"></div>
+                              <button type="button" (click)="service.toggleActive(i.id, i.active); closeActionsMenu()"
+                                class="w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors"
+                                [class]="i.active ? 'text-red-600 hover:bg-red-50' : 'text-green-700 hover:bg-green-50'">
+                                {{ i.active ? 'Desactivar' : 'Activar' }}
+                              </button>
+                            </div>
+                          </ng-template>
                         </div>
                       </td>
                     </tr>
@@ -438,6 +486,21 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   readonly planSummaryService = inject(PlanSummaryService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
+  private readonly overlay = inject(Overlay);
+
+  readonly actionsMenuPositions: ConnectionPositionPair[] = [
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+  ];
+  /** Una ScrollStrategy solo puede estar adjunta a un overlay a la vez: si es
+   *  una instancia única compartida entre filas, abrir la fila B tras la A
+   *  falla con "Scroll strategy has already been attached" y el menú no
+   *  vuelve a abrirse. Un getter entrega una instancia nueva en cada
+   *  evaluación de la plantilla (una por fila). */
+  get actionsMenuScrollStrategy() {
+    return this.overlay.scrollStrategies.close();
+  }
+  readonly openActionsId = signal<string | null>(null);
 
   /** Pestaña "Compras" (spec 033): oculta si el plan no incluye
    * `compras_access`, o si el tenant está vencido — mismo criterio que
@@ -653,6 +716,17 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   openKardex(i: InventoryItem): void {
     this.tab.set('movements');
     this.onMovementItemChange(i.id);
+  }
+
+  @HostListener('document:click')
+  @HostListener('window:resize')
+  closeActionsMenu(id?: string): void {
+    if (id !== undefined && this.openActionsId() !== id) return;
+    this.openActionsId.set(null);
+  }
+  toggleActionsMenu(id: string, event: Event): void {
+    event.stopPropagation();
+    this.openActionsId.set(this.openActionsId() === id ? null : id);
   }
 
   onAdjusted(): void {
