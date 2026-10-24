@@ -7,7 +7,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
   CdkDrag,
@@ -76,6 +76,7 @@ interface SlotBreakdown {
     RouterLink,
     FormsModule,
     DecimalPipe,
+    NgTemplateOutlet,
     SearchableSelectComponent,
     MoneyInputComponent,
     CdkDropList,
@@ -86,18 +87,15 @@ interface SlotBreakdown {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-3xl mx-auto space-y-5">
-      <div>
-        <a routerLink="/dashboard/products" class="text-xs text-gray-400 hover:text-gray-600">← Volver al catálogo</a>
-        <div class="flex items-center justify-between mt-1">
-          <h1 class="text-2xl font-bold text-gray-900">{{ draft().id ? 'Editar producto' : 'Nuevo producto' }}</h1>
-          @if (draft().id) {
-            <button (click)="toggleActive()"
-              class="px-3 py-1.5 text-sm font-medium rounded-xl transition-colors"
-              [class]="productActive() ? 'text-gray-600 bg-gray-100 hover:bg-gray-200' : 'text-green-700 bg-green-50 hover:bg-green-100'">
-              {{ productActive() ? 'Desactivar' : 'Activar' }}
-            </button>
-          }
-        </div>
+      <div class="flex flex-col gap-1">
+        <a routerLink="/dashboard/products" class="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-700 w-fit">
+          <app-mi-icon name="back" [size]="16" />
+          Volver al catálogo
+        </a>
+        <h1 class="mt-1 text-2xl font-bold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">
+          {{ draft().id ? 'Editar producto' : 'Nuevo producto' }}
+        </h1>
+        <p class="text-sm text-gray-400">Completa los datos. Los campos con * son obligatorios.</p>
       </div>
 
       @if (loading()) {
@@ -107,65 +105,106 @@ interface SlotBreakdown {
           <div class="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{{ service.error() }}</div>
         }
 
-        <!-- ===== Datos generales ===== -->
+        <!-- ===== 1. Datos generales ===== -->
         <section class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h3 class="text-sm font-semibold text-gray-900 mb-4">Datos generales</h3>
+          <div class="mb-4">
+            <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">1. Datos generales</h2>
+            <p class="text-xs text-gray-500 mt-1">Lo que verán tus clientes en la carta.</p>
+          </div>
           <div class="flex flex-col sm:flex-row gap-5">
-            <div class="shrink-0">
+            <div class="shrink-0 flex flex-col items-start gap-2">
               @if (previewUrl() ?? draft().image_url; as img) {
-                <img [src]="img" alt="" class="w-32 h-32 rounded-xl object-cover border border-gray-100" />
+                <img [src]="img" alt="" class="w-[140px] h-[140px] rounded-xl object-cover border border-gray-100" />
               } @else {
-                <div class="w-32 h-32 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center">
-                  <app-mi-icon name="image-off" ariaLabel="Sin imagen" [size]="32" />
+                <div class="w-[140px] h-[140px] rounded-xl bg-gray-50 border border-dashed border-gray-300 flex flex-col items-center justify-center gap-1.5 text-gray-400">
+                  <app-mi-icon name="image-off" ariaLabel="Sin imagen" [size]="28" />
+                  <span class="text-xs">Sin imagen</span>
                 </div>
               }
-              <label class="mt-2 block text-xs text-indigo-600 hover:text-indigo-700 cursor-pointer">
+              <label class="h-10 px-3.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer inline-flex items-center gap-2 transition-colors">
+                <app-mi-icon name="upload" [size]="16" />
                 {{ uploading() ? 'Subiendo…' : 'Cambiar imagen' }}
                 <input type="file" accept="image/*" (change)="onImageSelected($event)" class="hidden" [disabled]="uploading()" />
               </label>
+              <p class="text-[11px] text-gray-400">PNG, JPG o WEBP. Máx. 5 MB.</p>
               @if (pendingImage()) {
-                <p class="mt-1 text-[11px] text-gray-400">Se subirá al guardar</p>
-                <button type="button" (click)="clearPendingImage()" class="text-[11px] text-red-600 hover:text-red-700">Cancelar imagen</button>
+                <div class="flex items-center gap-2">
+                  <p class="text-[11px] text-gray-400">Se subirá al guardar</p>
+                  <button type="button" (click)="clearPendingImage()" class="text-[11px] text-red-600 hover:text-red-700">Cancelar imagen</button>
+                </div>
               }
             </div>
-            <div class="flex-1 space-y-3">
+            <div class="flex-1 space-y-4">
               <div>
-                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Nombre</label>
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Nombre *</label>
                 <input [value]="draft().name" (input)="setField('name', $any($event.target).value)" placeholder="Ej. Copa de Helado"
                   class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
-                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Categoría</label>
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Categoría *</label>
                 <app-searchable-select [ngModel]="draft().category_id" (ngModelChange)="setField('category_id', $event)"
                   (optionPicked)="onCategoryPicked($event)"
                   [options]="categoryOptions()" [search]="searchCategories" placeholder="Seleccionar categoría…" />
               </div>
+              @if (!draft().hasSizes && activeVariant(); as av) {
+                <div>
+                  <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Precio *</label>
+                  <div class="flex items-center gap-1.5 border border-gray-300 rounded-xl px-3 py-2 w-36">
+                    <span class="text-gray-400 text-sm">$</span>
+                    <app-money-input [ngModel]="av.price"
+                      (ngModelChange)="setVariantField(av.localId, 'price', $event ?? 0)"
+                      [bordered]="false" sizeClass="text-sm" />
+                  </div>
+                </div>
+              }
               <div>
                 <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Tipo de preparación</label>
-                <select [ngModel]="draft().preparation_type" (ngModelChange)="setField('preparation_type', $event)"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="prepared">Preparado (al momento)</option>
-                  <option value="packaged">Empacado</option>
-                </select>
+                <div role="radiogroup" aria-label="Tipo de preparación" class="inline-flex w-full rounded-xl border border-gray-300 overflow-hidden">
+                  <button type="button" role="radio" [attr.aria-checked]="draft().preparation_type === 'prepared'"
+                    (click)="setField('preparation_type', 'prepared')"
+                    class="flex-1 px-4 py-2 text-sm font-semibold transition-colors"
+                    [class]="draft().preparation_type === 'prepared' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'">
+                    Preparado
+                  </button>
+                  <button type="button" role="radio" [attr.aria-checked]="draft().preparation_type === 'packaged'"
+                    (click)="setField('preparation_type', 'packaged')"
+                    class="flex-1 px-4 py-2 text-sm font-semibold transition-colors border-l border-gray-300"
+                    [class]="draft().preparation_type === 'packaged' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'">
+                    Empacado
+                  </button>
+                </div>
               </div>
               <div>
                 <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Descripción</label>
                 <textarea [value]="draft().description" (input)="setField('description', $any($event.target).value)" rows="2"
+                  placeholder="Ingredientes, sabores o lo que quieras destacar"
                   class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"></textarea>
               </div>
             </div>
           </div>
         </section>
 
-        <!-- ===== Tamaños del producto =====
-             Todo lo de una presentación vive junto: precio, insumos fijos y sabores a
-             elegir. Antes estaba repartido en tres secciones y obligaba a ir y venir
-             entre ellas para configurar un solo tamaño. -->
+        <!-- Chips compartidos por las tarjetas 3 y 4 para elegir qué tamaño se está
+             configurando -- un solo bloque para no duplicar el markup entre ambas. -->
+        <ng-template #sizeContextChips let-variants="variants">
+          <div class="flex items-center gap-2 flex-wrap">
+            @for (v of variants; track v.localId) {
+              <button type="button" (click)="activeLocalId.set(v.localId)"
+                [attr.aria-pressed]="v.localId === activeLocalId()"
+                class="h-9 px-3.5 rounded-full text-sm font-semibold border transition-colors whitespace-nowrap"
+                [class]="v.localId === activeLocalId() ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'">
+                {{ variantLabel(v) }}
+              </button>
+            }
+          </div>
+        </ng-template>
+
+        <!-- ===== 2. Tamaños y precios ===== -->
         <section class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <div class="flex items-start justify-between gap-4">
             <div>
-              <h3 class="text-sm font-semibold text-gray-900">Tamaños del producto</h3>
-              <p class="text-xs text-gray-500 mt-1">Cada tamaño tiene su precio, sus insumos y cuántos sabores puede elegir el cliente.</p>
+              <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">2. Tamaños y precios</h2>
+              <p class="text-xs text-gray-500 mt-1">Cada tamaño tiene su propio precio. Si el producto se vende en un solo tamaño, desactívalo.</p>
             </div>
             <button type="button" (click)="toggleHasSizes()" role="switch" [attr.aria-checked]="draft().hasSizes"
               class="relative w-11 h-6 rounded-full transition-colors shrink-0"
@@ -177,7 +216,7 @@ interface SlotBreakdown {
 
           @if (draft().hasSizes) {
             <div class="mt-4 rounded-xl border border-gray-200 overflow-hidden">
-              <div class="grid grid-cols-[28px_28px_1fr_1fr_140px_88px] gap-x-3 items-center px-3 py-2 bg-gray-50 text-[11px] font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200">
+              <div class="grid grid-cols-[28px_28px_1fr_1fr_140px_150px] gap-x-3 items-center px-3 py-2 bg-gray-50 text-[11px] font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200">
                 <span></span>
                 <span class="text-center">#</span>
                 <span>Presentación</span>
@@ -189,10 +228,12 @@ interface SlotBreakdown {
                 class="divide-y divide-gray-100">
                 @for (v of draft().variants; track v.localId; let i = $index) {
                   <div cdkDrag (click)="activeLocalId.set(v.localId)"
-                    class="grid grid-cols-[28px_28px_1fr_1fr_140px_88px] gap-x-3 items-center px-3 py-2 cursor-pointer transition-colors"
+                    class="grid grid-cols-[28px_28px_1fr_1fr_140px_150px] gap-x-3 items-center px-3 py-2 cursor-pointer transition-colors"
                     [class]="v.localId === activeLocalId() ? 'bg-indigo-50' : 'hover:bg-gray-50'">
                     <span cdkDragHandle (click)="$event.stopPropagation()"
-                      class="text-center text-gray-300 hover:text-gray-500 cursor-move">⠿</span>
+                      class="flex items-center justify-center text-gray-300 hover:text-gray-500 cursor-move">
+                      <app-mi-icon name="drag-handle" [size]="16" />
+                    </span>
                     <span class="text-center text-xs text-gray-400">{{ i + 1 }}</span>
                     <div class="min-w-0">
                       <app-searchable-select [ngModel]="v.presentationId ?? ''"
@@ -222,12 +263,18 @@ interface SlotBreakdown {
                         (ngModelChange)="setVariantField(v.localId, 'price', $event ?? 0)"
                         [bordered]="false" sizeClass="text-sm" />
                     </div>
-                    @if (draft().variants.length > 1) {
-                      <button type="button" (click)="removeVariant(v.localId); $event.stopPropagation()"
-                        class="justify-self-end px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                        Eliminar
+                    <div class="flex items-center justify-end gap-1 flex-wrap">
+                      <button type="button" (click)="goToInventory(v.localId); $event.stopPropagation()"
+                        class="px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg inline-flex items-center gap-1 whitespace-nowrap">
+                        <app-mi-icon name="inventory" [size]="14" /> Inventario
                       </button>
-                    }
+                      @if (draft().variants.length > 1) {
+                        <button type="button" (click)="removeVariant(v.localId); $event.stopPropagation()"
+                          class="px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          Eliminar
+                        </button>
+                      }
+                    </div>
                   </div>
                 }
                 @if (variantNameError()) {
@@ -236,46 +283,27 @@ interface SlotBreakdown {
               </div>
               <button type="button" (click)="addVariant()"
                 class="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-indigo-600 transition-colors border-t border-dashed border-gray-200">
-                + Agregar tamaño
+                <app-mi-icon name="add" [size]="16" /> Agregar tamaño
               </button>
             </div>
           }
+        </section>
 
-          <!-- Presentaciones retiradas: siguen ocupando su presentación, así que la salida es
-               restaurarlas, no volver a crearlas. -->
-          @if (draft().deactivated.length) {
-            <div class="mt-4 border-t border-gray-100 pt-4">
-              <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Presentaciones desactivadas</h4>
-              <p class="text-xs text-gray-400 mt-0.5 mb-2">No se venden ni salen en la carta. Restaurar se aplica de inmediato.</p>
-              <ul class="space-y-1.5">
-                @for (dv of draft().deactivated; track dv.id) {
-                  <li class="flex items-center gap-3 text-sm">
-                    <span class="text-gray-700">{{ dv.presentationName }}</span>
-                    <span class="text-gray-400">$ {{ dv.price | number: '1.0-0' }}</span>
-                    <button type="button" (click)="restoreVariant(dv)" [disabled]="service.isSubmitting()"
-                      class="px-3 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50">
-                      Restaurar
-                    </button>
-                  </li>
-                }
-              </ul>
-            </div>
-          }
-
-          <!-- ===== Maneja inventario (spec 027) =====
-               Apagado por defecto. Habilita/deshabilita "Insumos fijos" (siempre) y la
-               parte de inventario de "Sabores a elegir" (cantidad de consumo, detalle de
-               insumo -- el selector de grupo y min/max siguen editables sin importar este
-               switch, spec 064 FR-006). Apagarlo NO borra los insumos ya guardados, solo
-               deja de exigirlos y de aplicarlos al vender. Deshabilitado (no oculto) sin
-               el módulo Inventario en el plan (spec 064, FR-011) -- un producto existente
-               con el switch ya encendido debe seguir mostrando ese valor. -->
-          <div class="flex items-start justify-between gap-4 mt-4 pt-4 border-t border-gray-100">
+        <!-- ===== 3. Inventario =====
+             Apagado por defecto. Habilita/deshabilita "Insumos fijos" (siempre) y la
+             parte de inventario de "Sabores a elegir" (cantidad de consumo, detalle de
+             insumo -- el selector de grupo y min/max siguen editables sin importar este
+             switch, spec 064 FR-006). Apagarlo NO borra los insumos ya guardados, solo
+             deja de exigirlos y de aplicarlos al vender. Deshabilitado (no oculto) sin
+             el módulo Inventario en el plan (spec 064, FR-011) -- un producto existente
+             con el switch ya encendido debe seguir mostrando ese valor. -->
+        <section id="product-form-inventario" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div class="flex items-start justify-between gap-4">
             <div>
-              <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Maneja inventario</h4>
+              <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">3. Inventario</h2>
               <p class="text-xs text-gray-500 mt-1">
                 @if (inventarioIncluido()) {
-                  Actívalo para asociar los insumos que este producto descuenta al venderse.
+                  Actívalo para descontar insumos del stock cada vez que se venda este producto.
                 } @else {
                   Tu plan actual no incluye el módulo de inventario.
                 }
@@ -290,9 +318,256 @@ interface SlotBreakdown {
             </button>
           </div>
 
-          @if (showsInventoryWarning()) {
-            <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-sm text-amber-700">
-              <app-mi-icon name="warning" [size]="16" class="inline-flex align-text-bottom" /> Este producto no podrá venderse hasta que se le configure al menos un insumo en alguna presentación.
+          <div class="mt-4 space-y-4">
+            @if (draft().tracks_inventory && draft().hasSizes && draft().variants.length > 1) {
+              <div class="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 space-y-2">
+                @if (activeVariant(); as av) {
+                  <div class="text-sm text-indigo-800">
+                    Configurando el inventario de: <strong>{{ variantLabel(av) }}</strong> · $ {{ av.price | number: '1.0-0' }}
+                  </div>
+                }
+                <ng-container [ngTemplateOutlet]="sizeContextChips" [ngTemplateOutletContext]="{ variants: draft().variants }" />
+              </div>
+            }
+
+            @if (showsInventoryWarning()) {
+              <div class="rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-sm text-amber-700">
+                <app-mi-icon name="warning" [size]="16" class="inline-flex align-text-bottom" /> Este producto no podrá venderse hasta que se le configure al menos un insumo en alguna presentación.
+              </div>
+            }
+
+            @if (activeVariant(); as av) {
+              @if (sectionsEnabled()) {
+                <div>
+                  <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Insumos fijos</h4>
+                  <p class="text-xs text-gray-400 mt-0.5 mb-2">Se descuentan siempre que se venda este tamaño.</p>
+                  <div class="space-y-2">
+                    @if (av.recipe.length === 0) {
+                      <p class="text-sm text-gray-400">Ninguno todavía.</p>
+                    }
+                    @for (line of av.recipe; track $index) {
+                      <div class="flex items-center gap-2">
+                        <app-searchable-select [ngModel]="line.inventory_item_id"
+                          (ngModelChange)="setRecipeField(av.localId, $index, 'inventory_item_id', $event)"
+                          (optionPicked)="onInventoryItemPicked($event)"
+                          [options]="inventoryOptions()" [search]="searchInventoryItems" placeholder="Insumo…" class="flex-1" />
+                        <input type="number" min="0" step="0.001" [value]="line.quantity"
+                          (input)="setRecipeField(av.localId, $index, 'quantity', +$any($event.target).value)" placeholder="Cant."
+                          class="w-24 px-2 py-2 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                        <span class="w-12 text-xs text-gray-400">{{ unitAbbr(line.inventory_item_id) }}</span>
+                        <button type="button" (click)="removeRecipeLine(av.localId, $index)"
+                          class="px-2 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg"><app-mi-icon name="close" ariaLabel="Quitar" [size]="14" /></button>
+                      </div>
+                    }
+                    <button type="button" (click)="addRecipeLine(av.localId)"
+                      class="text-sm font-medium text-indigo-600 hover:text-indigo-700">+ Agregar insumo</button>
+                  </div>
+                </div>
+              } @else {
+                <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                  Activa "Maneja inventario" arriba para configurar los insumos fijos que este tamaño descuenta.
+                </div>
+              }
+            }
+          </div>
+        </section>
+
+        <!-- ===== 4. Sabores a elegir (spec 064) =====
+             A diferencia de "Insumos fijos" (100% inventario), esta sección SIEMPRE está
+             disponible: qué grupo ofrece la variante y cuántas opciones elige el cliente
+             (min/max) son datos de menú/precio, no de inventario. Solo la cantidad de
+             consumo y el detalle de insumo (sectionsEnabled(), combina el switch del
+             producto con el acceso por plan) dependen de inventario. -->
+        <section class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div>
+            <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">4. Sabores a elegir</h2>
+            <p class="text-xs text-gray-500 mt-1">
+              @if (sectionsEnabled()) {
+                El cliente elige, y se descuenta la cantidad indicada del insumo de <strong>cada</strong> opción que elija.
+              } @else {
+                El cliente elige entre las opciones del grupo (sin descuento de inventario).
+              }
+            </p>
+          </div>
+
+          @if (draft().hasSizes && draft().variants.length > 1) {
+            <div class="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 space-y-2">
+              @if (activeVariant(); as av) {
+                <div class="text-sm text-indigo-800">
+                  Configurando sabores de: <strong>{{ variantLabel(av) }}</strong> · $ {{ av.price | number: '1.0-0' }}
+                </div>
+              }
+              <ng-container [ngTemplateOutlet]="sizeContextChips" [ngTemplateOutletContext]="{ variants: draft().variants }" />
+            </div>
+          }
+
+          @if (activeVariant(); as av) {
+            <div class="mt-4 space-y-3">
+              @if (av.optionGroups.length === 0) {
+                <p class="text-sm text-gray-400">Ninguno. Este tamaño no pide elegir nada.</p>
+              }
+              @for (g of av.optionGroups; track $index) {
+                @let bd = groupBreakdown(g);
+                <div class="rounded-xl border border-amber-200 bg-amber-50/40 p-3">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <app-searchable-select [ngModel]="g.option_group_id"
+                      (ngModelChange)="setGroupField(av.localId, $index, 'option_group_id', $event)"
+                      [options]="groupOptionsFor(av.localId, $index)" placeholder="Grupo…" class="flex-1 min-w-40" />
+                    <button type="button" (click)="removeGroup(av.localId, $index)"
+                      class="px-2 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg"><app-mi-icon name="close" ariaLabel="Quitar" [size]="14" /></button>
+                  </div>
+
+                  <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mt-2 text-sm">
+                    <span class="text-gray-600">elige</span>
+                    <input type="number" min="0" [value]="g.min_select"
+                      (input)="setGroupField(av.localId, $index, 'min_select', +$any($event.target).value)"
+                      class="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    <span class="text-gray-600">a</span>
+                    <input type="number" min="1" [value]="g.max_select"
+                      (input)="setGroupField(av.localId, $index, 'max_select', +$any($event.target).value)"
+                      class="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    @if (sectionsEnabled()) {
+                      <span class="text-gray-600 ml-2">descuenta</span>
+                      <input type="number" min="0" step="0.001" [value]="g.quantity_per_option"
+                        (input)="setGroupField(av.localId, $index, 'quantity_per_option', +$any($event.target).value)"
+                        class="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                      <span class="text-gray-500 text-xs">{{ groupUnit(g) }} por cada uno</span>
+                      @if (groupTotalHint(g); as hint) {
+                        <span class="text-xs font-semibold text-gray-700">{{ hint }}</span>
+                      }
+                    }
+                  </div>
+
+                  @if (groupError(g); as err) {
+                    <p class="text-xs text-red-600 mt-1.5">{{ err }}</p>
+                  }
+                  @if (sectionsEnabled()) {
+                    @for (w of groupWarnings(g); track w) {
+                      <p class="text-xs text-amber-700 mt-1.5"><app-mi-icon name="warning" [size]="14" class="inline-flex align-text-bottom" /> {{ w }}</p>
+                    }
+                  }
+
+                  @if (sectionsEnabled() && g.option_group_id) {
+                    <div class="mt-2 pt-2 border-t border-amber-200/70">
+                      <div class="flex items-start justify-between gap-3">
+                        <p class="text-xs text-gray-500 min-w-0">
+                          <span class="font-medium text-gray-600">Descuenta de:</span>
+                          {{ bd.summary }}
+                          @if (bd.missing > 0) {
+                            <span class="text-amber-700 font-medium inline-flex items-center gap-0.5">· <app-mi-icon name="warning" [size]="14" /> {{ bd.missing }} sin insumo</span>
+                          }
+                        </p>
+                        <a routerLink="/dashboard/ajustes/grupos-opciones" target="_blank" rel="noopener"
+                          class="shrink-0 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                          title="Se abre en otra pestaña para no perder los cambios sin guardar">
+                          Editar grupo ↗
+                        </a>
+                      </div>
+
+                      @if (bd.rows.length > 0) {
+                        <button type="button" (click)="toggleGroupDetail(av.localId, $index)"
+                          class="mt-1 text-xs font-medium text-gray-500 hover:text-gray-700">
+                          {{ isGroupOpen(av.localId, $index) ? 'Ocultar detalle ▴' : 'Ver detalle (' + bd.rows.length + ') ▾' }}
+                        </button>
+
+                        @if (isGroupOpen(av.localId, $index)) {
+                          <div class="mt-2 rounded-lg bg-white border border-gray-100 overflow-hidden">
+                            <table class="w-full text-xs">
+                              <thead class="bg-gray-50 text-gray-500">
+                                <tr>
+                                  <th class="text-left font-medium px-3 py-1.5">Si elige…</th>
+                                  <th class="text-left font-medium px-3 py-1.5">Descuenta de</th>
+                                  <th class="text-right font-medium px-3 py-1.5">Cantidad</th>
+                                </tr>
+                              </thead>
+                              <tbody class="divide-y divide-gray-100">
+                                @for (r of bd.rows; track r.optionId) {
+                                  <tr [class]="r.itemName ? '' : 'bg-amber-50'">
+                                    <td class="px-3 py-1.5 text-gray-700">{{ r.optionName }}</td>
+                                    <td class="px-3 py-1.5" [class]="r.itemName ? 'text-gray-600' : 'text-amber-700'">
+                                      {{ r.itemName || 'Sin insumo asignado' }}
+                                    </td>
+                                    <td class="px-3 py-1.5 text-right whitespace-nowrap"
+                                      [class]="r.itemName ? 'text-gray-900 font-medium' : 'text-amber-700'">
+                                      {{ r.itemName ? r.amount : 'no descuenta' }}
+                                      @if (r.itemName && r.extra) {
+                                        <span class="block text-gray-400 font-normal">{{ r.extra }}</span>
+                                      }
+                                    </td>
+                                  </tr>
+                                }
+                              </tbody>
+                            </table>
+                          </div>
+                        }
+                      }
+                    </div>
+                  }
+                </div>
+              }
+              <button type="button" (click)="addGroup(av.localId)"
+                class="text-sm font-medium text-amber-600 hover:text-amber-700">+ Agregar sabores a elegir</button>
+
+              @if (draft().hasSizes && draft().variants.length > 1) {
+                <button type="button" (click)="copyConfigToOthers(av.localId)"
+                  class="block text-xs font-medium text-gray-500 hover:text-indigo-600 border border-dashed border-gray-300 hover:border-indigo-400 rounded-lg px-3 py-2 transition-colors">
+                  Copiar insumos y sabores de «{{ variantLabel(av) }}» a los otros tamaños
+                </button>
+              }
+            </div>
+          }
+        </section>
+
+        <!-- ===== 5. Toppings (spec 129) =====
+             Unifica "Toppings" del mockup con "Adiciones disponibles": qué adiciones
+             (productos is_topping=true) ofrece este producto -- a nivel de producto,
+             aplica a todas sus variantes (FR-002/FR-003). -->
+        @if (!draft().is_topping) {
+          <section class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <div class="mb-4">
+              <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">5. Toppings</h2>
+              <p class="text-xs text-gray-500 mt-1">Productos del catálogo que el cliente puede añadir. Cada uno conserva su propio precio -- aplica a todas las presentaciones.</p>
+            </div>
+            <div class="space-y-2">
+              @if (draft().topping_ids.length === 0) {
+                <p class="text-sm text-gray-400">Sin adiciones. Este producto no ofrece adicionales.</p>
+              }
+              @for (toppingId of draft().topping_ids; track toppingId) {
+                <div class="flex items-center gap-2">
+                  <span class="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 text-gray-700">{{ toppingLabel(toppingId) }}</span>
+                  <button type="button" (click)="removeTopping(toppingId)" aria-label="Quitar adición"
+                    class="w-10 h-10 rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-600 flex items-center justify-center">
+                    <app-mi-icon name="delete" [size]="18" />
+                  </button>
+                </div>
+              }
+              <app-searchable-select [ngModel]="toppingPickerValue()"
+                (ngModelChange)="toppingPickerValue.set($event)" (optionPicked)="addTopping($event)"
+                [options]="[]" [search]="searchToppings" placeholder="+ Agregar adición…" />
+            </div>
+          </section>
+        }
+
+        <!-- ===== 6. Configuración adicional =====
+             Agrupa lo que no modela el mockup: estado del producto y visibilidad. -->
+        <section class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div class="mb-1">
+            <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">6. Configuración adicional</h2>
+            <p class="text-xs text-gray-500 mt-1">Estado y visibilidad del producto.</p>
+          </div>
+
+          @if (draft().id) {
+            <div class="flex items-start justify-between gap-4 mt-4 pt-4 border-t border-gray-100">
+              <div>
+                <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Producto activo</h4>
+                <p class="text-xs text-gray-500 mt-1">Si lo desactivas, deja de venderse y de mostrarse en la carta.</p>
+              </div>
+              <button type="button" (click)="toggleActive()" role="switch" [attr.aria-checked]="productActive()"
+                class="relative w-11 h-6 rounded-full transition-colors shrink-0"
+                [class]="productActive() ? 'bg-indigo-600' : 'bg-gray-300'"
+                title="Actívalo/desactívalo para que el producto se pueda vender">
+                <span class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" [class]="productActive() ? 'left-[22px]' : 'left-0.5'"></span>
+              </button>
             </div>
           }
 
@@ -334,210 +609,24 @@ interface SlotBreakdown {
             </button>
           </div>
 
-          <!-- ===== Adiciones disponibles (spec 129) =====
-               Qué adiciones (productos is_topping=true) ofrece este producto -- a nivel
-               de producto, aplica a todas sus variantes (FR-002/FR-003). -->
-          @if (!draft().is_topping) {
+          <!-- Presentaciones retiradas: siguen ocupando su presentación, así que la salida es
+               restaurarlas, no volver a crearlas. -->
+          @if (draft().deactivated.length) {
             <div class="mt-4 pt-4 border-t border-gray-100">
-              <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Adiciones disponibles</h4>
-              <p class="text-xs text-gray-400 mt-0.5 mb-2">Qué adiciones puede llevar este producto -- aplica a todas sus presentaciones.</p>
-              <div class="space-y-2">
-                @if (draft().topping_ids.length === 0) {
-                  <p class="text-sm text-gray-400">Ninguna todavía.</p>
+              <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Presentaciones desactivadas</h4>
+              <p class="text-xs text-gray-400 mt-0.5 mb-2">No se venden ni salen en la carta. Restaurar se aplica de inmediato.</p>
+              <ul class="space-y-1.5">
+                @for (dv of draft().deactivated; track dv.id) {
+                  <li class="flex items-center gap-3 text-sm">
+                    <span class="text-gray-700">{{ dv.presentationName }}</span>
+                    <span class="text-gray-400">$ {{ dv.price | number: '1.0-0' }}</span>
+                    <button type="button" (click)="restoreVariant(dv)" [disabled]="service.isSubmitting()"
+                      class="px-3 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50">
+                      Restaurar
+                    </button>
+                  </li>
                 }
-                @for (toppingId of draft().topping_ids; track toppingId) {
-                  <div class="flex items-center gap-2">
-                    <span class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50">{{ toppingLabel(toppingId) }}</span>
-                    <button type="button" (click)="removeTopping(toppingId)"
-                      class="px-2 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg"><app-mi-icon name="close" ariaLabel="Quitar" [size]="14" /></button>
-                  </div>
-                }
-                <app-searchable-select [ngModel]="toppingPickerValue()"
-                  (ngModelChange)="toppingPickerValue.set($event)" (optionPicked)="addTopping($event)"
-                  [options]="[]" [search]="searchToppings" placeholder="+ Agregar adición…" />
-              </div>
-            </div>
-          }
-
-          @if (activeVariant(); as av) {
-            <div class="mt-4 space-y-5">
-              @if (!draft().hasSizes) {
-                <!-- Sin tamaños: una sola presentación; el nombre y el orden no aplican. -->
-                <div class="flex flex-wrap items-end gap-3">
-                  <div>
-                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Precio</label>
-                    <div class="flex items-center gap-1.5 border border-gray-300 rounded-xl px-3 py-2 w-36">
-                      <span class="text-gray-400 text-sm">$</span>
-                      <app-money-input [ngModel]="av.price"
-                        (ngModelChange)="setVariantField(av.localId, 'price', $event ?? 0)"
-                        [bordered]="false" sizeClass="text-sm" />
-                    </div>
-                  </div>
-                </div>
-              }
-
-              @if (sectionsEnabled()) {
-              <!-- Insumos fijos -->
-              <div>
-                <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Insumos fijos</h4>
-                <p class="text-xs text-gray-400 mt-0.5 mb-2">Se descuentan siempre que se venda este tamaño.</p>
-                <div class="space-y-2">
-                  @if (av.recipe.length === 0) {
-                    <p class="text-sm text-gray-400">Ninguno todavía.</p>
-                  }
-                  @for (line of av.recipe; track $index) {
-                    <div class="flex items-center gap-2">
-                      <app-searchable-select [ngModel]="line.inventory_item_id"
-                        (ngModelChange)="setRecipeField(av.localId, $index, 'inventory_item_id', $event)"
-                        (optionPicked)="onInventoryItemPicked($event)"
-                        [options]="inventoryOptions()" [search]="searchInventoryItems" placeholder="Insumo…" class="flex-1" />
-                      <input type="number" min="0" step="0.001" [value]="line.quantity"
-                        (input)="setRecipeField(av.localId, $index, 'quantity', +$any($event.target).value)" placeholder="Cant."
-                        class="w-24 px-2 py-2 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                      <span class="w-12 text-xs text-gray-400">{{ unitAbbr(line.inventory_item_id) }}</span>
-                      <button type="button" (click)="removeRecipeLine(av.localId, $index)"
-                        class="px-2 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg"><app-mi-icon name="close" ariaLabel="Quitar" [size]="14" /></button>
-                    </div>
-                  }
-                  <button type="button" (click)="addRecipeLine(av.localId)"
-                    class="text-sm font-medium text-indigo-600 hover:text-indigo-700">+ Agregar insumo</button>
-                </div>
-              </div>
-              } @else {
-              <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
-                Activa "Maneja inventario" arriba para configurar los insumos fijos que este tamaño descuenta.
-              </div>
-              }
-
-              <!-- ===== Sabores a elegir (spec 064) =====
-                   A diferencia de "Insumos fijos" (100% inventario), esta sección SIEMPRE
-                   está disponible: qué grupo ofrece la variante y cuántas opciones elige el
-                   cliente (min/max) son datos de menú/precio, no de inventario. Solo la
-                   cantidad de consumo y el detalle de insumo (sectionsEnabled(), combina el
-                   switch del producto con el acceso por plan) dependen de inventario. -->
-              <div>
-                <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Sabores a elegir</h4>
-                <p class="text-xs text-gray-400 mt-0.5 mb-2">
-                  @if (sectionsEnabled()) {
-                    El cliente elige, y se descuenta la cantidad indicada del insumo de <strong>cada</strong> opción que elija.
-                  } @else {
-                    El cliente elige entre las opciones del grupo (sin descuento de inventario).
-                  }
-                </p>
-                <div class="space-y-3">
-                  @if (av.optionGroups.length === 0) {
-                    <p class="text-sm text-gray-400">Ninguno. Este tamaño no pide elegir nada.</p>
-                  }
-                  @for (g of av.optionGroups; track $index) {
-                    @let bd = groupBreakdown(g);
-                    <div class="rounded-xl border border-amber-200 bg-amber-50/40 p-3">
-                      <div class="flex flex-wrap items-center gap-2">
-                        <app-searchable-select [ngModel]="g.option_group_id"
-                          (ngModelChange)="setGroupField(av.localId, $index, 'option_group_id', $event)"
-                          [options]="groupOptionsFor(av.localId, $index)" placeholder="Grupo…" class="flex-1 min-w-40" />
-                        <button type="button" (click)="removeGroup(av.localId, $index)"
-                          class="px-2 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg"><app-mi-icon name="close" ariaLabel="Quitar" [size]="14" /></button>
-                      </div>
-
-                      <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mt-2 text-sm">
-                        <span class="text-gray-600">elige</span>
-                        <input type="number" min="0" [value]="g.min_select"
-                          (input)="setGroupField(av.localId, $index, 'min_select', +$any($event.target).value)"
-                          class="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                        <span class="text-gray-600">a</span>
-                        <input type="number" min="1" [value]="g.max_select"
-                          (input)="setGroupField(av.localId, $index, 'max_select', +$any($event.target).value)"
-                          class="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                        @if (sectionsEnabled()) {
-                          <span class="text-gray-600 ml-2">descuenta</span>
-                          <input type="number" min="0" step="0.001" [value]="g.quantity_per_option"
-                            (input)="setGroupField(av.localId, $index, 'quantity_per_option', +$any($event.target).value)"
-                            class="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                          <span class="text-gray-500 text-xs">{{ groupUnit(g) }} por cada uno</span>
-                          @if (groupTotalHint(g); as hint) {
-                            <span class="text-xs font-semibold text-gray-700">{{ hint }}</span>
-                          }
-                        }
-                      </div>
-
-                      @if (groupError(g); as err) {
-                        <p class="text-xs text-red-600 mt-1.5">{{ err }}</p>
-                      }
-                      @if (sectionsEnabled()) {
-                        @for (w of groupWarnings(g); track w) {
-                          <p class="text-xs text-amber-700 mt-1.5"><app-mi-icon name="warning" [size]="14" class="inline-flex align-text-bottom" /> {{ w }}</p>
-                        }
-                      }
-
-                      @if (sectionsEnabled() && g.option_group_id) {
-                        <div class="mt-2 pt-2 border-t border-amber-200/70">
-                          <div class="flex items-start justify-between gap-3">
-                            <p class="text-xs text-gray-500 min-w-0">
-                              <span class="font-medium text-gray-600">Descuenta de:</span>
-                              {{ bd.summary }}
-                              @if (bd.missing > 0) {
-                                <span class="text-amber-700 font-medium inline-flex items-center gap-0.5">· <app-mi-icon name="warning" [size]="14" /> {{ bd.missing }} sin insumo</span>
-                              }
-                            </p>
-                            <a routerLink="/dashboard/ajustes/grupos-opciones" target="_blank" rel="noopener"
-                              class="shrink-0 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
-                              title="Se abre en otra pestaña para no perder los cambios sin guardar">
-                              Editar grupo ↗
-                            </a>
-                          </div>
-
-                          @if (bd.rows.length > 0) {
-                            <button type="button" (click)="toggleGroupDetail(av.localId, $index)"
-                              class="mt-1 text-xs font-medium text-gray-500 hover:text-gray-700">
-                              {{ isGroupOpen(av.localId, $index) ? 'Ocultar detalle ▴' : 'Ver detalle (' + bd.rows.length + ') ▾' }}
-                            </button>
-
-                            @if (isGroupOpen(av.localId, $index)) {
-                              <div class="mt-2 rounded-lg bg-white border border-gray-100 overflow-hidden">
-                                <table class="w-full text-xs">
-                                  <thead class="bg-gray-50 text-gray-500">
-                                    <tr>
-                                      <th class="text-left font-medium px-3 py-1.5">Si elige…</th>
-                                      <th class="text-left font-medium px-3 py-1.5">Descuenta de</th>
-                                      <th class="text-right font-medium px-3 py-1.5">Cantidad</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody class="divide-y divide-gray-100">
-                                    @for (r of bd.rows; track r.optionId) {
-                                      <tr [class]="r.itemName ? '' : 'bg-amber-50'">
-                                        <td class="px-3 py-1.5 text-gray-700">{{ r.optionName }}</td>
-                                        <td class="px-3 py-1.5" [class]="r.itemName ? 'text-gray-600' : 'text-amber-700'">
-                                          {{ r.itemName || 'Sin insumo asignado' }}
-                                        </td>
-                                        <td class="px-3 py-1.5 text-right whitespace-nowrap"
-                                          [class]="r.itemName ? 'text-gray-900 font-medium' : 'text-amber-700'">
-                                          {{ r.itemName ? r.amount : 'no descuenta' }}
-                                          @if (r.itemName && r.extra) {
-                                            <span class="block text-gray-400 font-normal">{{ r.extra }}</span>
-                                          }
-                                        </td>
-                                      </tr>
-                                    }
-                                  </tbody>
-                                </table>
-                              </div>
-                            }
-                          }
-                        </div>
-                      }
-                    </div>
-                  }
-                  <button type="button" (click)="addGroup(av.localId)"
-                    class="text-sm font-medium text-amber-600 hover:text-amber-700">+ Agregar sabores a elegir</button>
-                </div>
-              </div>
-
-              @if (draft().hasSizes && draft().variants.length > 1) {
-                <button type="button" (click)="copyConfigToOthers(av.localId)"
-                  class="text-xs font-medium text-gray-500 hover:text-indigo-600 border border-dashed border-gray-300 hover:border-indigo-400 rounded-lg px-3 py-2 transition-colors">
-                  Copiar insumos y sabores de «{{ variantLabel(av) }}» a los otros tamaños
-                </button>
-              }
+              </ul>
             </div>
           }
         </section>
@@ -549,7 +638,8 @@ interface SlotBreakdown {
             Cancelar
           </button>
           <button type="button" (click)="save()" [disabled]="!canSave() || service.isSubmitting() || uploading()"
-            class="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-40 transition-colors">
+            class="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-40 transition-colors inline-flex items-center gap-2">
+            @if (!service.isSubmitting()) { <app-mi-icon name="check" [size]="16" /> }
             {{ service.isSubmitting() ? 'Guardando…' : 'Guardar producto' }}
           </button>
         </div>
@@ -1286,6 +1376,13 @@ export class ProductFormComponent implements OnInit, OnDestroy {
   /** Nombre a mostrar de una fila: el de su presentación, o «este tamaño» si aún no eligió. */
   variantLabel(v: VariantDraft): string {
     return v.presentationName || 'este tamaño';
+  }
+
+  /** Botón "Inventario" de la tabla de tamaños: cambia el tamaño activo y lleva la
+   *  vista a la tarjeta de Inventario, para no obligar a buscarla manualmente. */
+  goToInventory(localId: string): void {
+    this.activeLocalId.set(localId);
+    document.getElementById('product-form-inventario')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   private presentationFields(p: { id: string; name: string } | null) {
