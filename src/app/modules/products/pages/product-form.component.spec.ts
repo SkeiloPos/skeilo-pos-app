@@ -1033,11 +1033,11 @@ describe('ProductFormComponent', () => {
 
   // ── Orden de la tarjeta "Tamaños del producto" (spec 084, US8) ───────────
 
-  it('con tamaños, la tabla va antes de "Maneja inventario" y este antes del detalle', async () => {
+  it('con tamaños, la tarjeta de tamaños va antes de la de inventario y esta antes del detalle', async () => {
     await createEdit('p9', false);
 
-    const tabla = position('+ Agregar tamaño');
-    const inventario = position('Maneja inventario');
+    const tabla = position('Agregar tamaño');
+    const inventario = position('3. Inventario');
     const detalle = position('Insumos fijos') === -1
       ? position('Activa "Maneja inventario" arriba')
       : position('Insumos fijos');
@@ -1055,11 +1055,11 @@ describe('ProductFormComponent', () => {
     expect(variantRowPresentationButton(component.draft().variants[0].localId).disabled).toBe(false);
   });
 
-  it('sin tamaños no hay tabla y "Maneja inventario" queda bajo el encabezado', async () => {
+  it('sin tamaños no hay tabla y la tarjeta de inventario queda después de la de tamaños', async () => {
     await createNew();
 
     expect(fixture.nativeElement.querySelectorAll('[cdkDrag]').length).toBe(0);
-    expect(position('Maneja inventario')).toBeGreaterThan(position('Tamaños del producto'));
+    expect(position('3. Inventario')).toBeGreaterThan(position('2. Tamaños y precios'));
   });
 
   // ── Historia 1 (spec 102): nombre real de insumos ya guardados ───────────

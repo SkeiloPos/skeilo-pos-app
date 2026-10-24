@@ -109,6 +109,10 @@ export const ICON_CATALOG: Record<string, string> = {
   // mismo glifo genérico de heladería.
   icecream: 'icecream',
 
+  // Asa de arrastre de la tabla de tamaños del formulario de producto
+  // (product-form.component.ts), rediseño con el lenguaje visual del mockup.
+  'drag-handle': 'drag_indicator',
+
   // Ícono de reserva para un `name` desconocido (contracts/icon-component-contract.md)
   help_outline: 'help_outline',
 };
