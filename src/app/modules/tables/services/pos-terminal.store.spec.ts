@@ -1,3 +1,4 @@
+import { EnvironmentInjector, createEnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { provideHttpClient } from '@angular/common/http';
@@ -25,6 +26,7 @@ import { PaymentMethodService } from '../../sales/services/payment-method.servic
 import { CashService } from '../../cash-register/services/cash.service';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
+import { UpdateGateService } from '../../../core/update/update-gate.service';
 
 const API = environment.apiBaseUrl;
 
@@ -4421,4 +4423,74 @@ describe('PosTerminalStore — total inmediato al guardar y quitar (spec 089, A-
     expect(store.checkoutPreviewEstimate()).toBeNull();
   });
 
+});
+
+/**
+ * Spec 134 (FR-019, M6): el borrador de la Terminal solo vive en memoria; una
+ * recarga automática por versión nueva lo perdería. El store se registra en el
+ * momento seguro de la actualización mientras tenga un borrador sin enviar. La
+ * orden manual usa su propia instancia del mismo store, así que queda cubierta.
+ */
+describe('PosTerminalStore — bloqueador del momento seguro (spec 134, M6)', () => {
+  let gate: UpdateGateService;
+
+  function crearStore(): PosTerminalStore {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    gate = TestBed.inject(UpdateGateService);
+    return TestBed.inject(PosTerminalStore);
+  }
+
+  it('sin borrador no bloquea el momento seguro', () => {
+    crearStore();
+
+    expect(gate.isSafeMoment()).toBe(true);
+  });
+
+  it('con un borrador sin enviar sí lo bloquea, y deja de bloquear cuando se vacía', () => {
+    const store = crearStore();
+
+    store.draftLines.set([{ key: 'k1' } as never]);
+    expect(store.hasDraft()).toBe(true);
+    expect(gate.isSafeMoment()).toBe(false);
+
+    store.draftLines.set([]);
+    expect(gate.isSafeMoment()).toBe(true);
+  });
+
+  it('retira el bloqueador al destruirse el store (aunque quedara un borrador)', () => {
+    crearStore();
+    // Como en la app: el store vive en el inyector de la pantalla, no en el de la raíz.
+    const pantalla = createEnvironmentInjector([PosTerminalStore], TestBed.inject(EnvironmentInjector));
+    const store = pantalla.get(PosTerminalStore);
+    store.draftLines.set([{ key: 'k1' } as never]);
+    expect(gate.isSafeMoment()).toBe(false);
+
+    pantalla.destroy(); // el usuario sale de la Terminal
+
+    expect(gate.isSafeMoment()).toBe(true);
+  });
+
+  it('dos instancias del store (Terminal y orden manual) coexisten: destruir una no libera a la otra', () => {
+    const store = crearStore();
+    const gateCompartido = gate;
+    const otro = TestBed.runInInjectionContext(() => new PosTerminalStore());
+    store.draftLines.set([{ key: 'a' } as never]);
+    otro.draftLines.set([{ key: 'b' } as never]);
+    expect(gateCompartido.isSafeMoment()).toBe(false);
+
+    store.draftLines.set([]);
+    expect(gateCompartido.isSafeMoment()).toBe(false); // sigue el borrador de la otra instancia
+
+    otro.draftLines.set([]);
+    expect(gateCompartido.isSafeMoment()).toBe(true);
+  });
 });
