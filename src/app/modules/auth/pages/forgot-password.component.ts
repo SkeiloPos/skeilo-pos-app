@@ -1,4 +1,4 @@
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
@@ -79,11 +79,9 @@ function escribirBloqueo(until: number): void {
             (click)="resend()"
             class="auth-button auth-button-secondary auth-tap-target"
           >
-            @if (remainingSeconds() > 0) {
-              Reenviar enlace en {{ remainingSeconds() }} s
-            } @else {
-              Reenviar enlace
-            }
+            <!-- Spec 134 (FR-021, nivel B): [textContent] reemplaza todos los hijos del <span> en cada
+                 cambio, así el contador sigue al estado real aunque un traductor haya envuelto su texto. -->
+            <span [textContent]="resendLabel()"></span>
           </button>
 
           <a data-testid="forgot-back-link" routerLink="/login" class="auth-link-button">
@@ -161,6 +159,12 @@ export class ForgotPasswordComponent implements OnDestroy {
    * cosas pasa (FR-022, R10).
    */
   readonly remainingSeconds = signal(0);
+  /** Etiqueta del botón de reenvío completa, para pintarla con `[textContent]` (spec 134, FR-021, nivel B). */
+  readonly resendLabel = computed(() =>
+    this.remainingSeconds() > 0
+      ? `Reenviar enlace en ${this.remainingSeconds()} s`
+      : 'Reenviar enlace',
+  );
 
   /** Solo repinta: el valor sale siempre del reloj, nunca de este intervalo. */
   private ticker: ReturnType<typeof setInterval> | null = null;
