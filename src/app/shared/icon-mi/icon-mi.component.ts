@@ -29,7 +29,8 @@ import { ICON_CATALOG, ICON_FALLBACK } from './icon-catalog';
   host: { class: 'inline-flex items-center justify-center' },
   template: `
     <span
-      class="material-icons-outlined"
+      class="material-icons-outlined notranslate"
+      translate="no"
       [style.font-size.px]="size"
       [attr.aria-hidden]="ariaLabel ? null : 'true'"
       [attr.role]="ariaLabel ? 'img' : null"
