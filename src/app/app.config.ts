@@ -17,6 +17,8 @@ import { authTokenInterceptor } from './core/auth/auth-token.interceptor';
 import { IntegrityAwareErrorHandler } from './core/integrity/integrity-error-handler';
 import { pageIntegrityInterceptor } from './core/integrity/page-integrity.interceptor';
 import { PageIntegrityService } from './core/integrity/page-integrity.service';
+import { AppUpdateService } from './core/update/app-update.service';
+import { inflightRequestsInterceptor } from './core/update/inflight-requests.interceptor';
 import { provideServiceWorker } from '@angular/service-worker';
 
 export const appConfig: ApplicationConfig = {
@@ -26,11 +28,16 @@ export const appConfig: ApplicationConfig = {
     // pintado y evalúa de inmediato, así una página que ya llega traducida
     // arranca como "alterada". El ErrorHandler le pasa los errores de DOM.
     provideAppInitializer(() => inject(PageIntegrityService).start()),
+    // Spec 134 (US4): lleva la versión nueva a las pestañas de días, solo en un momento seguro.
+    provideAppInitializer(() => inject(AppUpdateService).start()),
     { provide: ErrorHandler, useClass: IntegrityAwareErrorHandler },
     provideTenantInitializer(),
     // `pageIntegrityInterceptor` va ANTES que `authTokenInterceptor`: rechazar una
-    // acción protegida no debe tocar tokens ni consumir un refresh.
-    provideHttpClient(withInterceptors([pageIntegrityInterceptor, authTokenInterceptor])),
+    // acción protegida no debe tocar tokens ni consumir un refresh. El conteo de
+    // escrituras en vuelo va después del rechazo: lo rechazado nunca llega a contarse.
+    provideHttpClient(
+      withInterceptors([pageIntegrityInterceptor, inflightRequestsInterceptor, authTokenInterceptor]),
+    ),
     provideRouter(routes, withComponentInputBinding()),
     // Registra los controladores de Chart.js una sola vez para toda la app; las
     // gráficas de `shared/charts` asumen que ya está hecho.

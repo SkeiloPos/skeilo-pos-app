@@ -1,6 +1,7 @@
-import { DestroyRef, DOCUMENT, Injectable, computed, inject, signal } from '@angular/core';
+import { DestroyRef, DOCUMENT, Injectable, Injector, computed, inject, signal } from '@angular/core';
 import { RELOAD_PAGE } from '../reload-page';
 import { startVisibleInterval, VisibleInterval } from '../realtime/visible-interval';
+import { AppUpdateService } from '../update/app-update.service';
 import {
   Canary,
   IntegritySignalId,
@@ -32,7 +33,7 @@ const CLEAN_EVALUATIONS_TO_RECOVER = 2;
 @Injectable({ providedIn: 'root' })
 export class PageIntegrityService {
   private readonly doc = inject(DOCUMENT);
-  private readonly reloadPage = inject(RELOAD_PAGE);
+  private readonly injector = inject(Injector);
 
   private readonly status = signal<'intact' | 'altered'>('intact');
   private readonly reasonsState = signal<IntegritySignalId[]>([]);
@@ -131,9 +132,20 @@ export class PageIntegrityService {
     this.blockedState.set(label);
   }
 
-  /** Botón "Recargar" del aviso. Nunca se invoca sin una acción de la persona (FR-017). */
+  /**
+   * Botón "Recargar" del aviso. Nunca se invoca sin una acción de la persona (FR-017).
+   * Delega en `AppUpdateService.reloadNow()`, que activa antes la versión nueva si el
+   * Service Worker ya la descargó (así la recarga entra directo en ella) y termina en
+   * `RELOAD_PAGE`. Se resuelve de forma **perezosa** y no por inyección: `AppUpdateService`
+   * depende de `UpdateGateService`, que depende de este servicio (ciclo de DI).
+   */
   async reload(): Promise<void> {
-    this.reloadPage();
+    try {
+      await this.injector.get(AppUpdateService).reloadNow();
+    } catch {
+      // Recargar nunca debe quedar bloqueado por un fallo del Service Worker.
+      this.injector.get(RELOAD_PAGE)();
+    }
   }
 
   /**

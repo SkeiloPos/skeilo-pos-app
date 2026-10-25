@@ -1,6 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
+import { SwUpdate, VersionEvent } from '@angular/service-worker';
+import { Subject } from 'rxjs';
 import { RELOAD_PAGE } from '../reload-page';
+import { AppUpdateService } from '../update/app-update.service';
 import { CANARY_TEXT } from './integrity-signals';
 import { PageIntegrityService } from './page-integrity.service';
 
@@ -352,6 +355,48 @@ describe('PageIntegrityService (spec 134, contracts/page-integrity.md)', () => {
       svc.start();
 
       await svc.reload();
+
+      expect(recargar).toHaveBeenCalledTimes(1);
+    });
+
+    it('con una versión nueva ya descargada, la activa antes de recargar (spec 134, T046)', async () => {
+      const orden: string[] = [];
+      const versiones = new Subject<VersionEvent>();
+      const activateUpdate = vi.fn(async () => {
+        orden.push('activar');
+        return true;
+      });
+      TestBed.resetTestingModule();
+      recargar = vi.fn(() => orden.push('recargar'));
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: RELOAD_PAGE, useValue: recargar },
+          {
+            provide: SwUpdate,
+            useValue: { isEnabled: true, versionUpdates: versiones, unrecoverable: new Subject(), checkForUpdate: vi.fn(async () => false), activateUpdate },
+          },
+        ],
+      });
+      const svc = TestBed.inject(PageIntegrityService);
+      TestBed.inject(AppUpdateService).start();
+      versiones.next({ type: 'VERSION_READY', currentVersion: { hash: 'a' }, latestVersion: { hash: 'b' } } as VersionEvent);
+
+      await svc.reload();
+
+      expect(orden).toEqual(['activar', 'recargar']);
+    });
+
+    it('si el Service Worker falla, "Recargar" igual recarga', async () => {
+      TestBed.resetTestingModule();
+      recargar = vi.fn();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: RELOAD_PAGE, useValue: recargar },
+          { provide: AppUpdateService, useValue: { reloadNow: () => Promise.reject(new Error('sw roto')) } },
+        ],
+      });
+
+      await TestBed.inject(PageIntegrityService).reload();
 
       expect(recargar).toHaveBeenCalledTimes(1);
     });
