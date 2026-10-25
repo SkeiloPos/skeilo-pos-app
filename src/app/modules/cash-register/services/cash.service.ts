@@ -120,9 +120,11 @@ export class CashService {
     );
   }
 
-  addMovement(shiftId: string, payload: CashMovementPayload): Promise<CashMovement> {
+  /** spec 135: la respuesta pasa de un objeto a `list[CashMovementResponse]`
+   * (1 elemento salvo un ingreso mixto de 2 líneas, mismo `group_id`). */
+  addMovement(shiftId: string, payload: CashMovementPayload): Promise<CashMovement[]> {
     return firstValueFrom(
-      this.http.post<CashMovement>(`${this.baseUrl}/shifts/${shiftId}/movements`, payload),
+      this.http.post<CashMovement[]>(`${this.baseUrl}/shifts/${shiftId}/movements`, payload),
     );
   }
 

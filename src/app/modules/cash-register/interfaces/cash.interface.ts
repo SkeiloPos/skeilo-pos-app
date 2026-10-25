@@ -29,10 +29,22 @@ export interface CashShift {
 /** Tipo de movimiento manual de efectivo. */
 export type MovementKind = 'ingreso' | 'egreso' | 'retiro';
 
-/** Body para `POST /cash/shifts/{id}/movements`. */
+/** spec 135 (FR-004/FR-005): una línea de un ingreso con método explícito.
+ * `payment_method_id` en snake_case -- este objeto viaja tal cual al backend,
+ * sin transformación de claves (mismo patrón que `paymentLines()` en
+ * `payment-draft.util.ts`). */
+export interface CashMovementLinePayload {
+  payment_method_id: string;
+  amount: number;
+}
+
+/** Body para `POST /cash/shifts/{id}/movements`. `lines` es exclusivo con
+ * `amount` -- solo aplica a `kind: 'ingreso'` (FR-004/FR-005); egreso/retiro y
+ * el ingreso en efectivo siguen enviando `amount` sin cambios (FR-009/FR-012). */
 export interface CashMovementPayload {
   kind: MovementKind;
-  amount: number;
+  amount?: number;
+  lines?: CashMovementLinePayload[];
   category: string;
   description?: string | null;
 }
@@ -43,6 +55,9 @@ export interface CashMovement {
   cash_shift_id: string;
   kind: MovementKind;
   amount: string;
+  payment_method_id: string;
+  payment_method_name: string;
+  group_id?: string | null;
   category?: string | null;
   description?: string | null;
   user_name?: string | null;
@@ -81,7 +96,7 @@ export interface ShiftClosePayload {
 export interface SalesByMethod {
   method_id: string;
   method_name: string;
-  method_type: 'cash' | 'card' | 'transfer' | 'other';
+  method_type: 'cash' | 'card' | 'transfer' | 'other' | 'mixed';
   total: string;
   count: number;
 }
@@ -101,6 +116,9 @@ export interface Reconciliation {
   ingresos: string;
   egresos: string;
   retiros: string;
+  /** spec 135 (FR-008): ingresos en métodos distintos a efectivo -- sin ceros
+   * rellenados, a diferencia de `sales_by_method`. */
+  ingresos_by_method?: SalesByMethod[];
   expected: string;
   counted_amount?: string | null;
   difference?: string | null;

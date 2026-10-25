@@ -70,7 +70,7 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
             style="background:var(--terminal-color-surface,#fff);border-color:var(--terminal-color-border-strong,#d1d5db);color:var(--terminal-color-text-primary,#111827)"
           >
             <option value="">Selecciona…</option>
-            @for (m of methods; track m.id) {
+            @for (m of availableMethods(i); track m.id) {
               <option [value]="m.id">{{ m.name }}</option>
             }
           </select>
@@ -176,6 +176,18 @@ export class PaymentInputComponent implements OnChanges {
 
   isCash(methodId: string): boolean {
     return !!this.methods.find((m) => m.id === methodId)?.is_cash;
+  }
+
+  /** spec 135 (A-146): los métodos ya elegidos en OTRA línea del mismo
+   * borrador no se ofrecen de nuevo -- conserva el propio de esta línea en
+   * la lista para no deseleccionarlo al abrir el `<select>`. No es la única
+   * defensa: `paymentIssue` (`issue()`) sigue rechazando si de todos modos
+   * ocurriera (p. ej. al eliminar y reordenar líneas). */
+  availableMethods(index: number): PaymentMethodCheckoutOption[] {
+    const usedByOtherLines = new Set(
+      this.draft().filter((_line, i) => i !== index).map((line) => line.methodId),
+    );
+    return this.methods.filter((m) => !usedByOtherLines.has(m.id));
   }
 
   change(index: number): number {

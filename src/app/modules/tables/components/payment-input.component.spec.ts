@@ -16,6 +16,7 @@ describe('PaymentInputComponent', () => {
   const methods: PaymentMethodCheckoutOption[] = [
     { id: 'pm-cash', name: 'Efectivo', is_cash: true },
     { id: 'pm-transfer', name: 'Nequi', is_cash: false },
+    { id: 'pm-card', name: 'Tarjeta', is_cash: false },
   ];
 
   beforeEach(() => {
@@ -40,6 +41,12 @@ describe('PaymentInputComponent', () => {
     return Array.from<HTMLButtonElement>(fixture.nativeElement.querySelectorAll('button')).find(
       (b) => b.textContent?.includes('Agregar otro método'),
     ) ?? null;
+  }
+
+  function optionValues(index: number): string[] {
+    return Array.from(selectEls()[index].querySelectorAll('option'))
+      .map((o) => (o as HTMLOptionElement).value)
+      .filter((v) => v !== '');
   }
 
   function removeLineBtns(): HTMLButtonElement[] {
@@ -275,5 +282,23 @@ describe('PaymentInputComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Faltan');
     expect(fixture.nativeElement.textContent).toContain('2.000');
     expect(fixture.nativeElement.textContent).toContain('por asignar');
+  });
+
+  // ── Filtrado de métodos ya elegidos (spec 135, A-146) ────────────────────
+
+  it('el selector de la segunda línea no ofrece el método ya elegido en la primera', async () => {
+    await chooseMethod('pm-transfer');
+    await clickAddLine();
+
+    expect(optionValues(1)).toEqual(['pm-cash', 'pm-card']);
+  });
+
+  it('conserva el método propio de una línea en su propio selector', async () => {
+    await chooseMethod('pm-transfer');
+    await clickAddLine();
+    await chooseMethod('pm-cash', 1);
+
+    expect(optionValues(0)).toEqual(['pm-transfer', 'pm-card']);
+    expect(optionValues(1)).toEqual(['pm-cash', 'pm-card']);
   });
 });
