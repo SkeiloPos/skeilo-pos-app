@@ -1,4 +1,11 @@
-import { ApplicationConfig, provideBrowserGlobalErrorListeners, isDevMode } from '@angular/core';
+import {
+  ApplicationConfig,
+  ErrorHandler,
+  inject,
+  isDevMode,
+  provideAppInitializer,
+  provideBrowserGlobalErrorListeners,
+} from '@angular/core';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
@@ -7,11 +14,18 @@ import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { routes } from './app.routes';
 import { provideTenantInitializer } from './core/tenant/tenant.initializer';
 import { authTokenInterceptor } from './core/auth/auth-token.interceptor';
+import { IntegrityAwareErrorHandler } from './core/integrity/integrity-error-handler';
+import { PageIntegrityService } from './core/integrity/page-integrity.service';
 import { provideServiceWorker } from '@angular/service-worker';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
+    // Spec 134 (FR-007): la vigilancia de la página arranca antes del primer
+    // pintado y evalúa de inmediato, así una página que ya llega traducida
+    // arranca como "alterada". El ErrorHandler le pasa los errores de DOM.
+    provideAppInitializer(() => inject(PageIntegrityService).start()),
+    { provide: ErrorHandler, useClass: IntegrityAwareErrorHandler },
     provideTenantInitializer(),
     provideHttpClient(withInterceptors([authTokenInterceptor])),
     provideRouter(routes, withComponentInputBinding()),
