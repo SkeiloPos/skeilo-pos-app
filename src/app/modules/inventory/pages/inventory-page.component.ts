@@ -208,7 +208,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
                       <td class="px-4 py-3 text-gray-600">{{ unitAbbr(i.unit_measure_id) }}</td>
                       <td class="px-4 py-3 text-gray-600">
                         @if (i.preferred_supplier_name) {
-                          {{ i.preferred_supplier_name }}
+                          <span>{{ i.preferred_supplier_name }}</span>
                         } @else {
                           <span class="text-gray-400 italic">Sin proveedor</span>
                         }
@@ -314,7 +314,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
                       <p class="font-medium text-gray-900">{{ supplierName(p.supplier_id) }}</p>
                       <p class="text-xs text-gray-500">
                         {{ p.purchased_at | tenantDate:'short' }}
-                        @if (p.invoice_number) { · Factura {{ p.invoice_number }} }
+                        @if (p.invoice_number) { <span> · Factura {{ p.invoice_number }} </span> }
                         · {{ p.items.length }} ítem(s)
                       </p>
                     </button>
@@ -461,9 +461,9 @@ type ActiveFilter = '' | 'active' | 'inactive';
                   <p class="text-sm font-medium text-gray-800">{{ itemName(row.inventory_item_id) }}</p>
                   <p class="text-xs text-gray-400">
                     @if (row.presentation_label && row.conversion_factor) {
-                      Pendiente: {{ row.pending / row.conversion_factor | number:'1.0-3' }} de {{ row.quantity / row.conversion_factor | number:'1.0-3' }} {{ row.presentation_label }}
+                      <span>Pendiente: {{ row.pending / row.conversion_factor | number:'1.0-3' }} de {{ row.quantity / row.conversion_factor | number:'1.0-3' }} {{ row.presentation_label }}</span>
                     } @else {
-                      Pendiente: {{ row.pending | number:'1.0-3' }} de {{ row.quantity | number:'1.0-3' }}
+                      <span>Pendiente: {{ row.pending | number:'1.0-3' }} de {{ row.quantity | number:'1.0-3' }}</span>
                     }
                   </p>
                 </div>

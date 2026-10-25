@@ -151,6 +151,37 @@ describe('paymentIssue', () => {
     );
   });
 
+  it('rechaza dos líneas con el mismo método (spec 135, A-146: revierte A-124/FR-005 de spec 112)', () => {
+    const draft: PaymentDraft = [
+      line({ methodId: 'transferencia', amount: 6000 }),
+      line({ methodId: 'transferencia', amount: 8000 }),
+    ];
+
+    const issue = paymentIssue(draft, 14000, methods);
+    expect(issue).toContain('Transferencia');
+    expect(issue).toContain('no puede usarse en más de una línea');
+  });
+
+  it('rechaza 3 líneas donde 2 repiten método, aunque la 3ra sea distinta (FR-003)', () => {
+    const draft: PaymentDraft = [
+      line({ methodId: 'transferencia', amount: 3000 }),
+      line({ methodId: 'tarjeta', amount: 3000 }),
+      line({ methodId: 'transferencia', amount: 3000 }),
+    ];
+
+    const issue = paymentIssue(draft, 9000, methods);
+    expect(issue).toContain('no puede usarse en más de una línea');
+  });
+
+  it('no rechaza cuando las líneas tienen métodos distintos (control, sin regresión)', () => {
+    const draft: PaymentDraft = [
+      line({ methodId: 'efectivo', amount: 8000 }),
+      line({ methodId: 'transferencia', amount: 6000 }),
+    ];
+
+    expect(paymentIssue(draft, 14000, methods)).toBeNull();
+  });
+
   it('avisa de lo que falta por asignar', () => {
     const issue = paymentIssue([line({ methodId: 'efectivo', amount: 20000 })], 35000, methods);
 

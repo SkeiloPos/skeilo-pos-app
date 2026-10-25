@@ -37,6 +37,22 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
             </select>
           </div>
 
+          @if (store.esIngreso()) {
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Método de pago</label>
+              <select
+                [value]="store.formPaymentMethodId()"
+                (change)="store.formPaymentMethodId.set($any($event.target).value)"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                <option value="">Selecciona…</option>
+                @for (m of store.metodosLinea1(); track m.id) {
+                  <option [value]="m.id">{{ m.name }}</option>
+                }
+              </select>
+            </div>
+          }
+
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Valor</label>
             <app-money-input
@@ -44,6 +60,41 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               (ngModelChange)="store.formMonto.set($event === null ? '' : $event.toString())"
             />
           </div>
+
+          @if (store.esIngreso() && store.formSegundaLinea()) {
+            <div class="border-t border-gray-100 pt-3 space-y-2">
+              <div class="flex items-center justify-between">
+                <label class="block text-sm font-medium text-gray-700">Segundo método de pago</label>
+                <button type="button" (click)="store.quitarSegundoMetodo()" class="text-sm font-medium text-red-600">
+                  Quitar
+                </button>
+              </div>
+              <select
+                [value]="store.formSegundoMetodo()"
+                (change)="store.formSegundoMetodo.set($any($event.target).value)"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                <option value="">Selecciona…</option>
+                @for (m of store.metodosLinea2(); track m.id) {
+                  <option [value]="m.id">{{ m.name }}</option>
+                }
+              </select>
+              <app-money-input
+                [ngModel]="store.formSegundoMonto() ? +store.formSegundoMonto() : null"
+                (ngModelChange)="store.formSegundoMonto.set($event === null ? '' : $event.toString())"
+              />
+            </div>
+          }
+
+          @if (store.puedeAgregarSegundoMetodo()) {
+            <button
+              type="button"
+              (click)="store.agregarSegundoMetodo()"
+              class="w-full py-2 border border-dashed border-gray-300 rounded-lg text-sm font-semibold text-gray-600"
+            >
+              Agregar otro método
+            </button>
+          }
 
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Observación (opcional)</label>

@@ -30,7 +30,11 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
           @for (v of ind.ventas; track v.id) {
             <tr><td class="py-2 border-b border-gray-100">Ventas {{ v.name }}</td><td class="py-2 border-b border-gray-100 text-right font-semibold">{{ store.fmt(v.total) }}</td></tr>
           }
-          <tr><td class="py-2 border-b border-gray-100">Ingresos</td><td class="py-2 border-b border-gray-100 text-right font-semibold">{{ store.fmt(ind.ingresos) }}</td></tr>
+          <tr><td class="py-2 border-b border-gray-100">Ingresos en efectivo</td><td class="py-2 border-b border-gray-100 text-right font-semibold">{{ store.fmt(ind.ingresos) }}</td></tr>
+          @if (ind.ingresosDigitales > 0) {
+            <!-- spec 135 (FR-007/FR-008): informativo -- no entra en "Efectivo esperado". -->
+            <tr><td class="py-2 border-b border-gray-100">Ingresos digitales</td><td class="py-2 border-b border-gray-100 text-right font-semibold">{{ store.fmt(ind.ingresosDigitales) }}</td></tr>
+          }
           <tr><td class="py-2 border-b border-gray-100">Egresos</td><td class="py-2 border-b border-gray-100 text-right font-semibold">{{ store.fmt(ind.egresos) }}</td></tr>
           <tr><td class="py-2 border-b border-gray-100">Retiros</td><td class="py-2 border-b border-gray-100 text-right font-semibold">{{ store.fmt(ind.retiros) }}</td></tr>
           <tr><td class="py-2 border-b border-gray-100 font-bold">Efectivo esperado</td><td class="py-2 border-b border-gray-100 text-right font-bold">{{ store.fmt(store.efectivoEsperado()) }}</td></tr>
@@ -110,6 +114,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
               <th class="py-2 border-b-2 border-gray-100 font-medium">Hora</th>
               <th class="py-2 border-b-2 border-gray-100 font-medium">Tipo</th>
               <th class="py-2 border-b-2 border-gray-100 font-medium">Valor</th>
+              <th class="py-2 border-b-2 border-gray-100 font-medium">Método</th>
               <th class="py-2 border-b-2 border-gray-100 font-medium">Usuario</th>
               <th class="py-2 border-b-2 border-gray-100 font-medium">Observación</th>
             </tr>
@@ -122,6 +127,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                   <span class="inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-md" [class]="store.tagClass(m.tagVariant)">{{ m.label }}</span>
                 </td>
                 <td class="py-2 border-b border-gray-100 font-semibold">{{ m.montoFmt }}</td>
+                <td class="py-2 border-b border-gray-100 text-gray-500">{{ m.metodoPago }}</td>
                 <td class="py-2 border-b border-gray-100">{{ m.usuario }}</td>
                 <td class="py-2 border-b border-gray-100 text-gray-500">{{ m.nota }}</td>
               </tr>

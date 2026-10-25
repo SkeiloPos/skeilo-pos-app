@@ -2,11 +2,12 @@ import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/cor
 import { RouterOutlet } from '@angular/router';
 import { Title } from '@angular/platform-browser';
 import { AuthService } from './core/services/auth.service';
+import { PageIntegrityBannerComponent } from './core/integrity/page-integrity-banner.component';
 import { TenantInfoService } from './core/tenant/tenant-info.service';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, PageIntegrityBannerComponent],
   templateUrl: './app.html',
   styleUrl: './app.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -572,13 +572,7 @@ const REFRESH_DEBOUNCE_MS = 250;
               <div class="text-center py-16">
                 <div class="text-5xl mb-4">🔍</div>
                 <p class="text-gray-600 font-medium">
-                  @if (activeCategoryId() === promotionsTabId) {
-                    No hay promociones activas en este momento.
-                  } @else if (searchOpen() && search()) {
-                    Ningún producto coincide con «{{ search() }}»
-                  } @else {
-                    Esta categoría no tiene productos disponibles
-                  }
+                  <span [textContent]="emptyCatalogMessage()"></span>
                 </p>
               </div>
             } @else {
@@ -1051,6 +1045,18 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
   /** La lupa sustituye las pestañas por el input: en un móvil no caben las dos. */
   readonly searchOpen = signal(false);
   readonly search = signal('');
+  /**
+   * Mensaje del catálogo vacío (spec 134, FR-021, nivel B): alterna entre textos y uno
+   * lleva lo que se escribe en el buscador; con `[textContent]` sigue al valor real
+   * aunque un traductor haya envuelto el texto.
+   */
+  readonly emptyCatalogMessage = computed(() => {
+    if (this.activeCategoryId() === this.promotionsTabId) {
+      return 'No hay promociones activas en este momento.';
+    }
+    if (this.searchOpen() && this.search()) return `Ningún producto coincide con «${this.search()}»`;
+    return 'Esta categoría no tiene productos disponibles';
+  });
 
   /**
    * Cae en la primera categoría si no hay ninguna elegida. Así no hay que sincronizar

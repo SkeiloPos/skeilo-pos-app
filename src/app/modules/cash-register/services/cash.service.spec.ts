@@ -79,15 +79,16 @@ describe('CashService', () => {
       category: 'Bolsas',
       description: null,
     });
-    req.flush({
+    req.flush([{
       id: 'm1',
       cash_shift_id: 's1',
       kind: 'egreso',
       amount: '20.00',
+      payment_method_id: 'pm-cash',
       category: 'Bolsas',
       occurred_at: 'x',
-    });
-    expect((await p).id).toBe('m1');
+    }]);
+    expect((await p)[0].id).toBe('m1');
   });
 
   it('lists movements of a shift', async () => {

@@ -475,15 +475,19 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
             @if (store.lastSale(); as s) {
               <p class="text-sm text-gray-500">
                 @if (store.lastReceipts().length > 1) {
-                  Cuenta dividida en {{ store.lastReceipts().length }} pagos ·
-                  {{ store.fmt(s.total) }}. El inventario se actualizó.
+                  <span>
+                    Cuenta dividida en {{ store.lastReceipts().length }} pagos ·
+                    {{ store.fmt(s.total) }}. El inventario se actualizó.
+                  </span>
                 } @else if (store.lastReceipts()[0]; as r) {
                   <!-- Spec 125 (FR-002/FR-003): monto, cliente, método de pago
                        y vuelto (si el pago fue en efectivo) en una sola línea. -->
-                  {{ store.fmt(s.total) }} · {{ s.customer }} ·
-                  {{ store.paymentMethodLabel(r) }}
+                  <span>
+                    {{ store.fmt(s.total) }} · {{ s.customer }} ·
+                    {{ store.paymentMethodLabel(r) }}
+                  </span>
                   @if (r.change != null) {
-                    · Vuelto {{ store.fmt(r.change) }}
+                    <span> · Vuelto {{ store.fmt(r.change) }} </span>
                   }
                 }
               </p>

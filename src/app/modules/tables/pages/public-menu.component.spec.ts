@@ -17,6 +17,7 @@ import {
 } from '../../products/interfaces/product.interface';
 import { ResolvedBusiness } from '../services/diner.service';
 import { DiningOrder, DiningOrderItem } from '../interfaces/dining.interface';
+import { simulateTranslation } from '../../../testing/simulate-translation';
 
 /**
  * `DinerService` es transporte HTTP real (`inject(HttpClient)`); lo que este
@@ -1412,5 +1413,39 @@ describe('PublicMenuComponent', () => {
       expect(component.exitBlocked()).toBe(false);
       expect(component.view()).toBe('closed');
     });
+  });
+
+  it('spec 134 (FR-021, nivel B): con la página alterada, el mensaje del catálogo vacío alterna entre textos y sigue lo que se escribe en el buscador', async () => {
+    const categories: MenuCategory[] = [
+      { id: 'c1', name: 'Helados', products: [product({ id: 'p1', name: 'Fresa' })] },
+    ];
+    const { fixture, component } = await createComponent('tok-1', categories, { withSession: true });
+    const el = fixture.nativeElement as HTMLElement;
+    const traduccion = simulateTranslation(el);
+    const mensaje = (): string => (el.querySelector('p.text-gray-600.font-medium')?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const cambiar = (fn: () => void): void => {
+      fn();
+      fixture.detectChanges();
+      traduccion.refresh(); // el traductor sigue activo: traduce lo recién pintado
+    };
+
+    // Sin ninguna promoción vigente.
+    cambiar(() => component.selectCategory(PROMOTIONS_TAB_ID));
+    expect(mensaje()).toBe('No hay promociones activas en este momento.');
+
+    // Buscando algo que no existe: el mensaje sigue cada letra escrita.
+    cambiar(() => {
+      component.selectCategory('c1');
+      component.searchOpen.set(true);
+      component.search.set('zzz');
+    });
+    expect(mensaje()).toBe('Ningún producto coincide con «zzz»');
+    cambiar(() => component.search.set('zzzz'));
+    expect(mensaje()).toBe('Ningún producto coincide con «zzzz»');
+
+    // Vuelve a las promociones: sin restos del texto anterior.
+    cambiar(() => component.selectCategory(PROMOTIONS_TAB_ID));
+    expect(mensaje()).toBe('No hay promociones activas en este momento.');
+    traduccion.revert();
   });
 });

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
   provideHttpClientTesting,
@@ -407,5 +407,21 @@ describe('DinerService', () => {
 
     const err = await promise;
     expect(service.extractError(err)).toContain('30 segundos');
+  });
+
+  // ── spec 134: rechazo por página alterada (423) ──────────────────────────
+
+  it('spec 134: el 423 por página alterada llega legible y no se confunde con "sesión caducada"', async () => {
+    const detail =
+      'No se pudo enviar el pedido: la página fue alterada por el navegador. Recarga para continuar.';
+    const promise = service.submitCart('pm-1').catch((e: unknown) => e);
+    http
+      .expectOne(`${API}/cart/submit`)
+      .flush({ detail, code: 'page_altered' }, { status: 423, statusText: 'Page Altered' });
+
+    const err = await promise;
+    expect(err).toBeInstanceOf(HttpErrorResponse);
+    expect(err).not.toBeInstanceOf(DinerSessionExpiredError);
+    expect(service.extractError(err)).toBe(detail);
   });
 });
