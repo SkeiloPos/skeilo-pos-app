@@ -7,6 +7,7 @@ import { PosTerminalStore } from '../services/pos-terminal.store';
 import { PromotionService } from '../../promotions/services/promotion.service';
 import { MenuService } from '../../../core/services/menu.service';
 import { MenuProduct } from '../../products/interfaces/product.interface';
+import { simulateTranslation } from '../../../testing/simulate-translation';
 
 function product(id: string, name: string): MenuProduct {
   return {
@@ -362,5 +363,35 @@ describe('PosCatalogDrawerComponent', () => {
     fixture.detectChanges();
     card().click(); // desde "Promociones"
     expect(openSpy).toHaveBeenLastCalledWith(expect.anything(), true);
+  });
+
+  it('spec 134 (FR-021, nivel B): con la página alterada, el mensaje del catálogo vacío alterna entre textos y sigue lo que se escribe en el buscador', () => {
+    menuService.categories.set([{ id: 'c1', name: 'Bebidas', products: [] }]);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const traduccion = simulateTranslation(el);
+    const mensaje = (): string => (el.querySelector('p.py-10')?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const cambiar = (fn: () => void): void => {
+      fn();
+      fixture.detectChanges();
+      traduccion.refresh(); // el traductor sigue activo: traduce lo recién pintado
+    };
+
+    expect(mensaje()).toBe('Sin productos en esta categoría.');
+
+    cambiar(() => store.catalogSearchText.set('zzz'));
+    expect(mensaje()).toBe('Sin productos que coincidan con "zzz".');
+    cambiar(() => store.catalogSearchText.set('zzzz'));
+    expect(mensaje()).toBe('Sin productos que coincidan con "zzzz".');
+
+    cambiar(() => fixture.componentInstance.showingPromotions.set(true));
+    expect(mensaje()).toBe('No hay promociones activas en este momento.');
+
+    cambiar(() => {
+      fixture.componentInstance.showingPromotions.set(false);
+      store.catalogSearchText.set('');
+    });
+    expect(mensaje()).toBe('Sin productos en esta categoría.');
+    traduccion.revert();
   });
 });

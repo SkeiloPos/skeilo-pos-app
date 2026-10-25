@@ -245,7 +245,7 @@ interface SlotBreakdown {
                         placeholder="Elige una presentación" />
                       @if (isPresentationMissing(v)) {
                         <p class="text-xs text-red-600 mt-1">
-                          @if (hasFreePresentations()) { Elige una presentación } @else { No hay más presentaciones disponibles: créalas en Presentaciones }
+                          @if (hasFreePresentations()) { <span>Elige una presentación</span> } @else { <span>No hay más presentaciones disponibles: créalas en Presentaciones</span> }
                         </p>
                       }
                     </div>
@@ -303,9 +303,9 @@ interface SlotBreakdown {
               <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">3. Inventario</h2>
               <p class="text-xs text-gray-500 mt-1">
                 @if (inventarioIncluido()) {
-                  Actívalo para descontar insumos del stock cada vez que se venda este producto.
+                  <span>Actívalo para descontar insumos del stock cada vez que se venda este producto.</span>
                 } @else {
-                  Tu plan actual no incluye el módulo de inventario.
+                  <span>Tu plan actual no incluye el módulo de inventario.</span>
                 }
               </p>
             </div>
@@ -383,9 +383,9 @@ interface SlotBreakdown {
             <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">4. Sabores a elegir</h2>
             <p class="text-xs text-gray-500 mt-1">
               @if (sectionsEnabled()) {
-                El cliente elige, y se descuenta la cantidad indicada del insumo de <strong>cada</strong> opción que elija.
+                <span>El cliente elige, y se descuenta la cantidad indicada del insumo de <strong>cada</strong> opción que elija.</span>
               } @else {
-                El cliente elige entre las opciones del grupo (sin descuento de inventario).
+                <span>El cliente elige entre las opciones del grupo (sin descuento de inventario).</span>
               }
             </p>
           </div>

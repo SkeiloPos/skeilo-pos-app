@@ -4,6 +4,7 @@ import { LoginComponent } from './login.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { AuthNoticeService } from '../../../core/auth/auth-notice.service';
 import { TenantContextService } from '../../../core/tenant/tenant-context.service';
+import { simulateTranslation } from '../../../testing/simulate-translation';
 
 type Ctx = 'SUPER_ADMIN' | 'TENANT' | 'UNRECOGNIZED';
 
@@ -415,5 +416,28 @@ describe('LoginComponent', () => {
   it('el enlace de recuperación es relativo al subdominio actual', () => {
     const enlace = q(crear(), 'login-forgot-link') as HTMLAnchorElement;
     expect(enlace.getAttribute('href')).toBe('/forgot-password');
+  });
+
+  it('spec 134 (FR-021): con la página alterada, "Iniciar sesión" ↔ "Ingresando…" deja solo el texto del estado actual y el ícono de carga permanece', () => {
+    const fixture = crear();
+    const traduccion = simulateTranslation(el(fixture));
+    const boton = (): HTMLElement => q(fixture, 'login-submit') as HTMLElement;
+    const texto = (): string => (boton().textContent ?? '').replace(/\s+/g, ' ').trim();
+    const cambiar = (cargando: boolean): void => {
+      fixture.componentInstance.isLoading.set(cargando);
+      fixture.detectChanges();
+      traduccion.refresh(); // el traductor sigue activo: traduce lo recién pintado
+    };
+
+    for (let i = 0; i < 3; i++) {
+      cambiar(true);
+      expect(texto(), `cargando #${i}`).toMatch(/Ingresando…$/);
+      expect(texto(), `cargando #${i}`).not.toContain('Iniciar sesión');
+      expect(boton().querySelector('.animate-spin'), `ícono #${i}`).not.toBeNull();
+
+      cambiar(false);
+      expect(texto(), `reposo #${i}`).toBe('Iniciar sesión');
+    }
+    traduccion.revert();
   });
 });

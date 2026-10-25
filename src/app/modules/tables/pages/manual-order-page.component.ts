@@ -298,9 +298,9 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
               @if (catalogProducts().length === 0) {
                 <p class="col-span-full text-center text-[13px] text-[var(--terminal-color-text-subtle,#94a3b8)] py-10">
                   @if (showingPromotions()) {
-                    No hay promociones activas en este momento.
+                    <span>No hay promociones activas en este momento.</span>
                   } @else {
-                    Sin productos que coincidan.
+                    <span>Sin productos que coincidan.</span>
                   }
                 </p>
               }
@@ -726,7 +726,7 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                         @if (it.qty === 1) {
                           <app-mi-icon name="delete" ariaLabel="Eliminar ítem" [size]="18" />
                         } @else {
-                          −
+                          <span> − </span>
                         }
                       </button>
                       <span

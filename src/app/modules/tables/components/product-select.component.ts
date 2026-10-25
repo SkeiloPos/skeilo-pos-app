@@ -226,9 +226,9 @@ export interface ProductSelection {
                             @if (disc.kind === 'fixed' || v.discount_kind === 'percent') {
                               <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">
                                 @if (disc.kind === 'fixed') {
-                                  -{{ disc.amountOff | money }}
+                                  <span>-{{ disc.amountOff | money }}</span>
                                 } @else {
-                                  -{{ disc.percent }}%
+                                  <span>-{{ disc.percent }}%</span>
                                 }
                               </span>
                             }
@@ -401,7 +401,7 @@ export interface ProductSelection {
                         <span class="block text-sm font-medium text-gray-800 truncate">{{ topping.name }}</span>
                         <span class="block text-xs text-gray-500">
                           + {{ topping.unit_price | money }}
-                          @if (!topping.available) { · Agotado }
+                          @if (!topping.available) { <span> · Agotado </span> }
                         </span>
                       </span>
                       <div class="flex items-center gap-2 shrink-0 bg-gray-100 rounded-full p-1 border border-gray-200">
@@ -480,12 +480,15 @@ export interface ProductSelection {
             [disabled]="!canConfirm()"
             class="w-full h-12 bg-[var(--terminal-color-primary,#7c3aed)] hover:bg-[var(--terminal-color-primary-active,#6d28d9)] active:scale-[0.99] text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm sm:text-base"
           >
+            <!-- Spec 134 (FR-021, nivel B): [textContent] reemplaza todos los hijos del <span> en
+                 cada cambio, así la etiqueta y el total siguen al estado real aunque un traductor
+                 haya envuelto su texto. -->
             @if (blockingLabel(); as falta) {
-              {{ falta }}
+              <span [textContent]="falta"></span>
             } @else {
-              <span>{{ initialSelection ? 'Guardar cambios' : 'Agregar' }}</span>
+              <span [textContent]="initialSelection ? 'Guardar cambios' : 'Agregar'"></span>
               <span class="w-1.5 h-1.5 rounded-full bg-white/40"></span>
-              <span>{{ lineTotal() | money }}</span>
+              <span [textContent]="lineTotal() | money"></span>
             }
           </button>
         </footer>

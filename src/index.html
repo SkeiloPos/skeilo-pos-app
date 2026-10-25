@@ -1,7 +1,13 @@
 <!doctype html>
-<html lang="en">
+<html lang="es" translate="no" class="notranslate">
 <head>
   <meta charset="utf-8">
+  <!-- spec 134 (FR-001/FR-002): la app solo existe en español. El idioma, el atributo
+       translate y este meta viajan juntos: declarar solo el idioma haría que teléfonos
+       en inglés ofrezcan traducir; solo el bloqueo dejaría el idioma mal declarado.
+       Se declara en el elemento raíz (no en app-root) para heredarse a las capas
+       que Angular/CDK montan fuera de app-root. -->
+  <meta name="google" content="notranslate">
   <title>SkeiloPOS</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">

@@ -10,6 +10,7 @@ import { CartLine, DiningCartService } from '../../services/dining-cart.service'
 import { ToastService } from '../../../../shared/feedback/toast.service';
 import { DinerPaymentMethod, PaymentMethodField } from '../../interfaces/diner.interface';
 import { UMBRAL_EXPANDIDO_POR_DEFECTO } from './checkout-order-summary.component';
+import { simulateTranslation } from '../../../../testing/simulate-translation';
 
 /**
  * Primer archivo de test de este componente (spec 060, research.md D5) — el
@@ -589,5 +590,29 @@ describe('TransferDetailsStepComponent', () => {
     expect(enviar).toBeTruthy();
     expect(enviar.disabled).toBe(false); // spec 132: nunca exige comprobante
     expect(text()).toContain('muestra el comprobante desde la app de tu banco');
+  });
+
+  // ── spec 134 (US5, FR-021): etiquetas que alternan estados ───────────────
+
+  it('spec 134 (FR-021): con la página alterada, alternar el botón deja solo el texto del estado actual', async () => {
+    await createComponent(nequi(), { lines: buildLines(1), total: 15000, count: 1 });
+    const traduccion = simulateTranslation(fixture.nativeElement);
+    // El botón de enviar es el único con el fondo violeta (su texto es lo que cambia).
+    const boton = (): HTMLButtonElement => buttons().find((b) => b.className.includes('bg-violet-600'))!;
+    const texto = (): string => (boton().textContent ?? '').replace(/\s+/g, ' ').trim();
+    const cambiar = (enviando: boolean): void => {
+      component.submitting.set(enviando);
+      fixture.detectChanges();
+      traduccion.refresh(); // el traductor sigue activo: traduce lo recién pintado
+    };
+
+    for (let i = 0; i < 3; i++) {
+      cambiar(true);
+      expect(texto(), `enviando #${i}`).toBe('Enviando pedido…');
+      cambiar(false);
+      expect(texto(), `reposo #${i}`).toBe('Enviar pedido');
+    }
+    expect(text()).not.toContain('Enviar pedido Enviar pedido');
+    traduccion.revert();
   });
 });

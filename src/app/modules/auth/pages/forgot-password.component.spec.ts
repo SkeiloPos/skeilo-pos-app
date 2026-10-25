@@ -3,6 +3,7 @@ import { provideRouter } from '@angular/router';
 import { ForgotPasswordComponent, RESEND_LOCK_KEY } from './forgot-password.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { TenantContextService } from '../../../core/tenant/tenant-context.service';
+import { simulateTranslation } from '../../../testing/simulate-translation';
 
 type Ctx = 'SUPER_ADMIN' | 'TENANT' | 'UNRECOGNIZED';
 
@@ -276,5 +277,32 @@ describe('ForgotPasswordComponent', () => {
     expect(el(fixture).querySelector('app-auth-shell')).not.toBeNull();
     expect(el(fixture).querySelector('[data-testid="auth-footer"]')).not.toBeNull();
     expect(el(fixture).querySelector('[data-testid="auth-context-badge"]')).not.toBeNull();
+  });
+
+  it('spec 134 (FR-021, nivel B): con la página alterada, "Reenviar enlace en N s" sigue el contador real y al llegar a 0 solo dice "Reenviar enlace"', async () => {
+    const fixture = crear();
+    await enviar(fixture); // pasa a la pantalla "revisa tu correo", donde vive el botón de reenvío
+    const traduccion = simulateTranslation(el(fixture));
+    const boton = (): HTMLElement => q(fixture, 'forgot-resend') as HTMLElement;
+    const texto = (): string => (boton().textContent ?? '').replace(/\s+/g, ' ').trim();
+    const poner = (segundos: number): void => {
+      fixture.componentInstance.remainingSeconds.set(segundos);
+      fixture.detectChanges();
+      traduccion.refresh(); // el traductor sigue activo: traduce lo recién pintado
+    };
+
+    for (const segundos of [60, 59, 58, 12, 1]) {
+      poner(segundos);
+      expect(texto(), `a ${segundos} s`).toBe(`Reenviar enlace en ${segundos} s`);
+    }
+
+    poner(0);
+    expect(texto()).toBe('Reenviar enlace');
+
+    poner(30);
+    expect(texto()).toBe('Reenviar enlace en 30 s');
+    poner(29);
+    expect(texto()).toBe('Reenviar enlace en 29 s');
+    traduccion.revert();
   });
 });

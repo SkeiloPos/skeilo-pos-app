@@ -111,7 +111,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
                       </span>
                       <span class="flex items-center gap-1 shrink-0">
                         <span class="text-gray-600">
-                          @if (o.extra_price > 0) { +{{ o.extra_price | number:'1.2-2' }} } @else { — }
+                          @if (o.extra_price > 0) { <span> +{{ o.extra_price | number:'1.2-2' }} </span> } @else { <span> — </span> }
                         </span>
                         <button (click)="openEditOption(g, o)" title="Editar opción"
                           class="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">

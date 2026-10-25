@@ -72,9 +72,9 @@ const MODULE_LABEL: Record<string, string> = {
                 <dt class="text-gray-500">{{ resourceLabel(key) }}</dt>
                 <dd class="font-medium text-gray-900">
                   @if (s.resources[key].limit === null) {
-                    Ilimitado
+                    <span>Ilimitado</span>
                   } @else {
-                    {{ s.resources[key].used }} de {{ s.resources[key].limit }}
+                    <span>{{ s.resources[key].used }} de {{ s.resources[key].limit }}</span>
                   }
                 </dd>
               </div>

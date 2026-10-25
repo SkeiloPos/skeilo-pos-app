@@ -718,7 +718,7 @@ const NAME_TAKEN_MESSAGE = 'Ya existe una promoción con ese nombre';
                     "
                   >
                     @if (form.days_of_week.includes(d.idx)) {
-                      ✓
+                      <span>✓</span>
                     }
                     {{ d.label }}
                   </button>
@@ -1073,16 +1073,7 @@ const NAME_TAKEN_MESSAGE = 'Ya existe una promoción con ese nombre';
                   class="mt-2 text-xs"
                   [class]="summary.matching > 0 ? 'text-gray-500' : 'text-amber-700'"
                 >
-                  @if (summary.selected === 0) {
-                    Aún no hay productos seleccionados: la regla se aplicará a los que elijas en el Paso 1.
-                  } @else if (summary.matching === 0) {
-                    Ninguno de los {{ summary.selected }} productos seleccionados tiene esta presentación.
-                  } @else {
-                    Se aplicará a {{ summary.matching }} de {{ summary.selected }}
-                    producto{{ summary.selected === 1 ? '' : 's' }} seleccionado{{
-                      summary.selected === 1 ? '' : 's'
-                    }}.
-                  }
+                  <span [textContent]="pickerMatchMessage()"></span>
                 </p>
               }
 
@@ -1561,6 +1552,25 @@ export class PromotionsPageComponent implements OnInit {
       matching: this.matchingProductsForPresentation(id).length,
       selected: this.candidateProductIds().size,
     };
+  });
+
+  /**
+   * Texto del aviso del picker, completo, para pintarlo con `[textContent]` (spec 134, FR-021,
+   * nivel B): alterna entre tres textos y los números cambian al elegir productos; así sigue al
+   * valor real aunque un traductor haya envuelto el texto.
+   */
+  readonly pickerMatchMessage = computed(() => {
+    const resumen = this.pickerMatchSummary();
+    if (!resumen) return '';
+    const { selected, matching } = resumen;
+    if (selected === 0) {
+      return 'Aún no hay productos seleccionados: la regla se aplicará a los que elijas en el Paso 1.';
+    }
+    if (matching === 0) {
+      return `Ninguno de los ${selected} productos seleccionados tiene esta presentación.`;
+    }
+    const plural = selected === 1 ? '' : 's';
+    return `Se aplicará a ${matching} de ${selected} producto${plural} seleccionado${plural}.`;
   });
 
   /** Reglas por presentación que hoy no alcanzan ningún producto seleccionado: no generan

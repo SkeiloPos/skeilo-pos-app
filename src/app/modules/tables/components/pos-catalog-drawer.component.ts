@@ -82,13 +82,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                búsqueda como por categoría sin coincidencias o sin
                promociones vigentes. -->
           <p class="text-center text-[13px] py-10" style="color:var(--terminal-color-text-muted)">
-            @if (showingPromotions()) {
-              No hay promociones activas en este momento.
-            } @else if (store.catalogSearchText()) {
-              Sin productos que coincidan con "{{ store.catalogSearchText() }}".
-            } @else {
-              Sin productos en esta categoría.
-            }
+            <span [textContent]="emptyMessage()"></span>
           </p>
         } @else {
           <div class="grid grid-cols-2 gap-3">
@@ -145,6 +139,18 @@ export class PosCatalogDrawerComponent {
    *  `ManualOrderPageComponent.showingPromotions`, aplicado a este segundo
    *  catálogo (agregar productos a un pedido ya existente). */
   readonly showingPromotions = signal(false);
+
+  /**
+   * Mensaje del catálogo vacío (spec 134, FR-021, nivel B): alterna entre textos y uno
+   * lleva lo que se escribe en el buscador; con `[textContent]` sigue al valor real
+   * aunque un traductor haya envuelto el texto.
+   */
+  readonly emptyMessage = computed(() => {
+    if (this.showingPromotions()) return 'No hay promociones activas en este momento.';
+    const busqueda = this.store.catalogSearchText();
+    if (busqueda) return `Sin productos que coincidan con "${busqueda}".`;
+    return 'Sin productos en esta categoría.';
+  });
 
   readonly catalogProducts = computed(() =>
     this.showingPromotions() ? this.store.catalogProductsPromotionsFiltered() : this.store.catalogProductsFiltered(),

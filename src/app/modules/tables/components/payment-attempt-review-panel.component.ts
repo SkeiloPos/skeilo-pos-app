@@ -473,7 +473,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
         <p class="text-sm text-gray-400">
           Sin pago confirmado — el último intento fue rechazado
           @if (last.rejection_reason) {
-            ({{ rejectionReasonLabel(last.rejection_reason) }})
+            <span> ({{ rejectionReasonLabel(last.rejection_reason) }}) </span>
           }.
         </p>
         <p class="text-xs text-gray-400 mt-1">
