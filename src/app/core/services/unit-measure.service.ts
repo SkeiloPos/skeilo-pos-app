@@ -41,6 +41,16 @@ export class UnitMeasureService {
     }
   }
 
+  /** Unidades activas del mismo grupo de medida (spec 134): alimenta el selector de unidad
+   *  de una línea de compra, que solo debe ofrecer unidades convertibles entre sí. */
+  async loadUnitMeasuresByDimension(dimension: string): Promise<UnitMeasure[]> {
+    return firstValueFrom(
+      this.http.get<UnitMeasure[]>(this.baseUrl, {
+        params: { dimension, active: true },
+      }),
+    );
+  }
+
   async createUnitMeasure(form: UnitMeasureForm): Promise<void> {
     this.isSubmitting.set(true);
     this.error.set(null);
@@ -48,6 +58,8 @@ export class UnitMeasureService {
     const payload: UnitMeasureCreatePayload = {
       name: form.name,
       abbreviation: form.abbreviation,
+      dimension: form.dimension,
+      factor_to_base: form.factor_to_base,
     };
 
     try {
@@ -67,6 +79,8 @@ export class UnitMeasureService {
     const payload: UnitMeasureUpdatePayload = {
       name: form.name,
       abbreviation: form.abbreviation,
+      dimension: form.dimension,
+      factor_to_base: form.factor_to_base,
     };
 
     try {

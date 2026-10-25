@@ -95,6 +95,18 @@ import { SupplierItem } from '../../supplier-items/interfaces/supplier-item.inte
                         </p>
                       }
                     }
+                    @if (row.inventory_item_id && !row.supplier_item_id && unitsForRow($index).length > 0) {
+                      <select [ngModel]="row.unit_measure_id || ''" (ngModelChange)="onUnitMeasureChange($index, $event)"
+                        class="w-full px-2 py-1 border border-gray-200 rounded-lg text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="">Unidad base ({{ unitAbbrFor(row.inventory_item_id) }})</option>
+                        @for (u of unitsForRow($index); track u.id) {
+                          <option [value]="u.id">{{ u.abbreviation }}</option>
+                        }
+                      </select>
+                      @if (equivalenceFor($index); as eq) {
+                        <p class="text-xs text-gray-400">= {{ eq | number:'1.0-3' }} {{ unitAbbrFor(row.inventory_item_id) }}</p>
+                      }
+                    }
                   </div>
                   <input type="number" min="0" step="0.001"
                     class="col-span-2 px-2 py-2 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -215,6 +227,40 @@ export class PurchaseFormComponent implements OnInit {
     return item ? (this.unitAbbr().get(item.unit_measure_id) ?? '') : '';
   }
 
+  /** Catálogo completo de unidades por id, ya cargado al abrir el formulario (sin fetch
+   *  adicional por fila: filtrar en cliente basta porque el catálogo completo ya está en
+   *  memoria, spec 134). */
+  private readonly unitById = computed(
+    () => new Map(this.unitMeasureService.unitMeasures().map((u) => [u.id, u])),
+  );
+
+  private baseUnitFor(itemId: string) {
+    const item = this.service.allItems().find((i) => i.id === itemId)
+      ?? this.service.resolvedExtraItems().find((i) => i.id === itemId);
+    return item ? this.unitById().get(item.unit_measure_id) ?? null : null;
+  }
+
+  /** Unidades activas del mismo grupo de medida del insumo de esta fila, sin incluir la
+   *  unidad base (que ya se ofrece como opción explícita "Unidad base"), spec 134 FR-003. */
+  unitsForRow(index: number) {
+    const row = this.rows()[index];
+    const base = row ? this.baseUnitFor(row.inventory_item_id) : null;
+    if (!base) return [];
+    return this.unitMeasureService
+      .unitMeasures()
+      .filter((u) => u.active && u.dimension === base.dimension && u.id !== base.id);
+  }
+
+  /** Vista previa en cliente ("= 2.000 g", FR-014): no toca el servidor ni el stock. */
+  equivalenceFor(index: number): number | null {
+    const row = this.rows()[index];
+    if (!row?.unit_measure_id) return null;
+    const base = this.baseUnitFor(row.inventory_item_id);
+    const chosen = this.unitById().get(row.unit_measure_id);
+    if (!base || !chosen) return null;
+    return Number(row.quantity || 0) * (chosen.factor_to_base / base.factor_to_base);
+  }
+
   readonly total = computed(() =>
     this.rows().reduce((sum, r) => sum + Number(r.quantity) * Number(r.unit_cost), 0)
   );
@@ -240,7 +286,7 @@ export class PurchaseFormComponent implements OnInit {
   }
 
   updateRow(index: number, key: keyof PurchaseLineForm, value: unknown): void {
-    const isTextField = key === 'inventory_item_id' || key === 'supplier_item_id';
+    const isTextField = key === 'inventory_item_id' || key === 'supplier_item_id' || key === 'unit_measure_id';
     this.rows.update(rows =>
       rows.map((r, i) =>
         i === index
@@ -249,8 +295,10 @@ export class PurchaseFormComponent implements OnInit {
       ),
     );
     if (key === 'inventory_item_id') {
-      // Insumo nuevo: la presentación elegida antes (si había alguna) ya no aplica.
-      this.rows.update(rows => rows.map((r, i) => (i === index ? { ...r, supplier_item_id: null } : r)));
+      // Insumo nuevo: la presentación/unidad elegida antes (si había alguna) ya no aplica.
+      this.rows.update(rows =>
+        rows.map((r, i) => (i === index ? { ...r, supplier_item_id: null, unit_measure_id: null } : r)),
+      );
       void this.loadPresentationsForRow(index);
     }
   }
@@ -265,6 +313,14 @@ export class PurchaseFormComponent implements OnInit {
 
   onPresentationChange(index: number, supplierItemId: string): void {
     this.updateRow(index, 'supplier_item_id', supplierItemId || null);
+    if (supplierItemId) this.updateRow(index, 'unit_measure_id', null);
+  }
+
+  /** Mutuamente excluyente con la presentación de proveedor (spec 134): elegir una unidad
+   *  limpia cualquier presentación ya elegida en esta fila, y viceversa (arriba). */
+  onUnitMeasureChange(index: number, unitMeasureId: string): void {
+    this.updateRow(index, 'unit_measure_id', unitMeasureId || null);
+    if (unitMeasureId) this.updateRow(index, 'supplier_item_id', null);
   }
 
   private async loadPresentationsForRow(index: number): Promise<void> {
@@ -293,6 +349,7 @@ export class PurchaseFormComponent implements OnInit {
         quantity: Number(r.quantity),
         unit_cost: Number(r.unit_cost),
         supplier_item_id: r.supplier_item_id ?? null,
+        unit_measure_id: r.unit_measure_id ?? null,
       })),
     };
 

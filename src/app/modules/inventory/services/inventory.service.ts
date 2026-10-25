@@ -60,6 +60,10 @@ interface PurchaseItemResponse {
   presentation_quantity: string | null;
   presentation_label: string | null;
   conversion_factor: string | null;
+  unit_measure_id: string;
+  conversion_factor_applied: string;
+  quantity_base: string;
+  cost_base: string;
 }
 
 interface PurchaseResponse {
@@ -69,6 +73,8 @@ interface PurchaseResponse {
   status: Purchase['status'];
   total: string;
   purchased_at: string;
+  voided_at: string | null;
+  voided_by: string | null;
   items?: PurchaseItemResponse[];
 }
 
@@ -442,18 +448,29 @@ export class InventoryService {
     const payload: PurchaseCreatePayload = {
       supplier_id: form.supplier_id || null,
       invoice_number: form.invoice_number || null,
-      items: form.items.map(i => i.supplier_item_id
-        ? {
+      items: form.items.map(i => {
+        if (i.supplier_item_id) {
+          return {
             inventory_item_id: i.inventory_item_id,
             supplier_item_id: i.supplier_item_id,
             presentation_quantity: i.quantity,
             presentation_unit_cost: i.unit_cost,
-          }
-        : {
+          };
+        }
+        if (i.unit_measure_id) {
+          return {
             inventory_item_id: i.inventory_item_id,
+            unit_measure_id: i.unit_measure_id,
             quantity: i.quantity,
             unit_cost: i.unit_cost,
-          }),
+          };
+        }
+        return {
+          inventory_item_id: i.inventory_item_id,
+          quantity: i.quantity,
+          unit_cost: i.unit_cost,
+        };
+      }),
     };
     this.isSubmitting.set(true);
     this.otherError.set(null);
@@ -483,6 +500,29 @@ export class InventoryService {
     try {
       await firstValueFrom(
         this.http.post<PurchaseResponse>(`${this.baseUrl}/purchases/${purchaseId}/receive`, { items }),
+      );
+      await Promise.all([
+        this.queryClient.invalidateQueries({ queryKey: ['inventory-items'] }),
+        this.loadLowStock(),
+        this.loadPurchases(),
+      ]);
+      return true;
+    } catch (err) {
+      this.otherError.set(this.extractError(err));
+      return false;
+    } finally {
+      this.isSubmitting.set(false);
+    }
+  }
+
+  /** Anular una compra confirmada (spec 134, US3): revierte el stock en la cantidad base
+   *  guardada en cada línea. */
+  async voidPurchase(purchaseId: string): Promise<boolean> {
+    this.isSubmitting.set(true);
+    this.otherError.set(null);
+    try {
+      await firstValueFrom(
+        this.http.post<PurchaseResponse>(`${this.baseUrl}/purchases/${purchaseId}/void`, {}),
       );
       await Promise.all([
         this.queryClient.invalidateQueries({ queryKey: ['inventory-items'] }),
@@ -568,6 +608,8 @@ export class InventoryService {
       status: p.status ?? 'received',
       total: Number(p.total),
       purchased_at: p.purchased_at,
+      voided_at: p.voided_at,
+      voided_by: p.voided_by,
       items: (p.items ?? []).map(it => ({
         id: it.id,
         inventory_item_id: it.inventory_item_id,
@@ -578,6 +620,10 @@ export class InventoryService {
         presentation_quantity: it.presentation_quantity === null ? null : Number(it.presentation_quantity),
         presentation_label: it.presentation_label,
         conversion_factor: it.conversion_factor === null ? null : Number(it.conversion_factor),
+        unit_measure_id: it.unit_measure_id,
+        conversion_factor_applied: Number(it.conversion_factor_applied),
+        quantity_base: Number(it.quantity_base),
+        cost_base: Number(it.cost_base),
       })),
     };
   }

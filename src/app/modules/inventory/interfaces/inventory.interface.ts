@@ -85,6 +85,12 @@ export interface PurchaseItem {
   presentation_label: string | null;
   /** Denormalizado por el backend; sirve para mostrar "pendiente en presentaciones" al recibir. */
   conversion_factor: number | null;
+  /** spec 134: unidad en la que se capturó la línea (no necesariamente la base del insumo). */
+  unit_measure_id: string;
+  conversion_factor_applied: number;
+  /** Cantidad/costo ya convertidos a la unidad base del insumo. */
+  quantity_base: number;
+  cost_base: number;
 }
 
 /** A purchase (compra). Mirrors backend `PurchaseResponse`. */
@@ -96,6 +102,9 @@ export interface Purchase {
   total: number;
   /** ISO datetime. */
   purchased_at: string;
+  /** spec 134, US3: null = no anulada. */
+  voided_at: string | null;
+  voided_by: string | null;
   items: PurchaseItem[];
 }
 
@@ -108,12 +117,15 @@ export interface PurchaseReceivePayload {
 
 /** A single line captured in the purchase form. spec 107: si `supplier_item_id` está
  *  presente, `quantity` es la cantidad de presentaciones y `unit_cost` el costo de una sola
- *  presentación -- el backend calcula la equivalencia en unidad base. */
+ *  presentación -- el backend calcula la equivalencia en unidad base. spec 134: si
+ *  `unit_measure_id` está presente (mutuamente excluyente con `supplier_item_id`), `quantity`/
+ *  `unit_cost` están en esa unidad, no necesariamente la base del insumo. */
 export interface PurchaseLineForm {
   inventory_item_id: string;
   quantity: number;
   unit_cost: number;
   supplier_item_id?: string | null;
+  unit_measure_id?: string | null;
 }
 
 /** Fields captured when registering a purchase. */
@@ -161,6 +173,8 @@ export interface PurchaseItemPayload {
   supplier_item_id?: string;
   presentation_quantity?: number;
   presentation_unit_cost?: number;
+  /** spec 134: unidad distinta de la base del insumo, mutuamente excluyente con `supplier_item_id`. */
+  unit_measure_id?: string;
 }
 
 /** `POST /inventory/purchases` (`PurchaseCreate`). */

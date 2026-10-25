@@ -17,6 +17,10 @@ export interface TenantInfo {
   receipt_message: string | null;
   /** Zona horaria IANA del negocio (spec 030). Solo lectura — `update()` no la persiste. */
   timezone: string;
+  /** Permite capturar una línea de compra en una unidad distinta de la base del insumo
+   *  (spec 134, FR-016). Editable únicamente por ADMIN. Opcional: el backend siempre lo
+   *  envía, pero muchos fixtures de test construyen un `TenantInfo` parcial. */
+  unit_conversion_enabled?: boolean;
 }
 
 /** Cierre de la factura cuando el negocio no ha configurado uno propio. */

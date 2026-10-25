@@ -171,6 +171,35 @@ const ROLE_LABEL: Record<UserRole, string> = {
         </div>
       </div>
 
+      <!-- Conversión de unidades en compras (spec 134) -->
+      @if (isAdmin()) {
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+              <app-mi-icon name="units" [size]="20" class="text-indigo-600" />
+            </span>
+            <div>
+              <h2 class="text-base font-semibold text-gray-900">Conversión de unidades en compras</h2>
+              <p class="text-xs text-gray-400">
+                Permite registrar una compra en una unidad distinta a la base del insumo (p.
+                ej. comprar en KG un insumo cuya base es gramos)
+              </p>
+            </div>
+          </div>
+
+          <label class="flex items-center gap-3 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              [checked]="tenantInfo.info()?.unit_conversion_enabled ?? true"
+              [disabled]="tenantInfo.isSubmitting()"
+              (change)="onUnitConversionToggle($any($event.target).checked)"
+              class="w-4 h-4"
+            />
+            Permitir elegir otra unidad al registrar una compra
+          </label>
+        </div>
+      }
+
       <div class="grid gap-6 md:grid-cols-2">
         <!-- Negocio -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -245,6 +274,7 @@ export class TenantInfoComponent implements OnInit {
     const role = this.auth.currentUser()?.role;
     return role ? ROLE_LABEL[role] : '—';
   });
+  readonly isAdmin = computed(() => this.auth.currentUser()?.role === UserRole.ADMIN);
 
   async ngOnInit(): Promise<void> {
     await this.tenantInfo.load();
@@ -296,6 +326,12 @@ export class TenantInfoComponent implements OnInit {
     const ok = await this.tenantInfo.update({ receipt_message: this.message().trim() });
     if (ok) this.toast.success('Mensaje del recibo guardado');
     else this.toast.error(this.tenantInfo.error() ?? 'No se pudo guardar el mensaje');
+  }
+
+  async onUnitConversionToggle(checked: boolean): Promise<void> {
+    const ok = await this.tenantInfo.update({ unit_conversion_enabled: checked });
+    if (ok) this.toast.success('Preferencia de conversión de unidades guardada');
+    else this.toast.error(this.tenantInfo.error() ?? 'No se pudo guardar la preferencia');
   }
 
   async onLogoSelected(event: Event): Promise<void> {

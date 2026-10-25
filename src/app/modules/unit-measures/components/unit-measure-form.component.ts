@@ -87,6 +87,51 @@ import { UnitMeasureService } from '../../../core/services/unit-measure.service'
             }
           </div>
 
+          <!-- Dimension (grupo de medida) -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Grupo de medida <span class="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              formControlName="dimension"
+              placeholder="Ej: Masa, Volumen"
+              maxlength="100"
+              class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              [class.border-red-400]="dimensionControl.invalid && dimensionControl.touched"
+              [class.border-gray-200]="!(dimensionControl.invalid && dimensionControl.touched)"
+            />
+            <p class="text-gray-400 text-xs mt-1">
+              Dos unidades son convertibles entre sí solo si tienen el mismo grupo.
+            </p>
+            @if (dimensionControl.touched && dimensionControl.errors?.['required']) {
+              <p class="text-red-500 text-xs mt-1">El grupo de medida es requerido</p>
+            }
+          </div>
+
+          <!-- Factor to base -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Factor hacia la unidad base del grupo <span class="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              formControlName="factorToBase"
+              placeholder="Ej: 1000"
+              step="0.000001"
+              min="0.000001"
+              class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              [class.border-red-400]="factorToBaseControl.invalid && factorToBaseControl.touched"
+              [class.border-gray-200]="!(factorToBaseControl.invalid && factorToBaseControl.touched)"
+            />
+            @if (factorToBaseControl.touched && factorToBaseControl.errors?.['required']) {
+              <p class="text-red-500 text-xs mt-1">El factor es requerido</p>
+            }
+            @if (factorToBaseControl.touched && factorToBaseControl.errors?.['min']) {
+              <p class="text-red-500 text-xs mt-1">El factor debe ser mayor que cero</p>
+            }
+          </div>
+
           <!-- Service error -->
           @if (unitMeasureService.error()) {
             <p class="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">
@@ -132,6 +177,14 @@ export class UnitMeasureFormComponent implements OnChanges {
       nonNullable: true,
       validators: [Validators.required, Validators.maxLength(50)],
     }),
+    dimension: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.maxLength(100)],
+    }),
+    factorToBase: new FormControl(1, {
+      nonNullable: true,
+      validators: [Validators.required, Validators.min(0.000001)],
+    }),
   });
 
   get nameControl(): AbstractControl {
@@ -142,15 +195,25 @@ export class UnitMeasureFormComponent implements OnChanges {
     return this.form.controls.abbreviation;
   }
 
+  get dimensionControl(): AbstractControl {
+    return this.form.controls.dimension;
+  }
+
+  get factorToBaseControl(): AbstractControl {
+    return this.form.controls.factorToBase;
+  }
+
   ngOnChanges(): void {
     this.unitMeasureService.error.set(null);
     if (this.unitMeasure) {
       this.form.setValue({
         name: this.unitMeasure.name,
         abbreviation: this.unitMeasure.abbreviation,
+        dimension: this.unitMeasure.dimension,
+        factorToBase: this.unitMeasure.factor_to_base,
       });
     } else {
-      this.form.reset();
+      this.form.reset({ name: '', abbreviation: '', dimension: '', factorToBase: 1 });
     }
     this.nameControl.setValidators([
       Validators.required,
@@ -193,6 +256,8 @@ export class UnitMeasureFormComponent implements OnChanges {
     const data: UnitMeasureForm = {
       name: this.form.controls.name.value.trim(),
       abbreviation: this.form.controls.abbreviation.value.trim(),
+      dimension: this.form.controls.dimension.value.trim(),
+      factor_to_base: this.form.controls.factorToBase.value,
     };
 
     if (this.unitMeasure) {
