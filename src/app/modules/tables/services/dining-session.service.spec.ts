@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
   provideHttpClientTesting,
@@ -129,6 +129,18 @@ describe('DiningSessionService', () => {
     );
 
     expect(service.extractError(await promise)).toBe('Hay ítems sin terminar en cocina');
+  });
+
+  it('spec 134: traduce el detail del 423 por página alterada tal cual lo escribió el interceptor', () => {
+    const detail =
+      'No se pudo cobrar el pedido: la página fue alterada por el navegador. Recarga para continuar.';
+    const err = new HttpErrorResponse({
+      status: 423,
+      statusText: 'Page Altered',
+      error: { detail, code: 'page_altered' },
+    });
+
+    expect(service.extractError(err)).toBe(detail);
   });
 
   // ── feature 028: terminal híbrida por origen ─────────────────────────────

@@ -15,6 +15,7 @@ import { routes } from './app.routes';
 import { provideTenantInitializer } from './core/tenant/tenant.initializer';
 import { authTokenInterceptor } from './core/auth/auth-token.interceptor';
 import { IntegrityAwareErrorHandler } from './core/integrity/integrity-error-handler';
+import { pageIntegrityInterceptor } from './core/integrity/page-integrity.interceptor';
 import { PageIntegrityService } from './core/integrity/page-integrity.service';
 import { provideServiceWorker } from '@angular/service-worker';
 
@@ -27,7 +28,9 @@ export const appConfig: ApplicationConfig = {
     provideAppInitializer(() => inject(PageIntegrityService).start()),
     { provide: ErrorHandler, useClass: IntegrityAwareErrorHandler },
     provideTenantInitializer(),
-    provideHttpClient(withInterceptors([authTokenInterceptor])),
+    // `pageIntegrityInterceptor` va ANTES que `authTokenInterceptor`: rechazar una
+    // acción protegida no debe tocar tokens ni consumir un refresh.
+    provideHttpClient(withInterceptors([pageIntegrityInterceptor, authTokenInterceptor])),
     provideRouter(routes, withComponentInputBinding()),
     // Registra los controladores de Chart.js una sola vez para toda la app; las
     // gráficas de `shared/charts` asumen que ya está hecho.
