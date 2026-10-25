@@ -29,7 +29,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
       <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
         <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 class="text-base font-bold text-gray-900">
-            {{ option ? 'Editar opción' : 'Nueva opción' }} @if (group) { · {{ group.name }} }
+            {{ option ? 'Editar opción' : 'Nueva opción' }} @if (group) { <span> · {{ group.name }} </span> }
           </h2>
           <button type="button" (click)="close.emit()" class="text-gray-400 hover:text-gray-600 transition-colors">
             <app-mi-icon name="close" ariaLabel="Cerrar" [size]="20" />

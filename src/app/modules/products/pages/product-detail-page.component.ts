@@ -104,9 +104,9 @@ import { RelativeTimePipe } from '../../../shared/relative-time.pipe';
               <p class="text-sm font-medium text-gray-900">Agotado</p>
               <p class="text-xs text-gray-400">
                 @if (!p.active) {
-                  Un producto inactivo no se puede marcar como agotado.
+                  <span>Un producto inactivo no se puede marcar como agotado.</span>
                 } @else {
-                  Evita que se agreguen nuevos pedidos de este producto sin desactivarlo.
+                  <span>Evita que se agreguen nuevos pedidos de este producto sin desactivarlo.</span>
                 }
               </p>
             </div>

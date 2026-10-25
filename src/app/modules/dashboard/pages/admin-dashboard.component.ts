@@ -162,7 +162,7 @@ const TREND_WINDOW_DAYS = 10;
                   <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                   Turno en curso
                   @if (periodActiveOrdersCount() !== null) {
-                    · {{ periodActiveOrdersCount() }} pedido(s) activo(s)
+                    <span> · {{ periodActiveOrdersCount() }} pedido(s) activo(s) </span>
                   }
                 </span>
               </div>
