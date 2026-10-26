@@ -41,16 +41,6 @@ export class UnitMeasureService {
     }
   }
 
-  /** Unidades activas del mismo grupo de medida (spec 134): alimenta el selector de unidad
-   *  de una línea de compra, que solo debe ofrecer unidades convertibles entre sí. */
-  async loadUnitMeasuresByDimension(dimension: string): Promise<UnitMeasure[]> {
-    return firstValueFrom(
-      this.http.get<UnitMeasure[]>(this.baseUrl, {
-        params: { dimension, active: true },
-      }),
-    );
-  }
-
   /** Retirado del flujo normal (spec 137): crear una unidad nueva usa
    *  `UnitMeasureGroupService.addUnit`/`createGroup`. Se conserva para compatibilidad. */
   async createUnitMeasure(groupId: string, form: UnitMeasureForm): Promise<void> {
