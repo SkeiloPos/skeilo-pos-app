@@ -3,9 +3,6 @@ export interface UnitMeasure {
   id: string;
   name: string;
   abbreviation: string;
-  /** Grupo de medida (spec 134): dos unidades son convertibles entre sí si coincide.
-   *  Espejo de `group.name` (spec 137, research.md D2) -- ya no se edita directamente. */
-  dimension: string;
   /** Factor hacia la base de su dimensión (spec 134), p. ej. kg→1000 g. */
   factor_to_base: number;
   active: boolean;

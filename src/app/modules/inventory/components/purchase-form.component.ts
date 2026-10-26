@@ -248,7 +248,7 @@ export class PurchaseFormComponent implements OnInit {
     if (!base) return [];
     return this.unitMeasureService
       .unitMeasures()
-      .filter((u) => u.active && u.dimension === base.dimension && u.id !== base.id);
+      .filter((u) => u.active && u.group_id === base.group_id && u.id !== base.id);
   }
 
   /** Vista previa en cliente ("= 2.000 g", FR-014): no toca el servidor ni el stock. */
