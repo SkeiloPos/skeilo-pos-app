@@ -33,6 +33,11 @@ export interface MovementRow {
   montoFmt: string;
   usuario: string;
   nota: string;
+  /** spec 135: método de pago de esta línea (p. ej. "Efectivo", "Nequi"). */
+  metodoPago: string;
+  /** spec 135 (FR-011): comparten `group_id` las 2 filas de un mismo ingreso
+   * mixto -- `null`/`undefined` para toda fila que no sea parte de uno. */
+  groupId: string | null;
 }
 
 /** Una denominación de efectivo del catálogo del negocio con su conteo actual, lista para render. */
@@ -63,7 +68,7 @@ export interface DesgloseRow {
 export interface VentaPorMetodo {
   id: string;
   name: string;
-  type: 'cash' | 'card' | 'transfer' | 'other';
+  type: 'cash' | 'card' | 'transfer' | 'other' | 'mixed';
   total: number;
   count: number;
 }
@@ -87,4 +92,9 @@ export interface Indicadores {
   countIngresos: number;
   countEgresos: number;
   countRetiros: number;
+  /** spec 135 (FR-007/FR-008): ingresos registrados en un método distinto a
+   * efectivo -- no suman a `ingresos` ni a `efectivoEsperado`, por eso se
+   * muestran aparte en vez de confundirse con el ingreso en efectivo. */
+  ingresosDigitales: number;
+  countIngresosDigitales: number;
 }

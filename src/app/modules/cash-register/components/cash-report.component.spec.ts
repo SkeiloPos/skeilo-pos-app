@@ -23,6 +23,8 @@ describe('CashReportComponent — ícono de turno cerrado (spec 082)', () => {
       countIngresos: 0,
       countEgresos: 0,
       countRetiros: 0,
+      ingresosDigitales: 0,
+      countIngresosDigitales: 0,
     };
     const fakeStore = {
       aperturaFmt: signal(''),
@@ -88,6 +90,8 @@ describe('CashReportComponent — «Desglose del conteo» (spec 121, FR-020 a FR
       countIngresos: 0,
       countEgresos: 0,
       countRetiros: 0,
+      ingresosDigitales: 0,
+      countIngresosDigitales: 0,
     };
     const filas = opts.filas ?? [];
     const fakeStore = {

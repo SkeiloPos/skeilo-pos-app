@@ -129,9 +129,9 @@ import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
           <div>
             <label for="arqueo-observacion" class="block text-sm font-medium text-gray-700 mb-1">
               @if (store.requiereObservacion()) {
-                Observación (requerida por diferencia)
+                <span>Observación (requerida por diferencia)</span>
               } @else {
-                Observación (opcional)
+                <span>Observación (opcional)</span>
               }
             </label>
             <textarea

@@ -179,6 +179,17 @@ export function paymentIssue(
     if (line.amount <= 0) return 'Escribe el importe del pago.';
   }
 
+  // spec 135 (A-146): revierte A-124/FR-005 de spec 112 -- dos o más líneas
+  // ya no pueden compartir método. Antes de validar saldo pendiente, para
+  // que un método repetido no se confunda con un problema de montos.
+  const seen = new Set<string>();
+  for (const line of draft) {
+    if (seen.has(line.methodId)) {
+      return `${methodName(line.methodId, methods)} no puede usarse en más de una línea.`;
+    }
+    seen.add(line.methodId);
+  }
+
   for (let i = 0; i < draft.length; i++) {
     const line = draft[i];
     if (isCash(line.methodId, methods)) continue;

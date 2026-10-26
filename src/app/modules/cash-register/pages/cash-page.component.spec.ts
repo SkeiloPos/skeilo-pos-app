@@ -17,6 +17,8 @@ describe('CashPageComponent — ícono de duración del turno (spec 082)', () =>
       countIngresos: 0,
       countEgresos: 0,
       countRetiros: 0,
+      ingresosDigitales: 0,
+      countIngresosDigitales: 0,
     };
     const fakeStore = {
       // Usados por CashPageComponent

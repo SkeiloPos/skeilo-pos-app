@@ -3,6 +3,8 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { AuthService } from '../../../core/services/auth.service';
 import { UserRole } from '../../../core/interfaces/user.interface';
 import { ActiveOrderSummary } from '../../dashboard/interfaces/shift-reports.interface';
+import { PaymentMethodService } from '../../sales/services/payment-method.service';
+import { PaymentMethodCheckoutOption } from '../../sales/interfaces/sales.interface';
 import {
   CashMovement,
   CashRegister,
@@ -50,13 +52,18 @@ const FORMATO_HORA = 'hh:mm a';
  * solo se convierten los importes, que viajan como string.
  */
 export function mapVentasPorMetodo(recon: Reconciliation | null): VentaPorMetodo[] {
-  return (recon?.sales_by_method ?? []).map((m) => ({
-    id: m.method_id,
-    name: m.method_name,
-    type: m.method_type,
-    total: Number(m.total) || 0,
-    count: Number(m.count) || 0,
-  }));
+  return (recon?.sales_by_method ?? [])
+    // `type: 'mixed'` no es un método real que el cliente eligió -- es la
+    // etiqueta de un pago con varias líneas (spec 112); una tarjeta propia
+    // para él no aporta nada (siempre sale en $0, nadie "vende en mixto").
+    .filter((m) => m.method_type !== 'mixed')
+    .map((m) => ({
+      id: m.method_id,
+      name: m.method_name,
+      type: m.method_type,
+      total: Number(m.total) || 0,
+      count: Number(m.count) || 0,
+    }));
 }
 
 /**
@@ -73,6 +80,7 @@ export class CashSessionStore {
   private readonly auth = inject(AuthService);
   private readonly tenantDate = inject(TenantDatePipe);
   private readonly tenantInfo = inject(TenantInfoService);
+  private readonly paymentMethodApi = inject(PaymentMethodService);
 
   /** Categorías sugeridas por tipo de movimiento manual. */
   readonly CATS: Record<MovementKind, string[]> = {
@@ -128,6 +136,15 @@ export class CashSessionStore {
   readonly formCategoria = signal('');
   readonly formMonto = signal('');
   readonly formNota = signal('');
+  // spec 135 (US2/US3): método de pago del ingreso -- solo aplica a
+  // `kind === 'ingreso'` (egreso/retiro siguen forzados a efectivo, sin
+  // selector). `formSegundoMetodo`/`formSegundoMonto` son la 2da línea de un
+  // ingreso mixto, habilitada con "Agregar otro método" (FR-004/FR-005).
+  readonly paymentMethods = this.paymentMethodApi.checkoutOptions;
+  readonly formPaymentMethodId = signal('');
+  readonly formSegundaLinea = signal(false);
+  readonly formSegundoMetodo = signal('');
+  readonly formSegundoMonto = signal('');
   // Arqueo
   readonly denomCounts = signal<Record<number, string>>({});
   readonly arqueoObservacion = signal('');
@@ -172,6 +189,7 @@ export class CashSessionStore {
   readonly indicadores = computed<Indicadores>(() => {
     const r = this.reconciliation();
     const movs = this.movements();
+    const ingresosByMethod = r?.ingresos_by_method ?? [];
     return {
       ventas: mapVentasPorMetodo(r),
       cambioEntregado: this.num(r?.cambio_entregado),
@@ -179,9 +197,18 @@ export class CashSessionStore {
       egresos: this.num(r?.egresos),
       retiros: this.num(r?.retiros),
       efectivoEsperado: this.num(r?.expected),
-      countIngresos: movs.filter((m) => m.kind === 'ingreso').length,
+      // `ingresos` (arriba) ya es solo-efectivo (FR-007) -- su contador debe
+      // coincidir: total de líneas `ingreso` menos las que son digitales
+      // (`countIngresosDigitales`), no todas las líneas `ingreso` sin filtrar.
+      countIngresos:
+        movs.filter((m) => m.kind === 'ingreso').length -
+        ingresosByMethod.reduce((sum, m) => sum + (m.count || 0), 0),
       countEgresos: movs.filter((m) => m.kind === 'egreso').length,
       countRetiros: movs.filter((m) => m.kind === 'retiro').length,
+      // spec 135 (FR-007/FR-008): no suman a `ingresos`/`efectivoEsperado` --
+      // se muestran aparte para que un ingreso en Nequi no "desaparezca".
+      ingresosDigitales: ingresosByMethod.reduce((sum, m) => sum + (this.num(m.total) || 0), 0),
+      countIngresosDigitales: ingresosByMethod.reduce((sum, m) => sum + (m.count || 0), 0),
     };
   });
 
@@ -198,6 +225,8 @@ export class CashSessionStore {
       nota: m.category
         ? m.category + (m.description && m.description !== m.category ? ' · ' + m.description : '')
         : m.description || '—',
+      metodoPago: m.payment_method_name,
+      groupId: m.group_id ?? null,
     })),
   );
 
@@ -213,7 +242,39 @@ export class CashSessionStore {
     return m && m !== 'arqueo' ? this.CATS[m] : [];
   });
 
-  readonly movimientoDisabled = computed(() => !this.formMonto() || Number(this.formMonto()) <= 0);
+  /** spec 135: el selector de método solo aplica a un ingreso -- egreso/
+   * retiro siguen forzados a efectivo en el backend, sin que el cajero elija. */
+  readonly esIngreso = computed(() => this.modal() === 'ingreso');
+
+  /** FR-013: "Agregar otro método" no tiene sentido (ni se muestra) si el
+   * tenant no tiene al menos 2 métodos activos. */
+  readonly puedeAgregarSegundoMetodo = computed(
+    () => this.esIngreso() && !this.formSegundaLinea() && this.paymentMethods().length >= 2,
+  );
+
+  /** Métodos disponibles para la línea 1: excluye el ya elegido en la línea 2
+   * (mismo patrón que `payment-input.component.ts`, spec 135/A-146). */
+  readonly metodosLinea1 = computed(() => this.metodosDisponiblesPara(this.formSegundoMetodo()));
+
+  /** Métodos disponibles para la línea 2: excluye el ya elegido en la línea 1. */
+  readonly metodosLinea2 = computed(() => this.metodosDisponiblesPara(this.formPaymentMethodId()));
+
+  private metodosDisponiblesPara(excluirId: string): PaymentMethodCheckoutOption[] {
+    return this.paymentMethods().filter((m) => m.id !== excluirId);
+  }
+
+  readonly movimientoDisabled = computed(() => {
+    if (!this.formMonto() || Number(this.formMonto()) <= 0) return true;
+    if (!this.esIngreso()) return false;
+    if (!this.formPaymentMethodId()) return true;
+    if (
+      this.formSegundaLinea() &&
+      (!this.formSegundoMetodo() || !this.formSegundoMonto() || Number(this.formSegundoMonto()) <= 0)
+    ) {
+      return true;
+    }
+    return false;
+  });
 
   /** El catálogo no se pudo cargar, o cargó vacío: no se puede contar (FR-013). */
   readonly catalogoError = computed(
@@ -522,7 +583,27 @@ export class CashSessionStore {
     this.formCategoria.set(this.CATS[kind][0]);
     this.formMonto.set('');
     this.formNota.set('');
+    this.formPaymentMethodId.set('');
+    this.formSegundaLinea.set(false);
+    this.formSegundoMetodo.set('');
+    this.formSegundoMonto.set('');
     this.modal.set(kind);
+    if (kind === 'ingreso') {
+      // Carga explícita al abrir el formulario de ingreso (no un efecto
+      // reactivo) -- mismo catálogo que el panel de cobro (FR-004).
+      void this.paymentMethodApi.loadAvailableForCheckout();
+    }
+  }
+
+  /** FR-004/FR-005: convierte un segundo método en línea de un ingreso mixto. */
+  agregarSegundoMetodo(): void {
+    this.formSegundaLinea.set(true);
+  }
+
+  quitarSegundoMetodo(): void {
+    this.formSegundaLinea.set(false);
+    this.formSegundoMetodo.set('');
+    this.formSegundoMonto.set('');
   }
 
   async confirmarMovimiento(): Promise<void> {
@@ -531,15 +612,32 @@ export class CashSessionStore {
     if (!kind || kind === 'arqueo' || !shift) return;
     const monto = Number(this.formMonto());
     if (!monto || monto <= 0) return;
+    if (this.movimientoDisabled()) return;
     this.isSubmitting.set(true);
     this.error.set(null);
     try {
-      await this.api.addMovement(shift.id, {
-        kind,
-        amount: monto,
-        category: this.formCategoria(),
-        description: this.formNota().trim() || null,
-      });
+      if (kind === 'ingreso') {
+        const lines = [{ payment_method_id: this.formPaymentMethodId(), amount: monto }];
+        if (this.formSegundaLinea()) {
+          lines.push({
+            payment_method_id: this.formSegundoMetodo(),
+            amount: Number(this.formSegundoMonto()),
+          });
+        }
+        await this.api.addMovement(shift.id, {
+          kind,
+          lines,
+          category: this.formCategoria(),
+          description: this.formNota().trim() || null,
+        });
+      } else {
+        await this.api.addMovement(shift.id, {
+          kind,
+          amount: monto,
+          category: this.formCategoria(),
+          description: this.formNota().trim() || null,
+        });
+      }
       await this.refreshShift();
       this.modal.set(null);
     } catch (err) {
@@ -695,6 +793,10 @@ export class CashSessionStore {
   closeModal(): void {
     this.modal.set(null);
     this.activeOrdersBlocking.set([]);
+    this.formPaymentMethodId.set('');
+    this.formSegundaLinea.set(false);
+    this.formSegundoMetodo.set('');
+    this.formSegundoMonto.set('');
   }
 
   setVista(v: MovementView): void {

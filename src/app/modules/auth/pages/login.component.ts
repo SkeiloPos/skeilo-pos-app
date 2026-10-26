@@ -142,9 +142,9 @@ function esDestinoInterno(url: string | null): url is string {
         >
           @if (isLoading()) {
             <app-mi-icon name="autorenew" ariaLabel="Cargando" [size]="16" class="animate-spin" />
-            Ingresando…
+            <span> Ingresando… </span>
           } @else {
-            Iniciar sesión
+            <span> Iniciar sesión </span>
           }
         </button>
       </form>

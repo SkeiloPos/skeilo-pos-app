@@ -68,10 +68,19 @@ import { CashSessionStore } from '../services/cash-session.store';
           </div>
         }
         <div class="bg-white rounded-xl border border-gray-100 p-4">
-          <div class="text-[10px] uppercase tracking-wide text-indigo-600 font-semibold">Ingresos</div>
+          <div class="text-[10px] uppercase tracking-wide text-indigo-600 font-semibold">Ingresos en efectivo</div>
           <div class="text-lg font-bold text-gray-900 mt-1">{{ store.fmt(ind.ingresos) }}</div>
           <div class="text-[11px] text-gray-400 mt-1">{{ ind.countIngresos }} movimiento(s)</div>
         </div>
+        @if (ind.ingresosDigitales > 0) {
+          <!-- spec 135 (FR-007/FR-008): no suma al efectivo esperado -- sin esta
+               tarjeta, un ingreso en Nequi quedaba invisible en el resumen. -->
+          <div class="bg-white rounded-xl border border-gray-100 p-4">
+            <div class="text-[10px] uppercase tracking-wide text-indigo-600 font-semibold">Ingresos digitales</div>
+            <div class="text-lg font-bold text-gray-900 mt-1">{{ store.fmt(ind.ingresosDigitales) }}</div>
+            <div class="text-[11px] text-gray-400 mt-1">{{ ind.countIngresosDigitales }} movimiento(s) · no afecta el efectivo esperado</div>
+          </div>
+        }
         <div class="bg-white rounded-xl border border-gray-100 p-4">
           <div class="text-[10px] uppercase tracking-wide text-indigo-600 font-semibold">Egresos</div>
           <div class="text-lg font-bold text-gray-900 mt-1">{{ store.fmt(ind.egresos) }}</div>
@@ -112,6 +121,7 @@ import { CashSessionStore } from '../services/cash-session.store';
               <th class="py-2 border-b-2 border-gray-100 font-medium">Hora</th>
               <th class="py-2 border-b-2 border-gray-100 font-medium">Tipo</th>
               <th class="py-2 border-b-2 border-gray-100 font-medium">Valor</th>
+              <th class="py-2 border-b-2 border-gray-100 font-medium">Método</th>
               <th class="py-2 border-b-2 border-gray-100 font-medium">Usuario</th>
               <th class="py-2 border-b-2 border-gray-100 font-medium">Observación</th>
             </tr>
@@ -124,6 +134,7 @@ import { CashSessionStore } from '../services/cash-session.store';
                   <span class="inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-md" [class]="store.tagClass(m.tagVariant)">{{ m.label }}</span>
                 </td>
                 <td class="py-2 border-b border-gray-100 font-semibold">{{ m.montoFmt }}</td>
+                <td class="py-2 border-b border-gray-100 text-gray-500">{{ m.metodoPago }}</td>
                 <td class="py-2 border-b border-gray-100">{{ m.usuario }}</td>
                 <td class="py-2 border-b border-gray-100 text-gray-500">{{ m.nota }}</td>
               </tr>
@@ -140,6 +151,7 @@ import { CashSessionStore } from '../services/cash-session.store';
                 <div class="flex items-center gap-2">
                   <span class="inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-md" [class]="store.tagClass(m.tagVariant)">{{ m.label }}</span>
                   <span class="font-semibold text-sm">{{ m.montoFmt }}</span>
+                  <span class="text-xs text-gray-400">· {{ m.metodoPago }}</span>
                 </div>
                 <div class="text-xs text-gray-400 mt-0.5">{{ m.usuario }} · {{ m.nota }}</div>
               </div>

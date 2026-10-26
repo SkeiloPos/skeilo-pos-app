@@ -1,4 +1,4 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, effect, inject, signal } from '@angular/core';
 import {
   MenuCategory,
   MenuOption,
@@ -19,6 +19,7 @@ import { SoundService } from '../../../shared/feedback/sound.service';
 import { PrinterSettingsStore } from '../../../core/printing/printer-settings.store';
 import { VisibleInterval, startVisibleInterval } from '../../../core/realtime/visible-interval';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
+import { UpdateGateService } from '../../../core/update/update-gate.service';
 import { Table, TableStatus } from '../interfaces/table.interface';
 import {
   CheckoutPreview,
@@ -343,6 +344,7 @@ export class PosTerminalStore {
   private readonly printer = inject(PrinterSettingsStore);
   private readonly realtime = inject(RealtimeService);
   readonly sound = inject(SoundService);
+  private readonly updateGate = inject(UpdateGateService);
 
   constructor() {
     // El sondeo se relaja con el stream sano y vuelve al ritmo de antes al caerse.
@@ -350,6 +352,13 @@ export class PosTerminalStore {
       const abierto = this.realtime.status() === 'open';
       this.pollHandle?.setPeriod(abierto ? ORDERS_POLL_SSE_MS : ORDERS_POLL_MS);
     });
+
+    // Spec 134 (FR-019, M6): el borrador solo vive en memoria; una recarga automática
+    // por versión nueva lo perdería. Mientras haya líneas sin enviar, no es un momento
+    // seguro. La orden manual usa su propia instancia de este store, así que queda cubierta.
+    inject(DestroyRef).onDestroy(
+      this.updateGate.registerBlocker('pos-terminal-draft', () => this.hasDraft()),
+    );
   }
 
   /** IDs de pedido ya intentados (con éxito o no) — evita reintentar y volver

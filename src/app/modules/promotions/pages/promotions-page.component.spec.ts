@@ -323,6 +323,32 @@ describe('PromotionsPageComponent', () => {
       expect(c.pickerMatchSummary()).toEqual({ matching: 1, selected: 2 });
     });
 
+    it('spec 134 (FR-021, nivel B): pickerMatchMessage arma el texto completo del aviso según los productos seleccionados', () => {
+      const menu = TestBed.inject(MenuService);
+      seedGranizados(menu);
+      const fixture = TestBed.createComponent(PromotionsPageComponent);
+      fixture.detectChanges();
+      const c = fixture.componentInstance;
+
+      expect(c.pickerMatchMessage()).toBe(''); // sin presentación elegida no hay aviso
+
+      c.pickerPresentationId.set('pr-16oz');
+      expect(c.pickerMatchMessage()).toBe(
+        'Aún no hay productos seleccionados: la regla se aplicará a los que elijas en el Paso 1.',
+      );
+
+      c.toggleProductCandidate('p1'); // solo p1 tiene la presentación de 16 oz
+      expect(c.pickerMatchMessage()).toBe('Se aplicará a 1 de 1 producto seleccionado.');
+
+      c.toggleProductCandidate('p2');
+      expect(c.pickerMatchMessage()).toBe('Se aplicará a 1 de 2 productos seleccionados.');
+
+      c.toggleProductCandidate('p1'); // queda solo p2, que no la tiene
+      expect(c.pickerMatchMessage()).toBe(
+        'Ninguno de los 1 productos seleccionados tiene esta presentación.',
+      );
+    });
+
     it('cambiar los productos seleccionados no reinicia la presentación elegida', () => {
       const menu = TestBed.inject(MenuService);
       seedGranizados(menu);

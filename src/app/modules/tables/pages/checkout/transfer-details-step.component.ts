@@ -186,9 +186,9 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
               class="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl transition-colors disabled:bg-gray-200 disabled:text-gray-400"
             >
               @if (submitting()) {
-                Enviando pedido…
+                <span> Enviando pedido… </span>
               } @else {
-                Enviar pedido
+                <span> Enviar pedido </span>
               }
             </button>
           </div>

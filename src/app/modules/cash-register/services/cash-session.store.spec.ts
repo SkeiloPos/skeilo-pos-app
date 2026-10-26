@@ -4,6 +4,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { vi } from 'vitest';
 import { CashSessionStore, mapVentasPorMetodo } from './cash-session.store';
 import { CashService } from './cash.service';
+import { PaymentMethodService } from '../../sales/services/payment-method.service';
+import { PaymentMethodCheckoutOption } from '../../sales/interfaces/sales.interface';
 import { AuthService } from '../../../core/services/auth.service';
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
@@ -31,6 +33,16 @@ const CATALOGO: CatalogDenomination[] = [
   { denomination: '100.00', kind: 'moneda' },
   { denomination: '50.00', kind: 'moneda' },
 ];
+
+/** Fake sin HTTP de `PaymentMethodService` para las suites que no ejercitan
+ * el selector de método de un ingreso (spec 135) -- evita que `inject()` de
+ * `CashSessionStore` falle por falta de `HttpClient` en `TestBed`. */
+function fakePaymentMethodApi(methods: PaymentMethodCheckoutOption[] = []) {
+  return {
+    checkoutOptions: signal(methods),
+    loadAvailableForCheckout: vi.fn().mockResolvedValue(undefined),
+  };
+}
 
 function recon(sales: SalesByMethod[]): Reconciliation {
   return {
@@ -97,6 +109,17 @@ describe('mapVentasPorMetodo', () => {
   it('devuelve una lista vacía sin arqueo cargado', () => {
     expect(mapVentasPorMetodo(null)).toEqual([]);
   });
+
+  it('descarta la fila "mixed" -- etiqueta de un pago con varias líneas, no un método real', () => {
+    const ventas = mapVentasPorMetodo(
+      recon([
+        { method_id: 'pm1', method_name: 'Efectivo', method_type: 'cash', total: '1', count: 1 },
+        { method_id: 'pm4', method_name: 'Pago mixto', method_type: 'mixed', total: '0', count: 0 },
+      ]),
+    );
+
+    expect(ventas.map((v) => v.name)).toEqual(['Efectivo']);
+  });
 });
 
 describe('CashSessionStore — aperturaDisabled (spec 113, contracts/cash-open-form.md)', () => {
@@ -104,6 +127,7 @@ describe('CashSessionStore — aperturaDisabled (spec 113, contracts/cash-open-f
     TestBed.configureTestingModule({
       providers: [
         CashSessionStore,
+        { provide: PaymentMethodService, useValue: fakePaymentMethodApi() },
         { provide: CashService, useValue: { registers: signal([]), shift: signal(null) } },
         { provide: AuthService, useValue: { currentUser: () => null } },
         { provide: TenantDatePipe, useValue: { transform: () => '' } },
@@ -148,6 +172,150 @@ describe('CashSessionStore — aperturaDisabled (spec 113, contracts/cash-open-f
 
     expect(store.selectedRegisterId()).toBe('');
     expect(store.aperturaDisabled()).toBe(true);
+  });
+});
+
+describe('CashSessionStore — ingreso de caja por método de pago (spec 135, US2/US3)', () => {
+  const EFECTIVO: PaymentMethodCheckoutOption = { id: 'pm-cash', name: 'Efectivo', is_cash: true };
+  const NEQUI: PaymentMethodCheckoutOption = { id: 'pm-nequi', name: 'Nequi', is_cash: false };
+  const extractError = (_err: unknown, fallback: string): string => fallback;
+
+  function crear(methods: PaymentMethodCheckoutOption[] = [EFECTIVO, NEQUI]) {
+    const api = {
+      registers: signal([]),
+      shift: signal({ id: 's1', status: 'open' } as CashShift | null),
+      addMovement: vi.fn().mockResolvedValue([{ id: 'm1' }]),
+      getReconciliation: vi.fn().mockResolvedValue(recon([])),
+      listMovements: vi.fn().mockResolvedValue([]),
+      extractError,
+    };
+    const paymentApi = fakePaymentMethodApi(methods);
+    TestBed.configureTestingModule({
+      providers: [
+        CashSessionStore,
+        { provide: PaymentMethodService, useValue: paymentApi },
+        { provide: CashService, useValue: api },
+        { provide: AuthService, useValue: { currentUser: () => null } },
+        { provide: TenantDatePipe, useValue: { transform: () => '' } },
+        { provide: TenantInfoService, useValue: { businessName: () => '' } },
+      ],
+    });
+    const store = TestBed.inject(CashSessionStore);
+    return { store, api, paymentApi };
+  }
+
+  it('abrir el formulario de ingreso carga los métodos activos del tenant (sin fetch para egreso/retiro)', () => {
+    const { store, paymentApi } = crear();
+
+    store.openMovimiento('ingreso');
+    expect(paymentApi.loadAvailableForCheckout).toHaveBeenCalledTimes(1);
+
+    paymentApi.loadAvailableForCheckout.mockClear();
+    store.openMovimiento('egreso');
+    expect(paymentApi.loadAvailableForCheckout).not.toHaveBeenCalled();
+  });
+
+  it('un ingreso sin método elegido queda deshabilitado (FR-004)', () => {
+    const { store } = crear();
+    store.openMovimiento('ingreso');
+    store.formMonto.set('50000');
+
+    expect(store.movimientoDisabled()).toBe(true);
+
+    store.formPaymentMethodId.set('pm-nequi');
+    expect(store.movimientoDisabled()).toBe(false);
+  });
+
+  it('confirma un ingreso de 1 línea con método explícito distinto a efectivo (US2)', async () => {
+    const { store, api } = crear();
+    store.openMovimiento('ingreso');
+    store.formMonto.set('50000');
+    store.formPaymentMethodId.set('pm-nequi');
+
+    await store.confirmarMovimiento();
+
+    expect(api.addMovement).toHaveBeenCalledWith('s1', {
+      kind: 'ingreso',
+      lines: [{ payment_method_id: 'pm-nequi', amount: 50000 }],
+      category: store.formCategoria(),
+      description: null,
+    });
+  });
+
+  it('"Agregar otro método" expone una segunda línea y envía las 2 en el ingreso mixto (US3)', async () => {
+    const { store, api } = crear();
+    store.openMovimiento('ingreso');
+    store.formMonto.set('20000');
+    store.formPaymentMethodId.set('pm-cash');
+
+    expect(store.puedeAgregarSegundoMetodo()).toBe(true);
+    store.agregarSegundoMetodo();
+    store.formSegundoMetodo.set('pm-nequi');
+    store.formSegundoMonto.set('30000');
+
+    await store.confirmarMovimiento();
+
+    expect(api.addMovement).toHaveBeenCalledWith('s1', {
+      kind: 'ingreso',
+      lines: [
+        { payment_method_id: 'pm-cash', amount: 20000 },
+        { payment_method_id: 'pm-nequi', amount: 30000 },
+      ],
+      category: store.formCategoria(),
+      description: null,
+    });
+  });
+
+  it('el selector de la 2da línea no ofrece el método ya elegido en la 1ra (mismo patrón que US1)', () => {
+    const { store } = crear();
+    store.openMovimiento('ingreso');
+    store.formPaymentMethodId.set('pm-cash');
+    store.agregarSegundoMetodo();
+
+    expect(store.metodosLinea2().map((m) => m.id)).toEqual(['pm-nequi']);
+  });
+
+  it('FR-013: con un solo método activo no se puede agregar un segundo', () => {
+    const { store } = crear([EFECTIVO]);
+    store.openMovimiento('ingreso');
+
+    expect(store.puedeAgregarSegundoMetodo()).toBe(false);
+  });
+
+  it('egreso/retiro siguen enviando `amount` plano, sin `lines` (FR-012, sin cambios)', async () => {
+    const { store, api } = crear();
+    store.openMovimiento('egreso');
+    store.formMonto.set('4000');
+
+    await store.confirmarMovimiento();
+
+    expect(api.addMovement).toHaveBeenCalledWith('s1', {
+      kind: 'egreso',
+      amount: 4000,
+      category: store.formCategoria(),
+      description: null,
+    });
+  });
+
+  it('"Ingresos en efectivo" cuenta solo las líneas en efectivo, no las digitales (bug reportado: 2 movimiento(s) con 1 digital de por medio)', () => {
+    const { store } = crear();
+    store.reconciliation.set({
+      ...recon([]),
+      ingresos: '8000',
+      ingresos_by_method: [
+        { method_id: 'pm-nequi', method_name: 'Nequi', method_type: 'transfer', total: '5000', count: 1 },
+      ],
+    });
+    store.movements.set([
+      { id: 'm1', cash_shift_id: 's1', kind: 'ingreso', amount: '8000', payment_method_id: 'pm-cash', payment_method_name: 'Efectivo', occurred_at: 'x' },
+      { id: 'm2', cash_shift_id: 's1', kind: 'ingreso', amount: '5000', payment_method_id: 'pm-nequi', payment_method_name: 'Nequi', occurred_at: 'x' },
+    ] as CashMovement[]);
+
+    const ind = store.indicadores();
+    expect(ind.ingresos).toBe(8000);
+    expect(ind.countIngresos).toBe(1);
+    expect(ind.ingresosDigitales).toBe(5000);
+    expect(ind.countIngresosDigitales).toBe(1);
   });
 });
 
@@ -197,6 +365,7 @@ describe('CashSessionStore — cierre bloqueado por pedidos activos (spec 119, F
     TestBed.configureTestingModule({
       providers: [
         CashSessionStore,
+        { provide: PaymentMethodService, useValue: fakePaymentMethodApi() },
         { provide: CashService, useValue: api },
         { provide: AuthService, useValue: { currentUser: () => null } },
         { provide: TenantDatePipe, useValue: { transform: () => '' } },
@@ -321,6 +490,7 @@ describe('CashSessionStore — arqueo desde el catálogo de denominaciones (spec
     TestBed.configureTestingModule({
       providers: [
         CashSessionStore,
+        { provide: PaymentMethodService, useValue: fakePaymentMethodApi() },
         { provide: CashService, useValue: api },
         { provide: AuthService, useValue: { currentUser: () => null } },
         { provide: TenantDatePipe, useValue: { transform: () => '' } },
@@ -549,6 +719,7 @@ describe('CashSessionStore — «Desglose del conteo» del reporte (spec 121, FR
     TestBed.configureTestingModule({
       providers: [
         CashSessionStore,
+        { provide: PaymentMethodService, useValue: fakePaymentMethodApi() },
         { provide: CashService, useValue: api },
         { provide: AuthService, useValue: { currentUser: () => null } },
         { provide: TenantDatePipe, useValue: { transform: () => '' } },
@@ -638,6 +809,7 @@ describe('CashSessionStore — fechas y horas en 12 horas y zona horaria del neg
     TestBed.configureTestingModule({
       providers: [
         CashSessionStore,
+        { provide: PaymentMethodService, useValue: fakePaymentMethodApi() },
         TenantDatePipe,
         { provide: CashService, useValue: api },
         { provide: AuthService, useValue: { currentUser: () => null } },
