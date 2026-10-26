@@ -33,222 +33,163 @@ const ROLE_LABEL: Record<UserRole, string> = {
   standalone: true,
   imports: [FormsModule, IconMiComponent],
   template: `
-    <div class="max-w-3xl space-y-6">
+    <div class="ajustes-theme flex flex-col pt-2">
       @if (tenantInfo.error()) {
-        <div class="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+        <div
+          class="rounded-xl px-4 py-3 text-sm mb-4"
+          style="background-color: var(--aj-color-error-soft); border: 1px solid var(--aj-color-error); color: var(--aj-color-error)"
+        >
           {{ tenantInfo.error() }}
         </div>
       }
 
       <!-- Logotipo -->
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-        <div class="flex items-center gap-3 mb-4">
-          <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-            <app-mi-icon name="palette" [size]="20" class="text-indigo-600" />
-          </span>
-          <div>
-            <h2 class="text-base font-semibold text-gray-900">Logotipo</h2>
-            <p class="text-xs text-gray-400">Se muestra en el menú de la app y en el menú del QR</p>
-          </div>
+      <div class="aj-row">
+        <div>
+          <div class="aj-row-title">Logotipo</div>
+          <div class="aj-row-desc">Se muestra en el menú de la app y en el menú del QR.</div>
         </div>
-
-        <div class="flex items-center gap-4">
-          @if (tenantInfo.logoUrl()) {
-            <img
-              [src]="tenantInfo.logoUrl()"
-              alt="Logotipo del negocio"
-              class="w-16 h-16 rounded-xl object-cover border border-gray-100"
-            />
-          } @else {
-            <div class="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center">
-              <app-mi-icon name="storefront" [size]="24" />
-            </div>
-          }
-
-          <div class="min-w-0">
-            <input
-              type="file"
-              accept="image/*"
-              [disabled]="tenantInfo.isSubmitting()"
-              (change)="onLogoSelected($event)"
-              class="text-sm text-gray-500 disabled:opacity-50"
-            />
-            <p class="text-xs text-gray-400 mt-1">PNG, JPG o WEBP · máximo 2 MB</p>
-            @if (tenantInfo.isSubmitting()) {
-              <p class="text-xs text-gray-500 mt-1">Subiendo…</p>
-            } @else if (saved()) {
-              <p class="text-xs text-green-600 mt-1">Guardado ✓</p>
+        <div class="min-w-0">
+          <div class="flex items-center gap-4">
+            @if (tenantInfo.logoUrl()) {
+              <img
+                [src]="tenantInfo.logoUrl()"
+                alt="Logotipo del negocio"
+                class="w-[72px] h-[72px] rounded-xl object-cover flex-none"
+                style="border: 1px solid var(--aj-color-border)"
+              />
+            } @else {
+              <div
+                class="w-[72px] h-[72px] rounded-xl flex items-center justify-center flex-none"
+                style="border: 1px dashed var(--aj-color-border-strong); background-color: var(--aj-color-surface-soft); color: var(--aj-color-text-muted)"
+              >
+                <app-mi-icon name="store" [size]="28" />
+              </div>
             }
+            <div class="flex flex-col gap-2 items-start">
+              <label class="aj-btn-secondary inline-flex items-center gap-2 text-sm cursor-pointer" style="height:36px; padding: 0 14px">
+                <app-mi-icon name="upload" [size]="16" />
+                Subir imagen
+                <input
+                  type="file"
+                  accept="image/*"
+                  [disabled]="tenantInfo.isSubmitting()"
+                  (change)="onLogoSelected($event)"
+                  class="hidden"
+                />
+              </label>
+              <span class="aj-muted text-xs">PNG, JPG o WEBP · máximo 2 MB</span>
+              @if (tenantInfo.isSubmitting()) {
+                <span class="aj-muted text-xs">Subiendo…</span>
+              } @else if (saved()) {
+                <span class="text-xs" style="color: var(--aj-color-success)">Guardado ✓</span>
+              }
+            </div>
           </div>
         </div>
       </div>
 
       <!-- Mensaje del recibo -->
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-        <div class="flex items-center gap-3 mb-4">
-          <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-            <app-mi-icon name="receipt" [size]="20" class="text-indigo-600" />
-          </span>
-          <div>
-            <h2 class="text-base font-semibold text-gray-900">Mensaje del recibo</h2>
-            <p class="text-xs text-gray-400">Cierra la factura que se imprime al cobrar una mesa</p>
-          </div>
+      <div class="aj-row">
+        <div>
+          <div class="aj-row-title">Mensaje del recibo</div>
+          <div class="aj-row-desc">Cierra la factura que se imprime al cobrar una mesa.</div>
         </div>
-
-        <textarea
-          [(ngModel)]="message"
-          [maxlength]="maxMessage"
-          rows="2"
-          placeholder="¡Gracias por su compra!"
-          class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300"
-        ></textarea>
-
-        <div class="flex items-center justify-between gap-3 mt-3">
-          <p class="text-xs text-gray-400">
-            {{ message().length }}/{{ maxMessage }} · si lo dejas vacío se imprime
-            «{{ defaultMessage }}»
-          </p>
-          <button
-            (click)="saveMessage()"
-            [disabled]="tenantInfo.isSubmitting()"
-            class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-40 transition-colors"
-          >
-            {{ tenantInfo.isSubmitting() ? 'Guardando…' : 'Guardar' }}
-          </button>
+        <div class="min-w-0 flex flex-col gap-2.5">
+          <label class="text-sm font-medium" style="color: var(--aj-color-text-secondary)" for="rcpt">Mensaje</label>
+          <textarea
+            id="rcpt"
+            [(ngModel)]="message"
+            [maxlength]="maxMessage"
+            rows="3"
+            placeholder="¡Gracias por su compra!"
+            class="aj-input w-full text-sm resize-y"
+          ></textarea>
+          <div class="flex justify-between items-center gap-3 flex-wrap">
+            <span class="aj-muted text-xs">
+              {{ message().length }}/{{ maxMessage }} · si lo dejas vacío se imprime
+              «{{ defaultMessage }}»
+            </span>
+            <button (click)="saveMessage()" [disabled]="tenantInfo.isSubmitting()" class="aj-btn-primary text-sm" style="height:36px; padding: 0 14px">
+              {{ tenantInfo.isSubmitting() ? 'Guardando…' : 'Guardar' }}
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- Impresión (de este dispositivo) -->
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-        <div class="flex items-center gap-3 mb-4">
-          <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-            <app-mi-icon name="print" [size]="20" class="text-indigo-600" />
-          </span>
-          <div>
-            <h2 class="text-base font-semibold text-gray-900">Impresión</h2>
-            <p class="text-xs text-gray-400">
-              Ajustes de <span class="font-medium">este dispositivo</span>: la impresora cuelga
-              del equipo donde está la caja
-            </p>
+      <div class="aj-row">
+        <div>
+          <div class="aj-row-title">Impresión</div>
+          <div class="aj-row-desc">
+            Ajustes de este dispositivo: la impresora cuelga del equipo donde está la caja.
           </div>
         </div>
-
-        <label class="block text-xs font-medium text-gray-600 mb-2">Ancho del rollo</label>
-        <div class="grid grid-cols-3 gap-1.5 max-w-xs">
-          @for (w of paperWidths; track w) {
-            <button
-              (click)="printer.setPaperWidth(w)"
-              class="px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors"
-              [class]="
-                printer.paperWidthMm() === w
-                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-              "
-            >
-              {{ w }} mm
-            </button>
-          }
-        </div>
-
-        <p class="text-xs text-gray-400 mt-2">
-          Tiene que coincidir con el papel configurado en el driver. Si no coincide, el
-          navegador reduce la factura para encajarla y el texto sale gris.
-        </p>
-
-        <div class="flex items-center gap-3 mt-4 pt-4 border-t border-gray-100">
-          <button
-            (click)="printTest()"
-            class="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors inline-flex items-center gap-1.5"
-          >
-            <app-mi-icon name="receipt" [size]="16" />
-            Imprimir prueba
-          </button>
-          <p class="text-xs text-gray-400">
-            En el diálogo del navegador: escala <span class="font-medium">100 %</span> (no
-            «ajustar al área»), márgenes <span class="font-medium">ninguno</span> y sin
-            encabezados ni pies. Si sale claro, sube la densidad en el driver.
+        <div class="min-w-0 flex flex-col gap-3.5">
+          <span class="text-sm font-medium" style="color: var(--aj-color-text-secondary)">Ancho del rollo</span>
+          <div class="flex gap-1 self-start p-1 rounded-lg" style="background-color: var(--aj-color-surface-soft)">
+            @for (w of paperWidths; track w) {
+              <button
+                (click)="printer.setPaperWidth(w)"
+                class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                [style]="
+                  printer.paperWidthMm() === w
+                    ? 'background-color: var(--aj-color-surface); color: var(--aj-color-text-primary); box-shadow: 0 1px 2px rgba(15,23,42,.08)'
+                    : 'background: none; color: var(--aj-color-text-muted)'
+                "
+              >
+                {{ w }} mm
+              </button>
+            }
+          </div>
+          <p class="aj-muted text-sm" style="line-height:1.5">
+            Tiene que coincidir con el papel configurado en el driver. Si no coincide, el
+            navegador reduce la factura para encajarla y el texto sale gris.
           </p>
+          <div>
+            <button (click)="printTest()" class="aj-btn-secondary inline-flex items-center gap-2 text-sm">
+              <app-mi-icon name="printer" [size]="16" />
+              Imprimir prueba
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Conversión de unidades en compras (spec 134) -->
-      @if (isAdmin()) {
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-          <div class="flex items-center gap-3 mb-4">
-            <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-              <app-mi-icon name="units" [size]="20" class="text-indigo-600" />
-            </span>
-            <div>
-              <h2 class="text-base font-semibold text-gray-900">Conversión de unidades en compras</h2>
-              <p class="text-xs text-gray-400">
-                Permite registrar una compra en una unidad distinta a la base del insumo (p.
-                ej. comprar en KG un insumo cuya base es gramos)
-              </p>
-            </div>
-          </div>
-
-          <label class="flex items-center gap-3 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              [checked]="tenantInfo.info()?.unit_conversion_enabled ?? true"
-              [disabled]="tenantInfo.isSubmitting()"
-              (change)="onUnitConversionToggle($any($event.target).checked)"
-              class="w-4 h-4"
-            />
-            Permitir elegir otra unidad al registrar una compra
-          </label>
+      <!-- Negocio -->
+      <div class="aj-row">
+        <div>
+          <div class="aj-row-title">Negocio</div>
+          <div class="aj-row-desc">El nombre y el dominio los gestiona el administrador de la plataforma.</div>
         </div>
-      }
-
-      <div class="grid gap-6 md:grid-cols-2">
-        <!-- Negocio -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-          <div class="flex items-center gap-3 mb-4">
-            <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-              <app-mi-icon name="storefront" [size]="20" class="text-indigo-600" />
-            </span>
-            <h2 class="text-base font-semibold text-gray-900">Negocio</h2>
+        <div class="min-w-0">
+          <div class="aj-kv">
+            <span class="aj-muted">Nombre</span>
+            <span style="color: var(--aj-color-text-primary)"><b>{{ tenantInfo.businessName() }}</b></span>
           </div>
-          <dl class="space-y-3 text-sm">
-            <div class="flex justify-between gap-3">
-              <dt class="text-gray-500">Nombre</dt>
-              <dd class="font-medium text-gray-900 text-right">{{ tenantInfo.businessName() }}</dd>
-            </div>
-            <div class="flex justify-between gap-3">
-              <dt class="text-gray-500">Dominio</dt>
-              <dd class="font-mono text-gray-700 text-right break-all">{{ host() }}</dd>
-            </div>
-          </dl>
-        </div>
-
-        <!-- Cuenta -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-          <div class="flex items-center gap-3 mb-4">
-            <span class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-              <app-mi-icon name="person" [size]="20" class="text-indigo-600" />
-            </span>
-            <h2 class="text-base font-semibold text-gray-900">Tu cuenta</h2>
+          <div class="aj-kv">
+            <span class="aj-muted">Dominio</span>
+            <span><code style="font-family: ui-monospace, monospace">{{ host() }}</code></span>
           </div>
-          <dl class="space-y-3 text-sm">
-            <div class="flex justify-between gap-3">
-              <dt class="text-gray-500">Correo</dt>
-              <dd class="font-medium text-gray-900 text-right break-all">{{ email() || '—' }}</dd>
-            </div>
-            <div class="flex justify-between gap-3">
-              <dt class="text-gray-500">Rol</dt>
-              <dd class="text-right">
-                <span class="text-xs font-medium px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
-                  {{ roleLabel() }}
-                </span>
-              </dd>
-            </div>
-          </dl>
         </div>
       </div>
 
-      <p class="text-xs text-gray-400">
-        El nombre y el dominio del negocio los gestiona el administrador de la plataforma.
-      </p>
+      <!-- Tu cuenta -->
+      <div class="aj-row">
+        <div>
+          <div class="aj-row-title">Tu cuenta</div>
+          <div class="aj-row-desc">Datos con los que inicias sesión.</div>
+        </div>
+        <div class="min-w-0">
+          <div class="aj-kv">
+            <span class="aj-muted">Correo</span>
+            <span style="color: var(--aj-color-text-primary)">{{ email() || '—' }}</span>
+          </div>
+          <div class="aj-kv">
+            <span class="aj-muted">Rol</span>
+            <span class="aj-badge aj-badge-primary">{{ roleLabel() }}</span>
+          </div>
+        </div>
+      </div>
     </div>
   `,
 })
@@ -274,7 +215,6 @@ export class TenantInfoComponent implements OnInit {
     const role = this.auth.currentUser()?.role;
     return role ? ROLE_LABEL[role] : '—';
   });
-  readonly isAdmin = computed(() => this.auth.currentUser()?.role === UserRole.ADMIN);
 
   async ngOnInit(): Promise<void> {
     await this.tenantInfo.load();
@@ -326,12 +266,6 @@ export class TenantInfoComponent implements OnInit {
     const ok = await this.tenantInfo.update({ receipt_message: this.message().trim() });
     if (ok) this.toast.success('Mensaje del recibo guardado');
     else this.toast.error(this.tenantInfo.error() ?? 'No se pudo guardar el mensaje');
-  }
-
-  async onUnitConversionToggle(checked: boolean): Promise<void> {
-    const ok = await this.tenantInfo.update({ unit_conversion_enabled: checked });
-    if (ok) this.toast.success('Preferencia de conversión de unidades guardada');
-    else this.toast.error(this.tenantInfo.error() ?? 'No se pudo guardar la preferencia');
   }
 
   async onLogoSelected(event: Event): Promise<void> {

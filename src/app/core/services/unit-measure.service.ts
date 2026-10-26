@@ -51,14 +51,16 @@ export class UnitMeasureService {
     );
   }
 
-  async createUnitMeasure(form: UnitMeasureForm): Promise<void> {
+  /** Retirado del flujo normal (spec 137): crear una unidad nueva usa
+   *  `UnitMeasureGroupService.addUnit`/`createGroup`. Se conserva para compatibilidad. */
+  async createUnitMeasure(groupId: string, form: UnitMeasureForm): Promise<void> {
     this.isSubmitting.set(true);
     this.error.set(null);
 
     const payload: UnitMeasureCreatePayload = {
       name: form.name,
       abbreviation: form.abbreviation,
-      dimension: form.dimension,
+      group_id: groupId,
       factor_to_base: form.factor_to_base,
     };
 
@@ -72,6 +74,8 @@ export class UnitMeasureService {
     }
   }
 
+  /** `dimension` ya no viaja en el body (spec 137): se edita renombrando el grupo
+   *  (`UnitMeasureGroupService.renameGroup`), nunca unidad por unidad. */
   async updateUnitMeasure(id: string, form: UnitMeasureForm): Promise<void> {
     this.isSubmitting.set(true);
     this.error.set(null);
@@ -79,7 +83,6 @@ export class UnitMeasureService {
     const payload: UnitMeasureUpdatePayload = {
       name: form.name,
       abbreviation: form.abbreviation,
-      dimension: form.dimension,
       factor_to_base: form.factor_to_base,
     };
 

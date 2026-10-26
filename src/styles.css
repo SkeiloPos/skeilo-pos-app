@@ -753,6 +753,387 @@ html, body {
   --terminal-focus-ring-input: 0 0 0 3px rgba(139, 92, 246, 0.28);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Ajustes — tokens visuales del rediseño (spec 137)
+   ══════════════════════════════════════════════════════════════════════════
+
+   Mismo patrón que `.terminal-theme` (spec 131) y `.auth-theme`/`.panel-theme`:
+   valores tomados literalmente de `design/_ds/.../tokens/{colors,theme-light,
+   spacing,typography}.css`, acotados a `.ajustes-theme` (host de
+   `app-settings-page`), nunca en `:root`, para no repintar otra pantalla del
+   panel (Principio V). El rediseño es puramente visual (FR-001 a FR-004): los
+   componentes de las 4 pestañas siguen usando los mismos bindings/servicios,
+   solo cambian de clases Tailwind a estas clases + variables. */
+.ajustes-theme {
+  --aj-color-primary: #7c3aed;
+  --aj-color-primary-active: #6d28d9;
+  --aj-color-primary-soft: rgba(124, 58, 237, 0.1);
+  --aj-color-primary-line: rgba(124, 58, 237, 0.35);
+  --aj-color-primary-text: #6d28d9;
+  --aj-color-secondary-text: #334155;
+  --aj-color-canvas: #f4f6f9;
+  --aj-color-surface: #ffffff;
+  --aj-color-surface-soft: #edf1f5;
+  --aj-color-surface-elevated: #f1f5f9;
+  --aj-color-border: #e5e9ef;
+  --aj-color-border-strong: #cbd5e1;
+  --aj-color-text-primary: #090d16;
+  --aj-color-text-secondary: #334155;
+  --aj-color-text-muted: #64748b;
+  --aj-color-text-subtle: #94a3b8;
+  --aj-color-on-primary: #ffffff;
+  --aj-color-success: #6d28d9;
+  --aj-color-success-soft: rgba(124, 58, 237, 0.1);
+  --aj-color-warning: #b45309;
+  --aj-color-warning-soft: #fef3e2;
+  --aj-color-error: #e11d48;
+  --aj-color-error-active: #be123c;
+  --aj-color-error-soft: #fdecef;
+
+  --aj-radius-sm: 6px;
+  --aj-radius-md: 8px;
+  --aj-radius-lg: 12px;
+  --aj-radius-xl: 16px;
+
+  --aj-font-display: 'Sora', ui-sans-serif, system-ui, sans-serif;
+  --aj-font-ui: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+
+  --aj-shadow-dropdown: 0 8px 20px rgba(15, 23, 42, 0.1);
+
+  font-family: var(--aj-font-ui);
+  color: var(--aj-color-text-primary);
+}
+
+.panel-theme[data-theme='dark'] .ajustes-theme {
+  --aj-color-primary: #7c3aed;
+  --aj-color-primary-active: #6d28d9;
+  --aj-color-primary-soft: rgba(124, 58, 237, 0.16);
+  --aj-color-primary-line: rgba(139, 92, 246, 0.45);
+  --aj-color-primary-text: #a78bfa;
+  --aj-color-secondary-text: #cbd5e1;
+  --aj-color-canvas: #090d16;
+  --aj-color-surface: #1e293b;
+  --aj-color-surface-soft: #111827;
+  --aj-color-surface-elevated: #263449;
+  --aj-color-border: #334155;
+  --aj-color-border-strong: #475569;
+  --aj-color-text-primary: #f8fafc;
+  --aj-color-text-secondary: #cbd5e1;
+  --aj-color-text-muted: #94a3b8;
+  --aj-color-text-subtle: #64748b;
+  --aj-color-on-primary: #ffffff;
+  --aj-color-success: #00ff87;
+  --aj-color-success-soft: rgba(0, 255, 135, 0.1);
+  --aj-color-warning: #f59e0b;
+  --aj-color-warning-soft: rgba(245, 158, 11, 0.12);
+  --aj-color-error: #f43f5e;
+  --aj-color-error-active: #e11d48;
+  --aj-color-error-soft: rgba(244, 63, 94, 0.12);
+  --aj-shadow-dropdown: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+/* Utilidades compartidas por las 4 pestañas de Ajustes rediseñadas (settings-page,
+   tenant-info, payment-methods-page, option-groups-page, unit-measures-page) --
+   tomadas literalmente de `design/ajustes.html` (mockup `SkeiloPOSDesignSystem_071995`,
+   componentes Badge/Button/Switch/Card) para que el rediseño quede igual al mockup, no
+   solo "inspirado" en él -- evita repetir el mismo bloque de declaraciones en cada
+   componente. */
+
+/* Panel contenedor de toda la página de Ajustes (mockup: data-r="pnl"). */
+.ajustes-theme .aj-page {
+  width: 100%;
+  background-color: var(--aj-color-surface);
+  border: 1px solid var(--aj-color-border);
+  border-radius: 16px;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.ajustes-theme .aj-page-title {
+  font-family: var(--aj-font-display);
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--aj-color-text-primary);
+}
+
+/* Pestañas tipo "pill" (mockup: role="tablist", botones con fondo cuando activa). */
+.ajustes-theme .aj-tablist {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--aj-color-border);
+  padding-bottom: 12px;
+}
+.ajustes-theme .aj-tab {
+  height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background-color: transparent;
+  color: var(--aj-color-text-secondary);
+  transition: background-color 0.15s ease;
+}
+.ajustes-theme .aj-tab:hover {
+  background-color: var(--aj-color-surface-elevated);
+}
+.ajustes-theme .aj-tab-active,
+.ajustes-theme .aj-tab-active:hover {
+  background-color: var(--aj-color-primary-soft);
+  color: var(--aj-color-primary-text);
+}
+
+/* Fila de dos columnas "etiqueta + control" (mockup: data-r="s2m"), usada en
+   Información básica. La última fila de un bloque no lleva divisor. */
+.ajustes-theme .aj-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(0, 1.8fr);
+  gap: 32px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--aj-color-border);
+}
+.ajustes-theme .aj-row:last-child {
+  border-bottom: 0;
+}
+.ajustes-theme .aj-row-title {
+  font-family: var(--aj-font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--aj-color-text-primary);
+}
+.ajustes-theme .aj-row-desc {
+  color: var(--aj-color-text-muted);
+  font-size: 13px;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+/* Fila clave/valor dentro de una `.aj-row` (Negocio, Tu cuenta). */
+.ajustes-theme .aj-kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--aj-color-border);
+}
+.ajustes-theme .aj-kv:last-child {
+  border-bottom: 0;
+}
+
+.ajustes-theme .aj-title {
+  font-family: var(--aj-font-display);
+  color: var(--aj-color-text-primary);
+}
+.ajustes-theme .aj-muted {
+  color: var(--aj-color-text-muted);
+}
+
+/* Tarjeta con borde simple, radio 12 (listas, grupos de unidades, grupos de opciones). */
+.ajustes-theme .aj-card {
+  background-color: var(--aj-color-surface);
+  border: 1px solid var(--aj-color-border);
+  border-radius: 12px;
+}
+
+.ajustes-theme .aj-btn-primary {
+  height: 44px;
+  padding: 0 20px;
+  background-color: var(--aj-color-primary);
+  color: var(--aj-color-on-primary);
+  border: 0;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+.ajustes-theme .aj-btn-primary:hover {
+  background-color: var(--aj-color-primary-active);
+}
+.ajustes-theme .aj-btn-primary:active {
+  transform: scale(0.98);
+}
+.ajustes-theme .aj-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ajustes-theme .aj-btn-secondary {
+  height: 44px;
+  padding: 0 16px;
+  background-color: var(--aj-color-surface);
+  color: var(--aj-color-text-primary);
+  border: 1px solid var(--aj-color-border-strong);
+  border-radius: 8px;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+.ajustes-theme .aj-btn-secondary:hover {
+  background-color: var(--aj-color-surface-elevated);
+}
+.ajustes-theme .aj-btn-danger {
+  height: 44px;
+  padding: 0 18px;
+  background-color: transparent;
+  color: var(--aj-color-error);
+  border: 1px solid var(--aj-color-error);
+  border-radius: 8px;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+.ajustes-theme .aj-btn-danger:hover {
+  background-color: var(--aj-color-error-soft);
+}
+.ajustes-theme .aj-icon-btn {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--aj-color-text-secondary);
+  display: inline-grid;
+  place-items: center;
+  transition: background-color 0.15s ease;
+}
+.ajustes-theme .aj-icon-btn:hover {
+  background-color: var(--aj-color-surface-elevated);
+}
+.ajustes-theme .aj-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.ajustes-theme .aj-icon-btn-danger {
+  color: var(--aj-color-error);
+}
+.ajustes-theme .aj-icon-btn-danger:hover {
+  background-color: var(--aj-color-error-soft);
+}
+
+.ajustes-theme .aj-input {
+  height: 44px;
+  padding: 0 12px;
+  background-color: var(--aj-color-surface);
+  border: 1px solid var(--aj-color-border-strong);
+  border-radius: 8px;
+  color: var(--aj-color-text-primary);
+}
+.ajustes-theme textarea.aj-input {
+  height: auto;
+  padding: 12px;
+}
+.ajustes-theme .aj-input:focus {
+  outline: none;
+  border-color: var(--aj-color-primary);
+  box-shadow: 0 0 0 3px var(--aj-color-primary-soft);
+}
+
+/* Badge (mockup: components/core/Badge.jsx) -- tonos: neutral/primary/violet
+   comparten los mismos colores (acento único violeta, theme-light.css); success
+   usa los mismos tokens que primary porque --color-success == --color-primary. */
+.ajustes-theme .aj-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ajustes-theme .aj-badge-neutral {
+  background-color: rgba(148, 163, 184, 0.12);
+  color: var(--aj-color-text-secondary);
+}
+.ajustes-theme .aj-badge-primary {
+  background-color: var(--aj-color-primary-soft);
+  color: var(--aj-color-primary-text);
+}
+.ajustes-theme .aj-badge-success {
+  background-color: var(--aj-color-success-soft);
+  color: var(--aj-color-success);
+}
+.ajustes-theme .aj-badge-warning {
+  background-color: var(--aj-color-warning-soft);
+  color: var(--aj-color-warning);
+}
+.ajustes-theme .aj-badge-error {
+  background-color: var(--aj-color-error-soft);
+  color: var(--aj-color-error);
+}
+
+/* Switch tipo "pill" (mockup: role="switch", 56x32, perilla 24x24). */
+.ajustes-theme .aj-switch {
+  flex: none;
+  width: 56px;
+  height: 32px;
+  border: 0;
+  border-radius: 9999px;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 180ms ease;
+  background-color: var(--aj-color-border-strong);
+}
+.ajustes-theme .aj-switch[aria-checked='true'] {
+  background-color: var(--aj-color-primary);
+}
+.ajustes-theme .aj-switch-knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: #fff;
+  transition: left 180ms ease;
+}
+.ajustes-theme .aj-switch[aria-checked='true'] .aj-switch-knob {
+  left: 28px;
+}
+/* Switch chico tipo "toggle de método de pago" (pastilla de texto, no perilla). */
+.ajustes-theme .aj-pill-toggle {
+  height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 84px;
+  cursor: pointer;
+}
+
+/* Fila de lista con borde superior entre elementos (mockup: p.bt dinámico) --
+   usar junto con `.aj-card` como contenedor; el primer elemento no lleva borde. */
+.ajustes-theme .aj-list-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  flex-wrap: wrap;
+}
+.ajustes-theme .aj-list-row + .aj-list-row {
+  border-top: 1px solid var(--aj-color-border);
+}
+
+/* Encabezado de tabla (mockup: sc-raw-th). */
+.ajustes-theme .aj-th {
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--aj-color-text-muted);
+  background-color: var(--aj-color-surface-soft);
+  border-bottom: 1px solid var(--aj-color-border);
+  white-space: nowrap;
+}
+.ajustes-theme .aj-td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--aj-color-border);
+}
+
 /* Línea de carrito con promoción vigente (manual-order-page.component.ts, Historia
    "Nueva orden" del terminal POS): `bg-amber-50/40` + `border-amber-100` están pensados
    para la tarjeta blanca del tema claro (R16: `amber-*` queda fuera del repintado
