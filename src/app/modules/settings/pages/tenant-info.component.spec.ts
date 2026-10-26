@@ -44,12 +44,15 @@ describe('TenantInfoComponent — íconos estandarizados (spec 082)', () => {
   });
 
   it('cada sección renderiza su ícono equivalente con el nuevo componente', () => {
+    // spec 137: el rediseño de Ajustes (design/ajustes.html) quita los íconos
+    // decorativos de encabezado por sección (palette/receipt/person) -- la
+    // pestaña pasa a filas etiqueta+control sin esos badges. Los íconos que
+    // sobreviven (placeholder del logo, subir imagen, imprimir prueba) siguen
+    // siendo `app-mi-icon`, nunca emoji (primer test de este archivo).
     const el = crear();
     const ligaduras = Array.from(el.querySelectorAll('app-mi-icon .material-icons-outlined')).map(
       (n) => n.textContent?.trim(),
     );
-    expect(ligaduras).toEqual(
-      expect.arrayContaining(['palette', 'storefront', 'receipt', 'print', 'person']),
-    );
+    expect(ligaduras).toEqual(expect.arrayContaining(['storefront', 'upload', 'print']));
   });
 });

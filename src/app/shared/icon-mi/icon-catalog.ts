@@ -113,6 +113,20 @@ export const ICON_CATALOG: Record<string, string> = {
   // (product-form.component.ts), rediseño con el lenguaje visual del mockup.
   'drag-handle': 'drag_indicator',
 
+  // spec 137: rediseño de Ajustes (design/ajustes.html) -- íconos nuevos que ese
+  // mockup usa y no existían todavía en el catálogo.
+  'shield-check': 'verified',
+  smartphone: 'smartphone',
+  'arrow-left-right': 'swap_horiz',
+  'trash-2': 'delete',
+  pencil: 'edit',
+  plus: 'add',
+  store: 'storefront',
+  printer: 'print',
+  'triangle-alert': 'warning',
+  'circle-check': 'check_circle',
+  banknote: 'payments',
+
   // Ícono de reserva para un `name` desconocido (contracts/icon-component-contract.md)
   help_outline: 'help_outline',
 };
