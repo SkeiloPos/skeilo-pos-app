@@ -12,6 +12,8 @@ export interface Tenant {
   plan_name?: string | null;
   ciclo_facturacion: BillingCycle;
   plan_vence_en?: string | null;
+  /** Zona horaria IANA del tenant (spec 138, FR-008): el vencimiento de cada fila se muestra en SU zona. */
+  timezone: string;
   host: string;
   created_at: string;
   updated_at?: string | null;
@@ -32,6 +34,9 @@ export interface TenantCreateWithUser {
   email: string;
   plan_id: string;
   ciclo_facturacion: BillingCycle;
+  /** Zona horaria IANA del negocio (spec 138, FR-010). La pantalla siempre la envía (obligatoria, sin valor
+   *  inicial); es opcional en el tipo porque la API lo es (sin ella el tenant nace en `America/Bogota`). */
+  timezone?: string;
 }
 
 /** Request body for `PATCH /api/v1/super-admin/tenants/{id}` — asigna,

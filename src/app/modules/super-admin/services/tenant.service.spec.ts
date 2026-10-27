@@ -18,6 +18,7 @@ function tenant(partial: Partial<Tenant>): Tenant {
     host: 'tenant.pos-sistem.com',
     plan_id: 'plan-basic',
     ciclo_facturacion: 'mensual',
+    timezone: 'America/Bogota',
     created_at: '2026-01-01',
     ...partial,
   };

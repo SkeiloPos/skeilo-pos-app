@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { Tenant } from '../interfaces/tenant.interface';
 import { TenantService } from '../services/tenant.service';
@@ -8,7 +8,7 @@ import { TenantPlanFormComponent } from '../components/tenant-plan-form.componen
 @Component({
   selector: 'app-tenants-page',
   standalone: true,
-  imports: [TenantFormComponent, TenantPlanFormComponent, DatePipe],
+  imports: [TenantFormComponent, TenantPlanFormComponent, TenantDatePipe],
   template: `
     <div class="space-y-6">
       <!-- Header -->
@@ -109,7 +109,7 @@ import { TenantPlanFormComponent } from '../components/tenant-plan-form.componen
                     </td>
                     <td class="px-5 py-4 hidden md:table-cell">
                       <span class="text-sm text-gray-500">
-                        {{ t.plan_vence_en ? (t.plan_vence_en | date: 'mediumDate') : 'Sin vencimiento' }}
+                        {{ t.plan_vence_en ? (t.plan_vence_en | tenantDate: 'mediumDate' : t.timezone) : 'Sin vencimiento' }}
                       </span>
                     </td>
                     <td class="px-5 py-4 text-right">
