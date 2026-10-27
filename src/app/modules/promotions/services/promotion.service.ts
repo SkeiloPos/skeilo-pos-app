@@ -34,11 +34,6 @@ interface PromotionErrorBody {
   message?: string;
 }
 
-/** Zona horaria de respaldo mientras `TenantInfoService.info()` aún no cargó
- *  (spec 127: mismo patrón ya usado en `reports.service.ts`/
- *  `tenant-date.pipe.ts`). */
-const DEFAULT_TIMEZONE = 'America/Bogota';
-
 @Injectable({ providedIn: 'root' })
 export class PromotionService {
   private readonly http = inject(HttpClient);
@@ -278,7 +273,7 @@ export class PromotionService {
       // en Bogotá) — mismo defecto y misma corrección que
       // `continueToConfigure()` en `promotions-page.component.ts`.
       starts_at:
-        form.starts_at ?? businessToday(this.tenantInfo.info()?.timezone ?? DEFAULT_TIMEZONE),
+        form.starts_at ?? businessToday(this.tenantInfo.timezone()),
       rules: this.toRules(form),
     };
   }

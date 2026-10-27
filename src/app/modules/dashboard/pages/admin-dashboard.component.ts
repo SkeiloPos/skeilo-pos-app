@@ -17,6 +17,8 @@ import { LineChartComponent } from '../../../shared/charts/line-chart.component'
 import { PieChartComponent } from '../../../shared/charts/pie-chart.component';
 import { seriesColor } from '../../../shared/charts/chart-theme';
 import { AuthService } from '../../../core/services/auth.service';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
+import { formatInZone, zonedParts } from '../../../shared/date-format.util';
 import { DailySalesPoint, PaymentMethodsReport } from '../interfaces/shift-reports.interface';
 import { PaymentMethodsReportParams } from '../services/shift-reports.service';
 import { PaymentMethodsChartComponent, PaymentMethodSeries } from '../components/payment-methods-chart.component';
@@ -320,6 +322,7 @@ export class AdminDashboardComponent implements OnInit {
   private readonly api = inject(DiningSessionService);
   private readonly shiftReportsService = inject(ShiftReportsService);
   private readonly tenantDate = inject(TenantDatePipe);
+  private readonly tenantInfo = inject(TenantInfoService);
   readonly inventoryService = inject(InventoryService);
 
   /** Solo alimenta `activeOrdersCount` (el 4º KPI) -- la lista de "Órdenes
@@ -333,9 +336,9 @@ export class AdminDashboardComponent implements OnInit {
 
   // ── Saludo (spec 122, FR-001/FR-010) ────────────────────────────────────
 
-  /** "Buenos días"/"Buenas tardes"/"Buenas noches" según la hora local. */
+  /** "Buenos días"/"Buenas tardes"/"Buenas noches" según la hora del NEGOCIO (spec 138, FR-008), no la del navegador. */
   readonly greeting = computed(() => {
-    const hour = new Date().getHours();
+    const hour = zonedParts(new Date(), this.tenantInfo.timezone())?.hour ?? 0;
     if (hour < 12) return 'Buenos días';
     if (hour < 19) return 'Buenas tardes';
     return 'Buenas noches';
@@ -532,15 +535,17 @@ export class AdminDashboardComponent implements OnInit {
     this.pmDisabledMethods.set(next);
   }
 
+  /** Etiqueta del eje X en la zona del NEGOCIO, no en la del navegador (spec 138, FR-008). */
   private formatBucketLabel(iso: string, unit: 'hour' | 'day' | 'week'): string {
-    const d = new Date(iso);
+    const timezone = this.tenantInfo.timezone();
     if (unit === 'hour') {
-      return d.toLocaleTimeString('es-CO', { hour: 'numeric', hour12: true }).replace(/\s/g, ' ');
+      return formatInZone(iso, timezone, { hour: 'numeric', hour12: true }).replace(/\s/g, ' ');
     }
     if (unit === 'week') {
-      return `Sem ${d.getDate()}/${d.getMonth() + 1}`;
+      const parts = zonedParts(iso, timezone);
+      return parts ? `Sem ${parts.day}/${parts.month}` : '';
     }
-    return d.toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '');
+    return formatInZone(iso, timezone, { weekday: 'short' }).replace('.', '');
   }
 
   readonly quickActions: QuickAction[] = [

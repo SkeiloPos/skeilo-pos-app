@@ -1,4 +1,5 @@
 import { Promotion } from '../interfaces/promotion.interface';
+import { zonedParts } from '../../../shared/date-format.util';
 import { MenuProduct, MenuVariant, MenuVariantPromotion } from '../../products/interfaces/product.interface';
 
 /**
@@ -68,29 +69,36 @@ export function inTimeWindow(current: string, start: string | null, end: string 
   return current >= start || current <= end;
 }
 
-/** `YYYY-MM-DD` de un `Date` en hora local. */
-function dateKey(d: Date): string {
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
+/**
+ * Reloj de pared del negocio en `now`: `YYYY-MM-DD`, `HH:mm`, día de la semana (0 = lunes) y la marca
+ * `YYYY-MM-DDTHH:mm:ss` comparable con `starts_at`.
+ *
+ * `starts_at`/`ends_at` de una promoción son **hora de pared del tenant sin offset** (spec 138, FR-002): se comparan
+ * contra la hora de pared del negocio en `now`, nunca pasan por `new Date()` (que los leería en la zona del navegador).
+ */
+function wallClock(now: Date, timezone: string) {
+  const p = zonedParts(now, timezone);
+  if (!p) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return { ymd: p.ymd, hhmm: p.hhmm, weekday: p.weekday, stamp: `${p.ymd}T${p.hhmm}:${pad(p.second)}` };
 }
 
 /**
  * Réplica de `_valid_now()` del backend: decide si una promoción está vigente en
- * este instante (estado, rango de fechas, día de semana, franja horaria). El
- * cálculo real del descuento lo hace el backend.
+ * este instante (estado, rango de fechas, día de semana, franja horaria), todo en la
+ * zona horaria del NEGOCIO (spec 138, FR-009). El cálculo real del descuento lo hace el backend.
  */
-export function isPromoActiveNow(promo: Promotion, now: Date): boolean {
+export function isPromoActiveNow(promo: Promotion, now: Date, timezone: string): boolean {
   if (promo.status !== 'active') return false;
-  if (promo.starts_at && now < new Date(promo.starts_at)) return false;
-  if (promo.ends_at && dateKey(now) > promo.ends_at.slice(0, 10)) return false;
+  const w = wallClock(now, timezone);
+  if (!w) return false;
+  if (promo.starts_at && w.stamp < promo.starts_at.slice(0, 19)) return false;
+  if (promo.ends_at && w.ymd > promo.ends_at.slice(0, 10)) return false;
   if (promo.days_of_week) {
     const allowed = promo.days_of_week.split(',').map((d) => d.trim());
-    const weekday = (now.getDay() + 6) % 7; // JS 0=domingo..6=sábado → 0=lunes..6=domingo
-    if (!allowed.includes(String(weekday))) return false;
+    if (!allowed.includes(String(w.weekday))) return false; // 0 = lunes … 6 = domingo, igual que el backend
   }
-  const hhmm = now.toTimeString().slice(0, 5);
-  return inTimeWindow(hhmm, promo.start_time?.slice(0, 5) ?? null, promo.end_time?.slice(0, 5) ?? null);
+  return inTimeWindow(w.hhmm, promo.start_time?.slice(0, 5) ?? null, promo.end_time?.slice(0, 5) ?? null);
 }
 
 /**
@@ -185,11 +193,12 @@ export function minPromoPriceForProduct(variants: MenuVariant[]): MinPromoPrice 
   };
 }
 
-export function getPromoDisplay(promo: Promotion, now: Date): PromoDisplay {
+export function getPromoDisplay(promo: Promotion, now: Date, timezone: string): PromoDisplay {
   if (promo.status === 'draft') return 'draft';
   if (promo.status === 'paused') return 'paused';
   if (promo.status === 'finished') return 'finished';
-  if (promo.starts_at && now < new Date(promo.starts_at)) return 'scheduled';
-  if (promo.ends_at && dateKey(now) > promo.ends_at.slice(0, 10)) return 'expired';
-  return isPromoActiveNow(promo, now) ? 'live' : 'out_of_window';
+  const w = wallClock(now, timezone);
+  if (w && promo.starts_at && w.stamp < promo.starts_at.slice(0, 19)) return 'scheduled';
+  if (w && promo.ends_at && w.ymd > promo.ends_at.slice(0, 10)) return 'expired';
+  return isPromoActiveNow(promo, now, timezone) ? 'live' : 'out_of_window';
 }

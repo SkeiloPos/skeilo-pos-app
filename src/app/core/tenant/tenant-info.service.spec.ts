@@ -240,4 +240,22 @@ describe('TenantInfoService', () => {
       expect(await done).toBe(true);
     });
   });
+  describe('timezone (spec 138, FR-008)', () => {
+    it('con la información cargada devuelve la zona del tenant', () => {
+      service.hydrate(tenantInfo({ timezone: 'America/Mexico_City' }));
+      expect(service.timezone()).toBe('America/Mexico_City');
+    });
+
+    it('sin información cargada devuelve el respaldo America/Bogota', () => {
+      expect(service.info()).toBeNull();
+      expect(service.timezone()).toBe('America/Bogota');
+    });
+
+    it('sigue a info(): al cambiar el tenant cambia la zona', () => {
+      service.hydrate(tenantInfo({ timezone: 'Asia/Tokyo' }));
+      expect(service.timezone()).toBe('Asia/Tokyo');
+      service.hydrate(null);
+      expect(service.timezone()).toBe('America/Bogota');
+    });
+  });
 });

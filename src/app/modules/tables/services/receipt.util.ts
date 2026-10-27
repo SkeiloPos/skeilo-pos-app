@@ -9,6 +9,7 @@
  */
 import { Sale } from '../../sales/interfaces/sales.interface';
 import { formatMoney } from '../../../shared/money';
+import { zonedParts } from '../../../shared/date-format.util';
 import { SessionBill } from '../interfaces/dining.interface';
 
 // El formato de moneda se movió a `shared/` (lo necesita el menú QR, que no debe
@@ -164,17 +165,15 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
+/** Fecha y hora del ticket en la zona del NEGOCIO, no en la del navegador (spec 138, FR-008). */
+function formatDateTime(iso: string, timezone: string): string {
+  const parts = zonedParts(iso, timezone);
+  if (!parts) return '';
   // Se compone a mano en vez de con `toLocaleString` para no arrastrar la coma
   // que mete entre fecha y hora: es la fila más larga del ticket y a 48 mm de
   // papel dos caracteres deciden si cabe.
   const p = (n: number): string => String(n).padStart(2, '0');
-  return (
-    `${p(date.getDate())}/${p(date.getMonth() + 1)}/${date.getFullYear()} ` +
-    `${p(date.getHours())}:${p(date.getMinutes())}`
-  );
+  return `${p(parts.day)}/${p(parts.month)}/${parts.year} ${parts.hhmm}`;
 }
 
 /** Fila etiqueta/importe. Es el ladrillo de todos los bloques de totales. */
@@ -207,7 +206,7 @@ function meta(label: string, value: string | null): string {
   return value ? row(label, value, 'meta') : '';
 }
 
-function receiptBody(data: ReceiptData): string {
+function receiptBody(data: ReceiptData, timezone: string): string {
   const lines = data.lines
     .map(
       (l) => `
@@ -235,7 +234,7 @@ function receiptBody(data: ReceiptData): string {
       </header>
 
       <section class="block">
-        ${meta('Fecha', formatDateTime(data.soldAt))}
+        ${meta('Fecha', formatDateTime(data.soldAt, timezone))}
         ${meta('Cliente', data.customerName)}
         ${meta('Atendió', data.cashier)}
         ${documentRow(data)}
@@ -335,6 +334,9 @@ const DEFAULT_PAPER_WIDTH_MM = 48;
 export interface ReceiptOptions {
   /** Ancho del rollo. Debe coincidir con el papel configurado en el driver. */
   paperWidthMm?: number;
+  /** Zona horaria IANA del negocio (`TenantInfoService.timezone()`). Obligatoria a propósito: el
+   *  compilador obliga a cada llamador a decir en qué zona se imprime la fecha del ticket (spec 138). */
+  timezone: string;
 }
 
 /** Marca dónde cortar el rollo entre un ticket y el siguiente. */
@@ -343,13 +345,13 @@ const CUT = '<div class="cut">✂ - - - - - - - - - - - - -</div>';
 /** Documento completo con un ticket por venta. */
 export function buildReceiptHtml(
   receipts: ReceiptData[],
-  options: ReceiptOptions = {},
+  options: ReceiptOptions,
 ): string {
   const width = options.paperWidthMm ?? DEFAULT_PAPER_WIDTH_MM;
   return `<!doctype html>
 <html lang="es">
 <head><meta charset="utf-8" /><title>Factura</title><style>${styles(width)}</style></head>
-<body>${receipts.map(receiptBody).join(CUT)}</body>
+<body>${receipts.map((receipt) => receiptBody(receipt, options.timezone)).join(CUT)}</body>
 </html>`;
 }
 

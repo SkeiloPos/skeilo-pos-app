@@ -3,6 +3,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { createCachedLoader } from '../../shared/cached-loader.util';
+import { FALLBACK_TIMEZONE } from '../../shared/date-format.util';
 import { TenantContextService } from './tenant-context.service';
 
 /** `TenantInfoResponse` — datos del negocio del tenant actual. */
@@ -69,6 +70,10 @@ export class TenantInfoService {
   });
 
   readonly logoUrl = computed(() => this.info()?.logo_url ?? null);
+
+  /** Zona horaria IANA del negocio; `America/Bogota` mientras `info()` no cargó (spec 138, FR-008).
+   *  Es la que usan todas las pantallas para mostrar fechas y calcular «hoy». */
+  readonly timezone = computed(() => this.info()?.timezone ?? FALLBACK_TIMEZONE);
 
   /** Mensaje de cierre de la factura; nunca vacío. */
   readonly receiptMessage = computed(

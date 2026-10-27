@@ -4,6 +4,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { PendingInvitationsListComponent } from './pending-invitations-list.component';
 import { InvitationsService } from '../services/invitations.service';
 import { PendingInvitation } from '../interfaces/user-profile.interface';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 
 describe('PendingInvitationsListComponent — nombre (spec 091, A-100)', () => {
   function render(items: Partial<PendingInvitation>[]) {
@@ -53,3 +54,42 @@ describe('PendingInvitationsListComponent — nombre (spec 091, A-100)', () => {
     expect((title.parentElement as HTMLElement).className).toContain('min-w-0');
   });
 });
+
+// spec 138 (A-148, SC-005): «Enviada el…» con offset `+00:00` se muestra en la zona del negocio. Antes el valor llegaba sin
+// offset y el navegador lo leía como hora local (5 h de error en Bogotá).
+describe('PendingInvitationsListComponent — «Enviada el» en la zona del negocio (spec 138)', () => {
+  function enviadaEl(timezone: string, sentAt: string): string {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [PendingInvitationsListComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    TestBed.inject(TenantInfoService).hydrate({
+      id: 1, name: 'Heladería', host: 'h.skeilopos.com', logo_url: null, receipt_message: null, timezone,
+    });
+    const service = TestBed.inject(InvitationsService);
+    service.pendingInvitations.set([
+      { id: 'i1', email: 'p@x.co', role_name: 'CASHIER', sent_at: sentAt, name: null } as PendingInvitation,
+    ]);
+    service.pendingTotal.set(1);
+    const fixture = TestBed.createComponent(PendingInvitationsListComponent);
+    fixture.detectChanges();
+    return ((fixture.nativeElement as HTMLElement).textContent ?? '').replace(/\s+/g, ' ');
+  }
+
+  // 2026-10-02T21:06Z = 16:06 Bogotá · 15:06 Ciudad de México · 06:06 del 03/10 Tokio
+  const INSTANTE = '2026-10-02T21:06:00+00:00';
+
+  it('Bogotá: Enviada el 02/10/2026 16:06', () => {
+    expect(enviadaEl('America/Bogota', INSTANTE)).toContain('Enviada el 02/10/2026 16:06');
+  });
+
+  it('Ciudad de México: 02/10/2026 15:06', () => {
+    expect(enviadaEl('America/Mexico_City', INSTANTE)).toContain('Enviada el 02/10/2026 15:06');
+  });
+
+  it('Tokio: ya es el 03/10/2026 a las 06:06', () => {
+    expect(enviadaEl('Asia/Tokyo', INSTANTE)).toContain('Enviada el 03/10/2026 06:06');
+  });
+});
+

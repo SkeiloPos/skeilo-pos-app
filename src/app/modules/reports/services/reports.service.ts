@@ -18,8 +18,6 @@ import {
   TopProduct,
 } from '../interfaces/reports.interface';
 
-/** Zona horaria de respaldo mientras `TenantInfoService.info()` aún no cargó. */
-const DEFAULT_TIMEZONE = 'America/Bogota';
 
 // ── Formas crudas del backend (`/api/v1/reports/*`) ──────────────────────────
 interface SalesReportRes {
@@ -60,7 +58,14 @@ export class ReportsService {
   private readonly base = `${environment.apiBaseUrl}/reports`;
 
   readonly period = signal<ReportPeriod>('today');
-  readonly selectedDate = signal<string>(new Date().toLocaleDateString('en-CA'));
+  /** Fecha que el usuario eligió en «Fecha específica»; `null` = todavía ninguna. */
+  private readonly pickedDate = signal<string | null>(null);
+  /**
+   * «Fecha específica»: la elegida o, mientras no se elija ninguna, el «hoy» del NEGOCIO (spec 138, FR-009) — no
+   * el del calendario del navegador. Es `computed` (no un valor fijado al construir el servicio) para no congelar
+   * la zona de respaldo si la información del negocio llega después.
+   */
+  readonly selectedDate = computed(() => this.pickedDate() ?? businessToday(this.tenantInfo.timezone()));
 
   /** Rango efectivo del periodo actual; entra en todas las claves de query. */
   readonly range = computed(() => this.getDateRange(this.period()));
@@ -270,7 +275,7 @@ export class ReportsService {
   }
 
   setSelectedDate(date: string): void {
-    this.selectedDate.set(date);
+    this.pickedDate.set(date);
   }
 
   private extractError(err: unknown): string {
@@ -292,7 +297,7 @@ export class ReportsService {
    */
   private getDateRange(period: ReportPeriod): { from: string; to: string } {
     const fmt = (d: Date) => d.toLocaleDateString('en-CA');
-    const tz = this.tenantInfo.info()?.timezone ?? DEFAULT_TIMEZONE;
+    const tz = this.tenantInfo.timezone();
     const [ty, tm, td] = businessToday(tz).split('-').map(Number);
     const today = new Date(ty, tm - 1, td);
     let from = today;

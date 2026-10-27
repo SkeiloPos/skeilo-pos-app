@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { DatePipe } from '@angular/common';
+import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { Router, RouterLink, NavigationEnd } from '@angular/router';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { filter, map } from 'rxjs/operators';
@@ -37,7 +37,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 @Component({
   selector: 'app-tenant-header',
   standalone: true,
-  imports: [RouterLink, DatePipe, IconComponent],
+  imports: [RouterLink, TenantDatePipe, IconComponent],
   template: `
     <header
       class="flex items-center gap-3 justify-between shrink-0 z-10 px-4 md:px-6 py-3
@@ -170,7 +170,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
                     <div class="flex-1 min-w-0">
                       <p class="text-sm text-[var(--panel-color-text-secondary)]">{{ summarize(n) }}</p>
                       <p class="text-xs text-[var(--panel-color-text-subtle)]">
-                        {{ n.created_at | date: 'short' }}
+                        {{ n.created_at | tenantDate: 'short' }}
                       </p>
                     </div>
                     @if (!n.attended_at) {

@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -289,3 +290,74 @@ describe('ReportsService — gating de inventario/profitability (spec 062)', () 
     expect(recursos).toContain('profitability');
   });
 });
+
+// spec 138 (FR-009): la «fecha específica» por defecto es el «hoy» del NEGOCIO, no el del navegador.
+describe('ReportsService — fecha específica por defecto en la zona del negocio (spec 138)', () => {
+  let http: HttpTestingController;
+
+  afterEach(() => {
+    vi.useRealTimers();
+    // Se usa la referencia capturada al armar el módulo: llamar `TestBed.inject` aquí podría instanciar un módulo NUEVO
+    // si el reinicio global de TestBed ya corrió, y dejarlo instanciado para el siguiente archivo del mismo worker.
+    http?.match(() => true);
+  });
+
+  function servicio(timezone: string | null): ReportsService {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })),
+        ReportsService,
+        { provide: PlanSummaryService, useValue: { summary: signal<PlanSummary | null>(makeSummary({})) } },
+      ],
+    });
+    if (timezone) {
+      TestBed.inject(TenantInfoService).info.set({
+        id: 1, name: 'Heladería', host: 'h.skeilopos.com', logo_url: null, receipt_message: null, timezone,
+      });
+    }
+    http = TestBed.inject(HttpTestingController);
+    return TestBed.inject(ReportsService);
+  }
+
+  // 2026-10-26T01:00Z = 20:00 del 25/10 en Bogotá · 19:00 del 25/10 en México · 02:00 del 26/10 en Madrid
+  function conRelojEn(instante: string): void {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(instante));
+  }
+
+  it('Bogotá a las 20:00: el día es el 25, no el 26 (UTC)', () => {
+    conRelojEn('2026-10-26T01:00:00Z');
+    expect(servicio('America/Bogota').selectedDate()).toBe('2026-10-25');
+  });
+
+  it('Ciudad de México: 25/10', () => {
+    conRelojEn('2026-10-26T01:00:00Z');
+    expect(servicio('America/Mexico_City').selectedDate()).toBe('2026-10-25');
+  });
+
+  it('Madrid a las 02:00 locales: ya es el 26/10', () => {
+    conRelojEn('2026-10-26T01:00:00Z');
+    expect(servicio('Europe/Madrid').selectedDate()).toBe('2026-10-26');
+  });
+
+  it('si la información del negocio llega DESPUÉS de crear el servicio, la fecha se corrige sola', () => {
+    conRelojEn('2026-10-26T01:00:00Z');
+    const service = servicio(null); // aún con la zona de respaldo (Bogotá)
+    expect(service.selectedDate()).toBe('2026-10-25');
+    TestBed.inject(TenantInfoService).info.set({
+      id: 1, name: 'Heladería', host: 'h.skeilopos.com', logo_url: null, receipt_message: null, timezone: 'Europe/Madrid',
+    });
+    expect(service.selectedDate()).toBe('2026-10-26');
+  });
+
+  it('la fecha que el usuario elige gana al «hoy» por defecto', () => {
+    conRelojEn('2026-10-26T01:00:00Z');
+    const service = servicio('Asia/Tokyo');
+    service.setSelectedDate('2026-08-24');
+    expect(service.selectedDate()).toBe('2026-08-24');
+  });
+});
+

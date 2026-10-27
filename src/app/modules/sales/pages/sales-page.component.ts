@@ -276,7 +276,7 @@ export class SalesPageComponent implements OnInit, OnDestroy {
             methodName: (id) => this.methodName(id),
           }),
         ],
-        { paperWidthMm: this.printer.paperWidthMm() },
+        { paperWidthMm: this.printer.paperWidthMm(), timezone: this.tenantInfo.timezone() },
       ),
     );
   }

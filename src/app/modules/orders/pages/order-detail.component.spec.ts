@@ -43,7 +43,7 @@ describe('OrderDetailComponent', () => {
       channel: 'QR_MENU',
       status: 'abierta',
       paid: true,
-      created_at: '2026-08-21T18:27:00',
+      created_at: '2026-08-21T23:27:00+00:00', // 18:27 en Bogotá (spec 138: con offset, sin depender de la zona del navegador)
       dining_table_id: null,
       customer_name: null,
       items: [],
@@ -97,7 +97,7 @@ function pedido(over: Partial<DiningOrder> = {}): DiningOrder {
     id: 'o1',
     channel: 'POS',
     status: 'abierta',
-    created_at: '2026-08-21T18:27:00',
+    created_at: '2026-08-21T23:27:00+00:00', // 18:27 en Bogotá (spec 138: con offset, sin depender de la zona del navegador)
     dining_table_id: null,
     customer_name: null,
     items: [],

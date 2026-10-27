@@ -45,6 +45,7 @@ import { formatMoney } from '../../../shared/money';
 import { MoneyPipe } from '../../../shared/money.pipe';
 import { IconComponent } from '../../../shared/icon/icon.component';
 import { normalizeText } from '../../../shared/normalize-text';
+import { FALLBACK_TIMEZONE, formatInZone } from '../../../shared/date-format.util';
 import {
   ChosenMenuOption,
   ChosenMenuTopping,
@@ -875,6 +876,8 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
   /** Branding del negocio, que viaja dentro de la respuesta del menú del QR. */
   readonly businessName = signal<string | null>(null);
   readonly businessLogo = signal<string | null>(null);
+  /** Zona del negocio para la hora de cada pedido (spec 138): el dispositivo del comensal puede estar en otra. */
+  readonly businessTimezone = signal(FALLBACK_TIMEZONE);
   /**
    * Nombre a saludar. Se lee del carrito, no de un estado propio: el backend lo
    * devuelve en `GET /cart`, así que sobrevive a la recarga de la página.
@@ -1135,6 +1138,7 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
       this.tableName.set(table.name);
       this.businessName.set(business?.name ?? null);
       this.businessLogo.set(business?.logo_url ?? null);
+      this.businessTimezone.set(business?.timezone ?? FALLBACK_TIMEZONE);
       this.categories.set(categories);
       this.promotionAnnouncements.set(promotions ?? []);
       this.cart.indexMenu(categories);
@@ -1612,8 +1616,10 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
       .filter((o) => o.text);
   }
 
+  /** Hora del pedido en la zona del NEGOCIO, no en la del dispositivo del comensal (spec 138, FR-008). El idioma
+   *  sigue siendo el del dispositivo (`[]`), como antes. */
   orderTime(order: DiningOrder): string {
-    return new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return formatInZone(order.created_at, this.businessTimezone(), { hour: '2-digit', minute: '2-digit' }, []);
   }
 
   /** ¿Esta línea tiene un descuento vigente distinto de su precio de lista? */

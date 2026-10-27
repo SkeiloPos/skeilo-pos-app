@@ -12,6 +12,7 @@ import { environment } from '../../../../environments/environment';
 import { BillingCycle, TenantCreateWithUser } from '../interfaces/tenant.interface';
 import { TenantService } from '../services/tenant.service';
 import { PlanService } from '../services/plan.service';
+import { TENANT_TIMEZONE_OPTIONS } from '../../../shared/tenant-timezones';
 
 /** Normalize a name into a slug usable as schema / host label. */
 function toSlug(value: string): string {
@@ -121,6 +122,28 @@ export function reservedHostValidator(): ValidatorFn {
                 <p class="text-red-500 text-xs mt-1">
                   {{ form.controls.host.errors?.['reserved']?.message ?? 'Mínimo 3 caracteres' }}
                 </p>
+              }
+            </div>
+
+            <!-- spec 138, FR-010: obligatoria y SIN valor inicial — nadie queda en Bogotá por olvido. -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">
+                Zona horaria <span class="text-red-500">*</span>
+              </label>
+              <select
+                formControlName="timezone"
+                data-testid="timezone"
+                class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                [class.border-red-400]="invalid('timezone')"
+                [class.border-gray-200]="!invalid('timezone')"
+              >
+                <option value="" disabled>Selecciona una zona</option>
+                @for (zona of timezoneOptions; track zona.value) {
+                  <option [value]="zona.value">{{ zona.label }}</option>
+                }
+              </select>
+              @if (invalid('timezone')) {
+                <p class="text-red-500 text-xs mt-1">Debes elegir una zona horaria</p>
               }
             </div>
           </div>
@@ -240,6 +263,8 @@ export class TenantFormComponent implements OnInit {
 
   readonly tenantService = inject(TenantService);
   readonly planService = inject(PlanService);
+  /** Las siete zonas del selector (lista curada, paridad con el backend). */
+  readonly timezoneOptions = TENANT_TIMEZONE_OPTIONS;
 
   ngOnInit(): void {
     this.planService.load();
@@ -272,6 +297,8 @@ export class TenantFormComponent implements OnInit {
     }),
     plan_id: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     ciclo_facturacion: new FormControl<BillingCycle>('mensual', { nonNullable: true }),
+    // Sin valor inicial (`''`) y obligatoria: el formulario no avanza sin elegir una zona (spec 138, FR-010).
+    timezone: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
   });
 
   invalid(name: keyof typeof this.form.controls): boolean {
@@ -312,6 +339,7 @@ export class TenantFormComponent implements OnInit {
       email: raw.email.trim(),
       plan_id: raw.plan_id,
       ciclo_facturacion: raw.ciclo_facturacion,
+      timezone: raw.timezone,
     };
 
     await this.tenantService.createTenant(payload);

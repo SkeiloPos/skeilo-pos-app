@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { PlanSummaryService } from '../services/plan-summary.service';
 
 const RESOURCE_LABEL: Record<string, string> = {
@@ -24,7 +24,7 @@ const MODULE_LABEL: Record<string, string> = {
 @Component({
   selector: 'app-plan-summary-page',
   standalone: true,
-  imports: [DatePipe],
+  imports: [TenantDatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-2xl mx-auto space-y-6">
@@ -52,7 +52,7 @@ const MODULE_LABEL: Record<string, string> = {
               <p class="text-xs text-gray-400 uppercase tracking-wide">Vence</p>
               @if (s.plan_vence_en) {
                 <p class="text-sm font-medium" [class.text-red-600]="s.vencido" [class.text-gray-700]="!s.vencido">
-                  {{ s.plan_vence_en | date: 'mediumDate' }}
+                  {{ s.plan_vence_en | tenantDate: 'mediumDate' }}
                   @if (s.vencido) {
                     <span class="block text-xs text-red-500">Venció — contacta al Super Admin</span>
                   }
