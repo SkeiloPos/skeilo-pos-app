@@ -9,6 +9,7 @@ function relation(overrides: Partial<SupplierItem> = {}): SupplierItem {
     supplier_name: 'Distribuidora Norte',
     inventory_item_id: 'item-1',
     inventory_item_name: 'Almendras',
+    unit_measure_id: null,
     presentation: 'Bolsa x 500 g',
     conversion_factor: 500,
     last_cost: 8000,

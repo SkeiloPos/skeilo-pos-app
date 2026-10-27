@@ -105,6 +105,10 @@ export interface Purchase {
   /** spec 134, US3: null = no anulada. */
   voided_at: string | null;
   voided_by: string | null;
+  /** spec 140: solo relevante cuando `status === 'draft'` -- distingue un borrador
+   *  incompleto (FR-017, "Guardar borrador") de una orden de compra pendiente validada
+   *  (comportamiento histórico, User Story 2). */
+  isIncomplete: boolean;
   items: PurchaseItem[];
 }
 
@@ -177,11 +181,15 @@ export interface PurchaseItemPayload {
   unit_measure_id?: string;
 }
 
-/** `POST /inventory/purchases` (`PurchaseCreate`). */
+/** `POST /inventory/purchases` (`PurchaseCreate`) y `POST /inventory/purchases/order`
+ *  (`PurchaseOrderCreate`, spec 140): `allow_incomplete` solo aplica a este segundo
+ *  endpoint -- ausente/`false` conserva el comportamiento actual (User Story 2); `true`
+ *  permite guardar un borrador incompleto (User Story 3, FR-013). */
 export interface PurchaseCreatePayload {
   supplier_id?: string | null;
   invoice_number?: string | null;
   items: PurchaseItemPayload[];
+  allow_incomplete?: boolean;
 }
 
 // --- Importación masiva (spec 109) ---

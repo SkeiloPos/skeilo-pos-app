@@ -223,6 +223,15 @@ export const dashboardRoutes: Routes = [
         canActivate: [roleGuard([UserRole.ADMIN]), planModuleGuard('inventario')],
       },
       {
+        // spec 140: más específica que 'inventario' -- la vista dedicada de compra va antes.
+        path: 'inventario/compras/nueva',
+        loadComponent: () =>
+          import('../inventory/pages/purchase-view.component').then(
+            (m) => m.PurchaseViewComponent,
+          ),
+        canActivate: [roleGuard([UserRole.ADMIN]), planModuleGuard('inventario')],
+      },
+      {
         path: 'inventario',
         loadComponent: () =>
           import('../inventory/pages/inventory-page.component').then(

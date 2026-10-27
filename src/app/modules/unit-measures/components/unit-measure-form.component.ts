@@ -88,9 +88,6 @@ import { UnitMeasureGroupService } from '../../../core/services/unit-measure-gro
             @if (abbreviationControl.touched && abbreviationControl.errors?.['required']) {
               <p class="text-xs mt-1" style="color: var(--aj-color-error)">La abreviatura es requerida</p>
             }
-            @if (abbreviationControl.touched && abbreviationControl.errors?.['duplicateAbbreviation']) {
-              <p class="text-xs mt-1" style="color: var(--aj-color-error)">Ya existe una unidad con esa abreviatura</p>
-            }
           </div>
 
           <!-- Factor to base -->
@@ -127,7 +124,8 @@ import { UnitMeasureGroupService } from '../../../core/services/unit-measure-gro
             <button type="button" (click)="onCancel()" class="aj-btn-secondary flex-1 px-4 py-2 text-sm">
               Cancelar
             </button>
-            <button type="submit" [disabled]="isSubmitting()" class="aj-btn-primary flex-1 px-4 py-2 text-sm">
+            <button type="submit" [disabled]="isSubmitting() || (form.touched && form.invalid)"
+              class="aj-btn-primary flex-1 px-4 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
               {{ isSubmitting() ? 'Guardando...' : 'Guardar' }}
             </button>
           </div>
@@ -214,7 +212,6 @@ export class UnitMeasureFormComponent implements OnChanges {
     this.abbreviationControl.setValidators([
       Validators.required,
       Validators.maxLength(50),
-      this.uniqueAbbreviationValidator(),
     ]);
     this.nameControl.updateValueAndValidity();
     this.abbreviationControl.updateValueAndValidity();
@@ -227,16 +224,6 @@ export class UnitMeasureFormComponent implements OnChanges {
         .unitMeasures()
         .some((u) => u.name.toLowerCase() === value && u.id !== this.unitMeasure?.id);
       return exists ? { duplicateName: true } : null;
-    };
-  }
-
-  private uniqueAbbreviationValidator() {
-    return (control: AbstractControl): ValidationErrors | null => {
-      const value = (control.value as string).trim().toLowerCase();
-      const exists = this.unitMeasureService
-        .unitMeasures()
-        .some((u) => u.abbreviation.toLowerCase() === value && u.id !== this.unitMeasure?.id);
-      return exists ? { duplicateAbbreviation: true } : null;
     };
   }
 

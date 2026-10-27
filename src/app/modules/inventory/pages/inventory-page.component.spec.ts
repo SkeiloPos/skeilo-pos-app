@@ -8,8 +8,10 @@ import { vi } from 'vitest';
 import { InventoryPageComponent } from './inventory-page.component';
 import { InventoryService } from '../services/inventory.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
+import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { SearchableSelectComponent } from '../../../shared/searchable-select/searchable-select.component';
+import { Purchase } from '../interfaces/inventory.interface';
 import { environment } from '../../../../environments/environment';
 
 describe('InventoryPageComponent — íconos estandarizados (spec 082)', () => {
@@ -19,7 +21,9 @@ describe('InventoryPageComponent — íconos estandarizados (spec 082)', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
       ],
     });
     const fixture = TestBed.createComponent(InventoryPageComponent);
@@ -60,7 +64,9 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
       ],
     });
     const fixture = TestBed.createComponent(InventoryPageComponent);
@@ -105,14 +111,18 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
     });
     const response = new HttpResponse({
       body: blob,
-      headers: new HttpHeaders({ 'Content-Disposition': 'attachment; filename="inventario_2026-09-22.xlsx"' }),
+      headers: new HttpHeaders({
+        'Content-Disposition': 'attachment; filename="inventario_2026-09-22.xlsx"',
+      }),
       status: 200,
     });
     const exportSpy = vi.spyOn(service, 'exportItems').mockReturnValue(of(response));
     const createObjectURL = vi.fn().mockReturnValue('blob:fake');
     const revokeObjectURL = vi.fn();
-    (URL as unknown as { createObjectURL: typeof createObjectURL }).createObjectURL = createObjectURL;
-    (URL as unknown as { revokeObjectURL: typeof revokeObjectURL }).revokeObjectURL = revokeObjectURL;
+    (URL as unknown as { createObjectURL: typeof createObjectURL }).createObjectURL =
+      createObjectURL;
+    (URL as unknown as { revokeObjectURL: typeof revokeObjectURL }).revokeObjectURL =
+      revokeObjectURL;
     const { clicks } = installAnchorSpy();
 
     exportButton(fixture).click();
@@ -141,9 +151,15 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
         });
       }
       const service = TestBed.inject(InventoryService);
-      const response = new HttpResponse({ body: new Blob(['contenido']), headers: new HttpHeaders(), status: 200 });
+      const response = new HttpResponse({
+        body: new Blob(['contenido']),
+        headers: new HttpHeaders(),
+        status: 200,
+      });
       vi.spyOn(service, 'exportItems').mockReturnValue(of(response));
-      (URL as unknown as { createObjectURL: () => string }).createObjectURL = vi.fn().mockReturnValue('blob:fake');
+      (URL as unknown as { createObjectURL: () => string }).createObjectURL = vi
+        .fn()
+        .mockReturnValue('blob:fake');
       (URL as unknown as { revokeObjectURL: () => void }).revokeObjectURL = vi.fn();
       const { clicks } = installAnchorSpy();
 
@@ -154,19 +170,27 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
 
     // 2026-10-26T01:00Z = 20:00 del 25/10 en Bogotá: el día UTC ya es el 26.
     it('Bogotá a las 20:00 locales: usa el día 25, no el día UTC (26)', () => {
-      expect(descargarSinEncabezado('America/Bogota', '2026-10-26T01:00:00Z')).toBe('inventario_2026-10-25.xlsx');
+      expect(descargarSinEncabezado('America/Bogota', '2026-10-26T01:00:00Z')).toBe(
+        'inventario_2026-10-25.xlsx',
+      );
     });
 
     it('Ciudad de México a las 19:00 locales: día 25', () => {
-      expect(descargarSinEncabezado('America/Mexico_City', '2026-10-26T01:00:00Z')).toBe('inventario_2026-10-25.xlsx');
+      expect(descargarSinEncabezado('America/Mexico_City', '2026-10-26T01:00:00Z')).toBe(
+        'inventario_2026-10-25.xlsx',
+      );
     });
 
     it('Madrid a las 02:00 locales: día 26', () => {
-      expect(descargarSinEncabezado('Europe/Madrid', '2026-10-26T01:00:00Z')).toBe('inventario_2026-10-26.xlsx');
+      expect(descargarSinEncabezado('Europe/Madrid', '2026-10-26T01:00:00Z')).toBe(
+        'inventario_2026-10-26.xlsx',
+      );
     });
 
     it('sin la información del negocio cargada usa la zona de respaldo (Bogotá)', () => {
-      expect(descargarSinEncabezado(null, '2026-10-26T01:00:00Z')).toBe('inventario_2026-10-25.xlsx');
+      expect(descargarSinEncabezado(null, '2026-10-26T01:00:00Z')).toBe(
+        'inventario_2026-10-25.xlsx',
+      );
     });
   });
 
@@ -177,7 +201,8 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
     vi.spyOn(service, 'exportItems').mockReturnValue(throwError(() => new Error('fallo simulado')));
     const errorSpy = vi.spyOn(toast, 'error');
     const createObjectURL = vi.fn();
-    (URL as unknown as { createObjectURL: typeof createObjectURL }).createObjectURL = createObjectURL;
+    (URL as unknown as { createObjectURL: typeof createObjectURL }).createObjectURL =
+      createObjectURL;
     const { clicks } = installAnchorSpy();
 
     exportButton(fixture).click();
@@ -197,7 +222,9 @@ describe('InventoryPageComponent — selector de insumo del tab Movimientos (spe
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
       ],
     });
     const fixture = TestBed.createComponent(InventoryPageComponent);
@@ -244,5 +271,88 @@ describe('InventoryPageComponent — selector de insumo del tab Movimientos (spe
 
     const resultado = await promise;
     expect(resultado).toEqual([{ id: 'i-105', label: 'QUESO MOZARELA BLOQUE X 2500 GRAMOS' }]);
+  });
+});
+
+describe('InventoryPageComponent — eliminar orden/borrador pendiente (spec 140)', () => {
+  function crear() {
+    TestBed.configureTestingModule({
+      imports: [InventoryPageComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+      ],
+    });
+    const fixture = TestBed.createComponent(InventoryPageComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const DRAFT_PURCHASE: Purchase = {
+    id: 'p-draft',
+    supplier_id: null,
+    invoice_number: 'FC-1',
+    status: 'draft',
+    isIncomplete: true,
+    total: 8000,
+    purchased_at: '2026-01-01T00:00:00Z',
+    voided_at: null,
+    voided_by: null,
+    items: [],
+  };
+
+  it('al confirmar, llama a service.deletePurchase(id) y muestra un toast de éxito', async () => {
+    const fixture = crear();
+    const component = fixture.componentInstance;
+    const service = TestBed.inject(InventoryService);
+    const confirm = TestBed.inject(ConfirmService);
+    const toast = TestBed.inject(ToastService);
+
+    vi.spyOn(confirm, 'ask').mockResolvedValue(true);
+    const deleteSpy = vi.spyOn(service, 'deletePurchase').mockResolvedValue(true);
+    const successSpy = vi.spyOn(toast, 'success');
+
+    await component.deleteDraft(DRAFT_PURCHASE);
+
+    expect(deleteSpy).toHaveBeenCalledWith('p-draft');
+    expect(successSpy).toHaveBeenCalled();
+  });
+
+  it('al cancelar la confirmación, no llama al backend', async () => {
+    const fixture = crear();
+    const component = fixture.componentInstance;
+    const service = TestBed.inject(InventoryService);
+    const confirm = TestBed.inject(ConfirmService);
+
+    vi.spyOn(confirm, 'ask').mockResolvedValue(false);
+    const deleteSpy = vi.spyOn(service, 'deletePurchase');
+
+    await component.deleteDraft(DRAFT_PURCHASE);
+
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  it('si el backend rechaza (p. ej. ya no es draft), muestra un toast de error', async () => {
+    const fixture = crear();
+    const component = fixture.componentInstance;
+    const service = TestBed.inject(InventoryService);
+    const confirm = TestBed.inject(ConfirmService);
+    const toast = TestBed.inject(ToastService);
+
+    vi.spyOn(confirm, 'ask').mockResolvedValue(true);
+    vi.spyOn(service, 'deletePurchase').mockResolvedValue(false);
+    vi.spyOn(service, 'error').mockReturnValue(
+      'Solo se puede eliminar mientras no se haya recibido nada',
+    );
+    const errorSpy = vi.spyOn(toast, 'error');
+
+    await component.deleteDraft(DRAFT_PURCHASE);
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Solo se puede eliminar mientras no se haya recibido nada',
+    );
   });
 });

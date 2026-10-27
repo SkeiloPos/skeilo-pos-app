@@ -127,6 +127,9 @@ export const ICON_CATALOG: Record<string, string> = {
   'circle-check': 'check_circle',
   banknote: 'payments',
 
+  // spec 140: control +/- de cantidad en la vista de nueva compra.
+  remove: 'remove',
+
   // Ícono de reserva para un `name` desconocido (contracts/icon-component-contract.md)
   help_outline: 'help_outline',
 };

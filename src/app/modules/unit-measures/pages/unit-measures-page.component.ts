@@ -261,10 +261,10 @@ export class UnitMeasuresPageComponent implements OnInit {
     return [...group.units].sort((a, b) => (a.is_base === b.is_base ? 0 : a.is_base ? -1 : 1));
   }
 
-  /** `factor_to_base` llega del backend como texto con 6 decimales fijos (p. ej.
-   * "1000.000000") porque Pydantic serializa `Decimal` como string -- se muestra sin
-   * ceros de relleno (1000, no 1000.000000), pero conserva los decimales reales
-   * (453.592). */
+  /** `UnitMeasureGroupService`/`UnitMeasureService` ya convierten `factor_to_base` de
+   *  texto con 6 decimales fijos (p. ej. "1000.000000", así serializa Pydantic `Decimal`)
+   *  a `number` -- esto solo lo muestra sin ceros de relleno (1000, no 1000.000000),
+   *  conservando los decimales reales (453.592). */
   formatFactor(value: number): string {
     const n = Number(value);
     return Number.isFinite(n) ? String(n) : String(value);

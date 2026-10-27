@@ -6,13 +6,19 @@
  * The backend returns decimals as strings; this interface uses `number`.
  */
 
-/** A proveedor-insumo relation. Mirrors backend `SupplierItemResponse`. */
+/** A proveedor-insumo relation. Mirrors backend `SupplierItemResponse`. spec 140: la
+ *  "presentación" ahora se elige entre las `UnitMeasure` del mismo grupo que la unidad
+ *  base del insumo -- `presentation`/`conversion_factor` siguen viniendo poblados (ahora
+ *  en vivo desde esa unidad cuando `unit_measure_id` no es null), solo lectura. */
 export interface SupplierItem {
   id: string;
   supplier_id: string;
   supplier_name: string;
   inventory_item_id: string;
   inventory_item_name: string;
+  /** `null` = relación legada (creada antes de spec 140, o por import sin completar) que
+   *  todavía usa texto/factor a mano en vez de una `UnitMeasure`. */
+  unit_measure_id: string | null;
   presentation: string;
   conversion_factor: number;
   last_cost: number | null;
@@ -26,10 +32,10 @@ export interface SupplierItem {
   was_preferred: boolean;
 }
 
-/** Fields captured by the create/edit form. */
+/** Fields captured by the create/edit form (spec 140: elegir una `UnitMeasure`, ya no
+ *  texto libre + factor a mano). */
 export interface SupplierItemForm {
-  presentation: string;
-  conversion_factor: number;
+  unit_measure_id: string;
   last_cost: number | null;
 }
 
@@ -40,15 +46,13 @@ export interface SupplierItemForm {
 export interface SupplierItemCreatePayload {
   supplier_id?: string;
   inventory_item_id?: string;
-  presentation: string;
-  conversion_factor: number;
+  unit_measure_id: string;
   last_cost?: number | null;
 }
 
 /** `PATCH /inventory/supplier-items/{id}` (`SupplierItemUpdate`) -- todo opcional. */
 export interface SupplierItemUpdatePayload {
-  presentation?: string;
-  conversion_factor?: number;
+  unit_measure_id?: string;
   last_cost?: number | null;
   active?: boolean;
   preferred?: boolean;
