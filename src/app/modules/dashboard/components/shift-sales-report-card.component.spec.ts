@@ -5,6 +5,7 @@ import { CashService } from '../../cash-register/services/cash.service';
 import { ShiftReportsService } from '../services/shift-reports.service';
 import { ShiftSummary } from '../../cash-register/interfaces/cash.interface';
 import { ShiftSalesReport } from '../interfaces/shift-reports.interface';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 
 // spec 119 (T077, FR-014/SC-006): turno sin ventas -> estado vacío claro, sin "NaN".
 describe('ShiftSalesReportCardComponent — turno sin ventas (spec 119, US5)', () => {
@@ -35,13 +36,14 @@ describe('ShiftSalesReportCardComponent — turno sin ventas (spec 119, US5)', (
     active_orders_count: null,
   };
 
-  async function crear() {
+  async function crear(timezone = 'America/Bogota', turno: ShiftSummary = TURNO) {
     TestBed.configureTestingModule({
       imports: [ShiftSalesReportCardComponent],
       providers: [
+        { provide: TenantInfoService, useValue: { timezone: () => timezone } },
         {
           provide: CashService,
-          useValue: { listShifts: vi.fn().mockResolvedValue({ items: [TURNO] }) },
+          useValue: { listShifts: vi.fn().mockResolvedValue({ items: [turno] }) },
         },
         {
           provide: ShiftReportsService,
@@ -71,5 +73,28 @@ describe('ShiftSalesReportCardComponent — turno sin ventas (spec 119, US5)', (
     expect(textos).toEqual(['Ventas totales', '$ 0', 'Órdenes', '0', 'Ticket promedio', '$ 0']);
     expect(el.textContent).not.toContain('NaN');
     expect(el.textContent).not.toContain('undefined');
+  });
+
+  // spec 138 (FR-008): la etiqueta del turno usa la fecha de apertura en la zona del NEGOCIO.
+  describe('etiqueta del turno en la zona del negocio', () => {
+    // 2026-10-25T23:30Z = 18:30 Bogotá · 17:30 Ciudad de México · 08:30 del 26/10 Tokio
+    const ABIERTO: ShiftSummary = { ...TURNO, opened_at: '2026-10-25T23:30:00+00:00' };
+
+    async function opcion(timezone: string): Promise<string> {
+      const el = await crear(timezone, ABIERTO);
+      return (el.querySelector('option')?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    }
+
+    it('Ciudad de México: 25/10/2026 05:30 p. m.', async () => {
+      const etiqueta = await opcion('America/Mexico_City');
+      expect(etiqueta).toContain('Caja 1 · 25/10/2026');
+      expect(etiqueta).toContain('05:30 p. m.');
+    });
+
+    it('Tokio: ya es el 26/10/2026, 08:30 a. m.', async () => {
+      const etiqueta = await opcion('Asia/Tokyo');
+      expect(etiqueta).toContain('26/10/2026');
+      expect(etiqueta).toContain('08:30 a. m.');
+    });
   });
 });
