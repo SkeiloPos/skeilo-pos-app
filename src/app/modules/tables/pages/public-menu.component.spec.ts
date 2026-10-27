@@ -182,7 +182,7 @@ describe('PublicMenuComponent', () => {
   });
 
   it('la pantalla de gracias tras "Salir" muestra el logo y el nombre del negocio (no el emoji) cuando hay branding disponible', async () => {
-    const business: ResolvedBusiness = { name: 'Heladería Polar', logo_url: 'https://cdn.example/logo.png' };
+    const business: ResolvedBusiness = { name: 'Heladería Polar', logo_url: 'https://cdn.example/logo.png', timezone: 'America/Bogota' };
     const { component, fixture } = await createComponent('tok-1', [], { business });
     await component.exit();
     fixture.detectChanges();
@@ -1079,7 +1079,7 @@ describe('PublicMenuComponent', () => {
     });
 
     it('con el negocio conocido muestra su logo y nombre, como la pantalla de salida', async () => {
-      const business: ResolvedBusiness = { name: 'Heladería Polar', logo_url: 'https://cdn.example/logo.png' };
+      const business: ResolvedBusiness = { name: 'Heladería Polar', logo_url: 'https://cdn.example/logo.png', timezone: 'America/Bogota' };
       const { fixture, rt } = await conSesion(business);
 
       rt.emit('session.closed', { reason: 'paid' });
@@ -1449,3 +1449,49 @@ describe('PublicMenuComponent', () => {
     traduccion.revert();
   });
 });
+
+// spec 138 (FR-008): el comensal ve la hora de cada pedido en la zona del NEGOCIO, no en la de su dispositivo.
+describe('PublicMenuComponent — hora de los pedidos en la zona del negocio (spec 138)', () => {
+  // 2026-10-25T23:30Z = 18:30 Bogotá · 17:30 Ciudad de México · 08:30 del 26/10 Tokio
+  const PEDIDO = { created_at: '2026-10-25T23:30:00+00:00' } as DiningOrder;
+
+  async function horaDelPedido(timezone: string | null): Promise<string> {
+    TestBed.resetTestingModule();
+    const diner = new FakeDinerService();
+    diner.business = timezone ? { name: 'Negocio', logo_url: null, timezone } : null;
+    TestBed.configureTestingModule({
+      imports: [PublicMenuComponent],
+      providers: [
+        { provide: DinerService, useValue: diner },
+        { provide: DiningCartService, useClass: FakeDiningCartService },
+        { provide: RealtimeService, useClass: FakeRealtimeService },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: { paramMap: convertToParamMap({ token: 'tok-1' }) },
+            queryParamMap: of(convertToParamMap({})),
+          },
+        },
+        { provide: Router, useValue: { navigate: vi.fn() } },
+      ],
+    });
+    const fixture = TestBed.createComponent(PublicMenuComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    return fixture.componentInstance.orderTime(PEDIDO);
+  }
+
+  it('Ciudad de México: 5:30 de la tarde aunque el dispositivo esté en Tokio o en Bogotá', async () => {
+    // El idioma es el del dispositivo (12 h o 24 h según el entorno): se aceptan ambas formas.
+    expect(await horaDelPedido('America/Mexico_City')).toMatch(/\b(0?5:30|17:30)\b/);
+  });
+
+  it('Tokio: 8:30 de la mañana', async () => {
+    expect(await horaDelPedido('Asia/Tokyo')).toMatch(/\b0?8:30\b/);
+  });
+
+  it('sin la zona del negocio usa el respaldo de Bogotá (6:30)', async () => {
+    expect(await horaDelPedido(null)).toMatch(/\b(0?6:30|18:30)\b/);
+  });
+});
+

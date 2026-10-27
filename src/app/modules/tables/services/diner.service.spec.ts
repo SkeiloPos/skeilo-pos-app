@@ -47,14 +47,27 @@ describe('DinerService', () => {
 
     req.flush({
       table: { id: 't1', number: 5, name: 'Terraza' },
-      business: { name: 'Heladería', logo_url: null },
+      business: { name: 'Heladería', logo_url: null, timezone: 'America/Mexico_City' },
       menu: [{ id: 'c1', name: 'Helados', products: [] }],
     });
 
     const res = await promise;
     expect(res.table.number).toBe(5);
     expect(res.business?.name).toBe('Heladería');
+    // spec 138: la zona del negocio llega con el menú (el comensal no puede pedir GET /tenant).
+    expect(res.business?.timezone).toBe('America/Mexico_City');
     expect(res.categories.length).toBe(1);
+  });
+
+  it('un backend anterior a la spec 138 (sin `timezone`) cae a la zona de respaldo de Bogotá', async () => {
+    const promise = service.resolveByToken('signed.jwt');
+    http.expectOne(`${API}/menu/qr-token/signed.jwt`).flush({
+      table: { id: 't1', number: 5, name: null },
+      business: { name: 'Heladería', logo_url: null },
+      menu: [],
+    });
+
+    expect((await promise).business?.timezone).toBe('America/Bogota');
   });
 
   it('convierte a número los campos de `promotion` que el backend serializa como string (spec 066)', async () => {
