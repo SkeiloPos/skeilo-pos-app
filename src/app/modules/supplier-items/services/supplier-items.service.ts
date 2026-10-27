@@ -17,6 +17,7 @@ interface SupplierItemResponse {
   supplier_name: string;
   inventory_item_id: string;
   inventory_item_name: string;
+  unit_measure_id: string | null;
   presentation: string;
   conversion_factor: string;
   last_cost: string | null;
@@ -96,8 +97,7 @@ export class SupplierItemsService {
 
   private payload(form: SupplierItemForm): Omit<SupplierItemCreatePayload, 'supplier_id' | 'inventory_item_id'> {
     return {
-      presentation: form.presentation,
-      conversion_factor: form.conversion_factor,
+      unit_measure_id: form.unit_measure_id,
       last_cost: form.last_cost,
     };
   }
@@ -128,6 +128,7 @@ export class SupplierItemsService {
       supplier_name: r.supplier_name,
       inventory_item_id: r.inventory_item_id,
       inventory_item_name: r.inventory_item_name,
+      unit_measure_id: r.unit_measure_id,
       presentation: r.presentation,
       conversion_factor: Number(r.conversion_factor),
       last_cost: r.last_cost === null ? null : Number(r.last_cost),

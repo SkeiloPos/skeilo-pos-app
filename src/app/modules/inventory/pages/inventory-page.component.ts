@@ -24,19 +24,19 @@ import {
   InventoryItemType,
   InventoryMovement,
   Purchase,
-  PurchaseStatus,
 } from '../interfaces/inventory.interface';
 import { InventoryService } from '../services/inventory.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
+import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { InventoryItemFormComponent } from '../components/inventory-item-form.component';
 import { StockAdjustModalComponent } from '../components/stock-adjust-modal.component';
 import { InventoryImportModalComponent } from '../components/inventory-import-modal.component';
-import { PurchaseFormComponent } from '../components/purchase-form.component';
 import { SearchableSelectComponent } from '../../../shared/searchable-select/searchable-select.component';
 import { PaginationBarComponent } from '../../../shared/pagination/pagination-bar.component';
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { PlanSummaryService } from '../../plan/services/plan-summary.service';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { formatMoney } from '../../../shared/money';
 
 type Tab = 'items' | 'purchases' | 'movements';
 type TypeFilter = '' | InventoryItemType;
@@ -52,7 +52,6 @@ type ActiveFilter = '' | 'active' | 'inactive';
     InventoryItemFormComponent,
     StockAdjustModalComponent,
     InventoryImportModalComponent,
-    PurchaseFormComponent,
     SearchableSelectComponent,
     PaginationBarComponent,
     IconMiComponent,
@@ -77,7 +76,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
             </button>
           }
           @if (tab() === 'purchases') {
-            <button (click)="showPurchase.set(true)"
+            <button (click)="goToNewPurchase()"
               class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors">
               <app-mi-icon name="add" [size]="16" />
               Nueva compra
@@ -318,12 +317,22 @@ type ActiveFilter = '' | 'active' | 'inactive';
                         · {{ p.items.length }} ítem(s)
                       </p>
                     </button>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" [class]="purchaseChip(p.status)">
-                      {{ purchaseLabel(p.status) }}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" [class]="purchaseChip(p)">
+                      {{ purchaseLabel(p) }}
                     </span>
-                    @if (p.status !== 'received') {
+                    @if (p.status === 'draft' && p.isIncomplete) {
+                      <button type="button" (click)="reopenDraft(p)"
+                        class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">Continuar</button>
+                    } @else if (p.status !== 'received') {
                       <button type="button" (click)="openReceive(p)"
                         class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">Recibir</button>
+                    }
+                    @if (p.status === 'draft') {
+                      <button type="button" (click)="deleteDraft(p); $event.stopPropagation()"
+                        [attr.aria-label]="'Eliminar ' + (p.isIncomplete ? 'borrador' : 'orden de compra')" title="Eliminar"
+                        class="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50">
+                        <app-mi-icon name="delete" [size]="18" />
+                      </button>
                     }
                     <span class="text-sm font-bold text-gray-900 w-20 text-right">{{ p.total | number:'1.2-2' }}</span>
                   </div>
@@ -439,10 +448,6 @@ type ActiveFilter = '' | 'active' | 'inactive';
     @if (showAdjust()) {
       <app-stock-adjust-modal [item]="selectedItem()" (close)="showAdjust.set(false)" (saved)="onAdjusted()"></app-stock-adjust-modal>
     }
-    @if (showPurchase()) {
-      <app-purchase-form (close)="showPurchase.set(false)" (saved)="showPurchase.set(false)"></app-purchase-form>
-    }
-
     <!-- Modal recepción de orden de compra (RF-022) -->
     @if (receivePurchase(); as rp) {
       <div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -495,6 +500,7 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   readonly suppliersService = inject(SuppliersService);
   readonly planSummaryService = inject(PlanSummaryService);
   private readonly toast = inject(ToastService);
+  private readonly confirm = inject(ConfirmService);
   private readonly router = inject(Router);
   private readonly overlay = inject(Overlay);
 
@@ -528,7 +534,6 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
 
   readonly showForm = signal(false);
   readonly showAdjust = signal(false);
-  readonly showPurchase = signal(false);
   readonly showImportModal = signal(false);
   readonly selectedItem = signal<InventoryItem | null>(null);
 
@@ -604,6 +609,37 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   }
 
   // --- paginación de Compras ---
+  goToNewPurchase(): void {
+    this.router.navigate(['/dashboard/inventario/compras/nueva']);
+  }
+
+  /** Reabrir un borrador incompleto (spec 140, FR-017): `GET /purchases` ya trae `items`,
+   *  así que basta pasar la `Purchase` completa por estado de navegación -- sin endpoint de
+   *  detalle nuevo (contracts/purchases-api.md). */
+  reopenDraft(p: Purchase): void {
+    this.router.navigate(['/dashboard/inventario/compras/nueva'], { state: { draft: p } });
+  }
+
+  /** Eliminar una orden de compra / borrador pendiente (spec 140): solo aplica mientras
+   *  `status === 'draft'` -- nunca se le dio alta de stock, así que no hay nada que revertir
+   *  (a diferencia de anular una compra ya recibida). */
+  async deleteDraft(p: Purchase): Promise<void> {
+    const ok = await this.confirm.ask({
+      title: p.isIncomplete ? 'Eliminar borrador' : 'Eliminar orden de compra',
+      message: `Se eliminará ${p.isIncomplete ? 'el borrador' : 'la orden de compra'} de ${this.supplierName(p.supplier_id)} por ${formatMoney(p.total)}. Esta acción no se puede deshacer.`,
+      confirmText: 'Eliminar',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    const done = await this.service.deletePurchase(p.id);
+    if (done) {
+      this.toast.success(p.isIncomplete ? 'Borrador eliminado.' : 'Orden de compra eliminada.');
+    } else {
+      this.toast.error(this.service.error() ?? 'No se pudo eliminar.');
+    }
+  }
+
   goToPurchasesPage(page: number): void {
     if (page < 1 || page > this.service.purchasesTotalPages()) return;
     this.service.loadPurchases(page);
@@ -659,15 +695,20 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   }
 
   // --- recepción de compra (RF-022) ---
-  purchaseLabel(s: PurchaseStatus): string {
-    return { draft: 'Orden', partial: 'Parcial', received: 'Recibida' }[s];
+  /** spec 140: `status='draft'` cubre dos cosas distintas -- `isIncomplete=true` es un
+   *  borrador guardado sin exigir líneas completas (User Story 3), `false` sigue siendo la
+   *  orden de compra pendiente validada de siempre (User Story 2, sin cambios). */
+  purchaseLabel(p: Pick<Purchase, 'status' | 'isIncomplete'>): string {
+    if (p.status === 'draft' && p.isIncomplete) return 'Borrador';
+    return { draft: 'Orden', partial: 'Parcial', received: 'Recibida' }[p.status];
   }
-  purchaseChip(s: PurchaseStatus): string {
+  purchaseChip(p: Pick<Purchase, 'status' | 'isIncomplete'>): string {
+    if (p.status === 'draft' && p.isIncomplete) return 'bg-indigo-50 text-indigo-600';
     return {
       draft: 'bg-gray-100 text-gray-600',
       partial: 'bg-amber-100 text-amber-700',
       received: 'bg-emerald-100 text-emerald-700',
-    }[s];
+    }[p.status];
   }
   openReceive(p: Purchase): void {
     this.receiveRows.set(

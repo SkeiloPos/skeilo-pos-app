@@ -17,6 +17,7 @@ import {
 import { SuppliersService } from '../../suppliers/services/suppliers.service';
 import { InventoryService } from '../../inventory/services/inventory.service';
 import { UnitMeasureService } from '../../../core/services/unit-measure.service';
+import { UnitMeasure } from '../../../core/interfaces/unit-measure.interface';
 import { SupplierItemsService } from '../services/supplier-items.service';
 import { SupplierItem, SupplierItemForm } from '../interfaces/supplier-item.interface';
 
@@ -27,6 +28,11 @@ export type SupplierItemFormMode = 'item' | 'supplier';
  * Alta/edición de una relación proveedor-insumo (spec 106). Se usa desde las dos pestañas
  * simétricas (detalle de insumo y detalle de proveedor) -- `mode` decide cuál de los dos
  * lados ya está fijo por el contexto y cuál hay que buscar/elegir.
+ *
+ * spec 140: la "presentación de compra" se elige entre las `UnitMeasure` del mismo grupo
+ * que la unidad base del insumo (incluida la base misma) -- ya no se captura como texto
+ * libre + un factor escrito a mano; el factor efectivo es `unit_measure.factor_to_base`
+ * en vivo (ver `SupplierItem.effective_conversion_factor` en el backend).
  */
 @Component({
   selector: 'app-supplier-item-form',
@@ -73,19 +79,22 @@ export type SupplierItemFormMode = 'item' | 'supplier';
         }
 
         <div>
-          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Presentación</label>
-          <input [ngModel]="presentation()" (ngModelChange)="presentation.set($event)"
-            placeholder="Ej. Bolsa x 500 g"
-            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-        </div>
-
-        <div>
           <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-            ¿Cuántos{{ unitAbbr() ? ' ' + unitAbbr() : '' }} trae 1 presentación?
+            Unidad de compra
           </label>
-          <input [ngModel]="conversionFactor()" (ngModelChange)="conversionFactor.set($event)"
-            type="number" min="0" step="0.001" placeholder="Ej. 500"
-            class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          @if (!baseUnit()) {
+            <p class="text-sm text-gray-400 px-3 py-2 border border-gray-200 rounded-xl">
+              Elige el insumo para ver sus unidades disponibles.
+            </p>
+          } @else {
+            <select [attr.disabled]="factorLocked ? '' : null" [ngModel]="unitMeasureId()" (ngModelChange)="unitMeasureId.set($event)"
+              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-400">
+              <option value="" disabled>Selecciona una unidad…</option>
+              @for (u of unitOptions(); track u.id) {
+                <option [value]="u.id">{{ u.name }}{{ u.is_base ? ' (unidad base)' : '' }}</option>
+              }
+            </select>
+          }
           @if (factorLocked) {
             <p class="mt-1 text-xs text-amber-600">
               Ya se usó en una compra; no se puede cambiar. Crea una presentación nueva en su lugar.
@@ -135,11 +144,11 @@ export class SupplierItemFormComponent implements OnInit {
   @Input({ required: true }) fixedId!: string;
   /** Nombre del lado ya fijo, para mostrarlo sin otra consulta. */
   @Input({ required: true }) fixedLabel!: string;
-  /** Unidad base del insumo, conocida de antemano cuando `mode === 'item'`. */
-  @Input() knownUnitAbbr: string | null = null;
+  /** Unidad base del insumo (su id), conocida de antemano cuando `mode === 'item'`. */
+  @Input() knownUnitMeasureId: string | null = null;
   /** Presente solo al editar una relación existente. */
   @Input() initial: SupplierItem | null = null;
-  /** FR-014: si ya se usó en una compra, el factor no se puede tocar. */
+  /** FR-014: si ya se usó en una compra, la unidad elegida no se puede tocar. */
   @Input() factorLocked = false;
 
   @Output() readonly close = new EventEmitter<void>();
@@ -153,10 +162,10 @@ export class SupplierItemFormComponent implements OnInit {
 
   readonly supplierId = signal('');
   readonly itemId = signal('');
-  readonly presentation = signal('');
-  readonly conversionFactor = signal<number | null>(null);
+  readonly unitMeasureId = signal('');
   readonly lastCost = signal<number | null>(null);
-  readonly unitAbbr = signal('');
+  /** Unidad base del insumo elegido -- su `group_id` acota `unitOptions()`. */
+  readonly baseUnit = signal<UnitMeasure | null>(null);
 
   /**
    * `app-searchable-select` resuelve el texto que muestra el botón (`selectedLabel()`)
@@ -176,16 +185,23 @@ export class SupplierItemFormComponent implements OnInit {
     this.itemId() ? [{ id: this.itemId(), label: this.pickedItemLabel() }] : [],
   );
 
+  /** Unidades del mismo grupo que la base del insumo (incluida la base), activas. */
+  readonly unitOptions = computed(() => {
+    const base = this.baseUnit();
+    if (!base) return [];
+    return this.unitMeasureService.unitMeasures().filter((u) => u.active && u.group_id === base.group_id);
+  });
+
   ngOnInit(): void {
+    if (this.unitMeasureService.unitMeasures().length === 0) void this.unitMeasureService.loadUnitMeasures();
     if (this.initial) {
-      this.presentation.set(this.initial.presentation);
-      this.conversionFactor.set(this.initial.conversion_factor);
+      this.unitMeasureId.set(this.initial.unit_measure_id ?? '');
       this.lastCost.set(this.initial.last_cost);
     }
     if (this.mode === 'item') {
-      this.unitAbbr.set(this.knownUnitAbbr ?? '');
+      if (this.knownUnitMeasureId) void this.resolveBaseUnitById(this.knownUnitMeasureId);
     } else if (this.initial) {
-      void this.resolveUnitAbbr(this.initial.inventory_item_id);
+      void this.resolveBaseUnitForItem(this.initial.inventory_item_id);
     }
   }
 
@@ -201,37 +217,42 @@ export class SupplierItemFormComponent implements OnInit {
 
   onItemPicked(opt: SearchableSelectOption): void {
     this.pickedItemLabel.set(opt.label);
-    void this.resolveUnitAbbr(opt.id);
+    this.unitMeasureId.set('');
+    void this.resolveBaseUnitForItem(opt.id);
   }
 
-  private async resolveUnitAbbr(itemId: string): Promise<void> {
+  private async resolveBaseUnitById(unitMeasureId: string): Promise<void> {
+    try {
+      this.baseUnit.set(await this.unitMeasureService.getUnitMeasure(unitMeasureId));
+    } catch {
+      this.baseUnit.set(null);
+    }
+  }
+
+  private async resolveBaseUnitForItem(itemId: string): Promise<void> {
     try {
       const item = await this.inventoryService.getItem(itemId);
-      const unit = await this.unitMeasureService.getUnitMeasure(item.unit_measure_id);
-      this.unitAbbr.set(unit.abbreviation);
+      await this.resolveBaseUnitById(item.unit_measure_id);
     } catch {
-      this.unitAbbr.set('');
+      this.baseUnit.set(null);
     }
   }
 
-  readonly equivalencePreview = () => {
-    const factor = this.conversionFactor();
+  readonly equivalencePreview = computed(() => {
+    const unit = this.unitOptions().find((u) => u.id === this.unitMeasureId());
+    if (!unit) return null;
     const cost = this.lastCost();
-    const presentation = this.presentation().trim();
-    if (!presentation || !factor || factor <= 0) return null;
-    const unit = this.unitAbbr();
-    let text = `1 ${presentation} = ${factor}${unit ? ' ' + unit : ''}`;
-    if (cost !== null && cost >= 0) {
-      const perUnit = Math.round((cost / factor) * 100) / 100;
-      text += ` · $${perUnit}${unit ? '/' + unit : ''}`;
+    const baseAbbr = this.baseUnit()?.abbreviation ?? '';
+    let text = `1 ${unit.name} = ${unit.factor_to_base}${baseAbbr ? ' ' + baseAbbr : ''}`;
+    if (cost !== null && cost >= 0 && unit.factor_to_base > 0) {
+      const perUnit = Math.round((cost / unit.factor_to_base) * 100) / 100;
+      text += ` · $${perUnit}${baseAbbr ? '/' + baseAbbr : ''}`;
     }
     return text;
-  };
+  });
 
   canSubmit(): boolean {
-    const factor = this.conversionFactor();
-    if (!this.presentation().trim()) return false;
-    if (factor === null || factor <= 0) return false;
+    if (!this.unitMeasureId()) return false;
     if (!this.initial) {
       return this.mode === 'item' ? !!this.supplierId() : !!this.itemId();
     }
@@ -240,16 +261,14 @@ export class SupplierItemFormComponent implements OnInit {
 
   async submit(): Promise<void> {
     const form: SupplierItemForm = {
-      presentation: this.presentation().trim(),
-      conversion_factor: this.conversionFactor() ?? 0,
+      unit_measure_id: this.unitMeasureId(),
       last_cost: this.lastCost(),
     };
 
     let result: SupplierItem | null;
     if (this.initial) {
       result = await this.service.update(this.initial.id, {
-        presentation: form.presentation,
-        conversion_factor: this.factorLocked ? undefined : form.conversion_factor,
+        unit_measure_id: this.factorLocked ? undefined : form.unit_measure_id,
         last_cost: form.last_cost,
       });
     } else if (this.mode === 'item') {

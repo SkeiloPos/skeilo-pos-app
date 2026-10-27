@@ -4,12 +4,19 @@ import { Observable, firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   BlockingUnit,
+  UnitInGroup,
   UnitMeasureGroup,
   UnitMeasureGroupAddUnitPayload,
   UnitMeasureGroupBaseReassignPayload,
   UnitMeasureGroupCreatePayload,
   UnitMeasureGroupRenamePayload,
 } from '../interfaces/unit-measure-group.interface';
+
+/** Forma cruda del backend: Pydantic serializa `Decimal` como texto con 6 decimales fijos
+ *  (p. ej. "1000.000000"), nunca como un `number` de JSON. */
+interface UnitMeasureGroupResponse extends Omit<UnitMeasureGroup, 'units'> {
+  units: (Omit<UnitInGroup, 'factor_to_base'> & { factor_to_base: string })[];
+}
 
 /** Grupos de unidades de medida con unidad base explícita (spec 137). */
 @Injectable({ providedIn: 'root' })
@@ -31,9 +38,9 @@ export class UnitMeasureGroupService {
     try {
       const params = active === undefined ? undefined : { active };
       const data = await firstValueFrom(
-        this.http.get<UnitMeasureGroup[]>(this.baseUrl, { params }),
+        this.http.get<UnitMeasureGroupResponse[]>(this.baseUrl, { params }),
       );
-      this.groups.set([...data].sort((a, b) => a.name.localeCompare(b.name)));
+      this.groups.set(data.map((g) => this.toGroup(g)).sort((a, b) => a.name.localeCompare(b.name)));
     } catch (err) {
       this.error.set(this.extractError(err));
     } finally {
@@ -85,6 +92,10 @@ export class UnitMeasureGroupService {
     } finally {
       this.isSubmitting.set(false);
     }
+  }
+
+  private toGroup(g: UnitMeasureGroupResponse): UnitMeasureGroup {
+    return { ...g, units: g.units.map((u) => ({ ...u, factor_to_base: Number(u.factor_to_base) })) };
   }
 
   private extractError(err: unknown): string {

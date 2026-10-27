@@ -10,6 +10,13 @@ import {
   UnitMeasureUpdatePayload,
 } from '../interfaces/unit-measure.interface';
 
+/** Forma cruda del backend: Pydantic serializa `Decimal` como texto con 6 decimales fijos
+ *  (p. ej. "1000.000000"), nunca como un `number` de JSON -- a diferencia del resto de la
+ *  interfaz, que sí coincide 1:1. */
+interface UnitMeasureResponse extends Omit<UnitMeasure, 'factor_to_base'> {
+  factor_to_base: string;
+}
+
 /** Catalog of measurement units from the backend (read + write). */
 @Injectable({ providedIn: 'root' })
 export class UnitMeasureService {
@@ -24,7 +31,8 @@ export class UnitMeasureService {
   /** Unidad puntual (spec 106): resuelve la abreviatura de un insumo recién elegido en el
    *  selector de "Insumos que vende" sin depender de una precarga del catálogo completo. */
   async getUnitMeasure(id: string): Promise<UnitMeasure> {
-    return firstValueFrom(this.http.get<UnitMeasure>(`${this.baseUrl}/${id}`));
+    const data = await firstValueFrom(this.http.get<UnitMeasureResponse>(`${this.baseUrl}/${id}`));
+    return this.toUnit(data);
   }
 
   async loadUnitMeasures(): Promise<void> {
@@ -32,13 +40,17 @@ export class UnitMeasureService {
     this.error.set(null);
 
     try {
-      const data = await firstValueFrom(this.http.get<UnitMeasure[]>(this.baseUrl));
-      this.unitMeasures.set([...data].sort((a, b) => a.name.localeCompare(b.name)));
+      const data = await firstValueFrom(this.http.get<UnitMeasureResponse[]>(this.baseUrl));
+      this.unitMeasures.set(data.map((u) => this.toUnit(u)).sort((a, b) => a.name.localeCompare(b.name)));
     } catch (err) {
       this.error.set(this.extractError(err));
     } finally {
       this.loading.set(false);
     }
+  }
+
+  private toUnit(u: UnitMeasureResponse): UnitMeasure {
+    return { ...u, factor_to_base: Number(u.factor_to_base) };
   }
 
   /** Retirado del flujo normal (spec 137): crear una unidad nueva usa

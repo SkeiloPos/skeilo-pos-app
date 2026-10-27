@@ -79,7 +79,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
     @if (showForm() && item()) {
       <app-supplier-item-form mode="item" [fixedId]="item()!.id" [fixedLabel]="item()!.name"
-        [knownUnitAbbr]="unitAbbr()" [initial]="editing()"
+        [knownUnitMeasureId]="item()!.unit_measure_id" [initial]="editing()"
         (close)="showForm.set(false)"
         (saved)="onSaved()"
         (editRequested)="onEditRequested($event)" />
