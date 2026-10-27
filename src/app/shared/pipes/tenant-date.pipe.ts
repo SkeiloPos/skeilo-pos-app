@@ -1,9 +1,7 @@
 import { formatDate } from '@angular/common';
 import { LOCALE_ID, Pipe, PipeTransform, inject } from '@angular/core';
 import { TenantInfoService } from '../../core/tenant/tenant-info.service';
-
-/** Zona horaria de respaldo mientras `TenantInfoService.info()` aún no cargó. */
-const DEFAULT_TIMEZONE = 'America/Bogota';
+import { FALLBACK_TIMEZONE } from '../date-format.util';
 
 /**
  * Desfase (`+hhmm` / `-hhmm`) de una zona horaria IANA en un instante concreto, o `null` si
@@ -51,6 +49,10 @@ function ianaOffset(timeZone: string, date: Date): string | null {
  * `{{ venta.sold_at | tenantDate:'dd/MM/yyyy HH:mm' }}` → hora del negocio, no
  * la del navegador (spec 030, FR-002/A-50).
  *
+ * Tercer parámetro opcional (spec 138): `{{ t.plan_vence_en | tenantDate:'mediumDate':t.timezone }}`
+ * formatea en la zona de OTRO tenant (la lista de Super Admin). Precedencia: zona explícita >
+ * zona del tenant actual > `FALLBACK_TIMEZONE`.
+ *
  * Envuelve `formatDate` de `@angular/common` (la misma función que usa el
  * `DatePipe` nativo por dentro) pasándole la zona horaria del tenant —
  * mecanismo único, usable en plantilla (este pipe) e inyectable directo en
@@ -61,11 +63,15 @@ export class TenantDatePipe implements PipeTransform {
   private readonly locale = inject(LOCALE_ID);
   private readonly tenantInfo = inject(TenantInfoService);
 
-  transform(value: string | number | Date | null | undefined, format = 'medium'): string | null {
+  transform(
+    value: string | number | Date | null | undefined,
+    format = 'medium',
+    timezone?: string,
+  ): string | null {
     if (value === null || value === undefined || value === '') return null;
-    const timezone = this.tenantInfo.info()?.timezone ?? DEFAULT_TIMEZONE;
+    const zone = timezone || this.tenantInfo.info()?.timezone || FALLBACK_TIMEZONE;
     const instant = new Date(value);
-    const offset = Number.isNaN(instant.getTime()) ? null : ianaOffset(timezone, instant);
-    return formatDate(value, format, this.locale, offset ?? timezone);
+    const offset = Number.isNaN(instant.getTime()) ? null : ianaOffset(zone, instant);
+    return formatDate(value, format, this.locale, offset ?? zone);
   }
 }
