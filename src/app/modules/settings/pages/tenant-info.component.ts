@@ -256,7 +256,7 @@ export class TenantInfoComponent implements OnInit {
             message: this.tenantInfo.receiptMessage(),
           },
         ],
-        { paperWidthMm: this.printer.paperWidthMm() },
+        { paperWidthMm: this.printer.paperWidthMm(), timezone: this.tenantInfo.timezone() },
       ),
     );
   }
