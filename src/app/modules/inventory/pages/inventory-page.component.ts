@@ -37,6 +37,8 @@ import { PaginationBarComponent } from '../../../shared/pagination/pagination-ba
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { PlanSummaryService } from '../../plan/services/plan-summary.service';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
+import { businessToday } from '../../../shared/date-format.util';
 
 type Tab = 'items' | 'purchases' | 'movements';
 type TypeFilter = '' | InventoryItemType;
@@ -497,6 +499,7 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
   private readonly overlay = inject(Overlay);
+  private readonly tenantInfo = inject(TenantInfoService);
 
   readonly actionsMenuPositions: ConnectionPositionPair[] = [
     { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
@@ -651,8 +654,8 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   private exportFilename(contentDisposition: string | null): string {
     const match = contentDisposition ? /filename="?([^"]+)"?/.exec(contentDisposition) : null;
     if (match) return match[1];
-    const today = new Date().toISOString().slice(0, 10);
-    return `inventario_${today}.xlsx`;
+    // spec 138 (A-147): el día del respaldo es el día local del negocio, no el día UTC.
+    return `inventario_${businessToday(this.tenantInfo.timezone())}.xlsx`;
   }
   toggleExpanded(id: string): void {
     this.expandedId.update(current => (current === id ? null : id));
