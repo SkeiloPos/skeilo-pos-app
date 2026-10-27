@@ -2897,6 +2897,29 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
     expect(cards[1].pending).toBe(true);
   });
 
+  it('ordersView() muestra la hora de cada pedido en la zona del negocio, no en la del navegador (spec 138)', () => {
+    const tenantInfo = TestBed.inject(TenantInfoService);
+    const horaDelPedido = (timezone: string): string => {
+      tenantInfo.hydrate({
+        id: 1, name: 'Heladería', host: 'h.skeilopos.com', logo_url: null, receipt_message: null, timezone,
+      });
+      store.orders.set([
+        {
+          ...order('o1', 'abierta', ['listo']),
+          channel: 'POS',
+          dining_table_id: 't1',
+          created_at: '2026-10-25T23:30:00+00:00',
+        },
+      ]);
+      store.selectedTableId.set('t1');
+      return store.ordersView()[0].createdAtLabel.replace(/\s+/g, ' ');
+    };
+
+    expect(horaDelPedido('America/Mexico_City')).toBe('05:30 p. m.');
+    expect(horaDelPedido('America/Bogota')).toBe('06:30 p. m.');
+    expect(horaDelPedido('Asia/Tokyo')).toBe('08:30 a. m.');
+  });
+
   it('selectedTableStatusMeta() es null sin mesa seleccionada', () => {
     expect(store.selectedTableStatusMeta()).toBeNull();
   });

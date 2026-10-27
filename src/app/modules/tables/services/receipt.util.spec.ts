@@ -1,5 +1,6 @@
 import {
   ReceiptData,
+  ReceiptOptions,
   buildReceiptHtml,
   formatMoney,
   saleToReceipt,
@@ -11,7 +12,7 @@ function makeReceipt(patch: Partial<ReceiptData> = {}): ReceiptData {
     businessName: 'Heladería Skeilo',
     logoUrl: null,
     tableLabel: 'Mesa 5 · Terraza',
-    soldAt: '2026-07-28T18:42:00',
+    soldAt: '2026-07-28T23:42:00+00:00', // 18:42 en Bogotá
     cashier: 'Ana',
     customerName: 'Carlos',
     saleId: '11111111-2222-3333-4444-5555aabbccdd',
@@ -29,9 +30,13 @@ function makeReceipt(patch: Partial<ReceiptData> = {}): ReceiptData {
   };
 }
 
+/** El ticket se arma siempre con la zona del negocio (spec 138): Bogotá salvo que la prueba diga otra. */
+const build = (receipts: ReceiptData[], options: Partial<ReceiptOptions> = {}) =>
+  buildReceiptHtml(receipts, { timezone: 'America/Bogota', ...options });
+
 describe('buildReceiptHtml', () => {
   it('imprime negocio, líneas, total y mensaje', () => {
-    const html = buildReceiptHtml([makeReceipt()]);
+    const html = build([makeReceipt()]);
 
     expect(html).toContain('Heladería Skeilo');
     expect(html).toContain('Mesa 5 · Terraza');
@@ -44,7 +49,7 @@ describe('buildReceiptHtml', () => {
   });
 
   it('omite los totales que no aplican', () => {
-    const html = buildReceiptHtml([makeReceipt()]);
+    const html = build([makeReceipt()]);
 
     // Sin descuento/impuesto/propina, el subtotal no aporta nada sobre el total.
     expect(html).not.toContain('Descuento');
@@ -54,7 +59,7 @@ describe('buildReceiptHtml', () => {
   });
 
   it('muestra el desglose cuando hay descuento', () => {
-    const html = buildReceiptHtml([
+    const html = build([
       makeReceipt({ discount: 2000, total: 10000 }),
     ]);
 
@@ -64,7 +69,7 @@ describe('buildReceiptHtml', () => {
   });
 
   it('emite un ticket por venta en cuenta dividida', () => {
-    const html = buildReceiptHtml([
+    const html = build([
       makeReceipt({ customerName: 'Ana', total: 8000 }),
       makeReceipt({ saleId: 'aaaa-bbbb', customerName: 'Luis', total: 4000 }),
     ]);
@@ -77,18 +82,18 @@ describe('buildReceiptHtml', () => {
   it('separa los tickets con una línea de corte, no con un salto de página', () => {
     // Con la página fija del driver (48×210mm) el salto mandaba el segundo ticket
     // a otra hoja: avance largo en blanco y, en muchas térmicas, ticket perdido.
-    const dos = buildReceiptHtml([makeReceipt(), makeReceipt({ saleId: 'otra-venta' })]);
+    const dos = build([makeReceipt(), makeReceipt({ saleId: 'otra-venta' })]);
 
     expect(dos).not.toContain('page-break-before');
     expect(dos.match(/class="cut"/g)?.length).toBe(1);
   });
 
   it('no pone línea de corte cuando se imprime un solo ticket', () => {
-    expect(buildReceiptHtml([makeReceipt()])).not.toContain('class="cut"');
+    expect(build([makeReceipt()])).not.toContain('class="cut"');
   });
 
   it('imprime el consecutivo de la factura cuando la venta lo tiene', () => {
-    const html = buildReceiptHtml([makeReceipt({ invoice: { prefix: 'A', number: 4 } })]);
+    const html = build([makeReceipt({ invoice: { prefix: 'A', number: 4 } })]);
 
     expect(html).toContain('<span>Factura</span><span>A-000004</span>');
     // El id corto es el respaldo, no se imprimen los dos.
@@ -96,14 +101,14 @@ describe('buildReceiptHtml', () => {
   });
 
   it('cae al id corto en ventas sin factura emitida', () => {
-    const html = buildReceiptHtml([makeReceipt()]);
+    const html = build([makeReceipt()]);
 
     expect(html).toContain('<span>Ticket</span><span>#BBCCDD</span>');
     expect(html).not.toContain('<span>Factura</span>');
   });
 
   it('spec 112 (FR-020): un cobro con pago mixto imprime una fila por método', () => {
-    const html = buildReceiptHtml([
+    const html = build([
       makeReceipt({
         payments: [
           { name: 'Efectivo', amount: 8000 },
@@ -207,7 +212,7 @@ describe('saleToReceipt', () => {
     );
 
     expect(receipt.lines[0].options).toEqual(['Chocolate']);
-    expect(buildReceiptHtml([receipt])).toContain('Chocolate');
+    expect(build([receipt])).toContain('Chocolate');
   });
 
   it('arma la etiqueta de la mesa desde la venta', () => {
@@ -228,18 +233,18 @@ describe('saleToReceipt', () => {
   it('compone la página al ancho del rollo', () => {
     // Si la página no mide lo que el papel, el navegador la reduce para
     // encajarla y el texto sale gris y deshilachado en el cabezal.
-    const porDefecto = buildReceiptHtml([makeReceipt()]);
+    const porDefecto = build([makeReceipt()]);
     expect(porDefecto).toContain('@page { size: 48mm auto; margin: 0; }');
     expect(porDefecto).toContain('width: 48mm;');
 
-    const ancho = buildReceiptHtml([makeReceipt()], { paperWidthMm: 58 });
+    const ancho = build([makeReceipt()], { paperWidthMm: 58 });
     expect(ancho).toContain('@page { size: 58mm auto; margin: 0; }');
     expect(ancho).toContain('width: 58mm;');
     expect(ancho).not.toContain('48mm');
   });
 
   it('no usa separadores punteados ni tipografía fina', () => {
-    const html = buildReceiptHtml([makeReceipt()]);
+    const html = build([makeReceipt()]);
 
     // Un `dashed` sale como puntos sueltos, así que las divisiones internas del
     // ticket van sólidas; Courier además pierde trazos a este tamaño.
@@ -250,13 +255,38 @@ describe('saleToReceipt', () => {
 
   it('escribe la fecha sin la coma de toLocaleString', () => {
     // Es la fila más larga del ticket: a 48 mm dos caracteres deciden si cabe.
-    const html = buildReceiptHtml([makeReceipt()]);
+    const html = build([makeReceipt()]);
 
     expect(html).toContain('28/07/2026 18:42');
   });
 
+  // spec 138 (FR-008/FR-009): la fecha del ticket sale en la zona del NEGOCIO, no en la del navegador. Estas
+  // pruebas se corren además con `TZ=Asia/Tokyo` y `TZ=UTC`: el resultado no puede cambiar.
+  describe('fecha en la zona del negocio', () => {
+    const fecha = (timezone: string, soldAt = '2026-10-25T23:30:00+00:00'): string | null => {
+      const html = build([makeReceipt({ soldAt })], { timezone });
+      return /<span>Fecha<\/span><span>([^<]*)<\/span>/.exec(html)?.[1] ?? null;
+    };
+
+    it('el mismo instante se imprime distinto según la zona del negocio', () => {
+      expect(fecha('America/Bogota')).toBe('25/10/2026 18:30');
+      expect(fecha('America/Mexico_City')).toBe('25/10/2026 17:30');
+      expect(fecha('Europe/Madrid')).toBe('26/10/2026 00:30');
+      expect(fecha('Asia/Tokyo')).toBe('26/10/2026 08:30');
+    });
+
+    it('cambia de día respecto de UTC en la zona del negocio', () => {
+      // 01:00Z del 26/10 todavía es el 25 a las 20:00 en Bogotá.
+      expect(fecha('America/Bogota', '2026-10-26T01:00:00+00:00')).toBe('25/10/2026 20:00');
+    });
+
+    it('una fecha inválida deja la fila vacía en vez de imprimir «NaN»', () => {
+      expect(fecha('America/Bogota', 'no-es-una-fecha')).toBeNull();
+    });
+  });
+
   it('escapa el HTML de los textos del negocio', () => {
-    const html = buildReceiptHtml([
+    const html = build([
       makeReceipt({ message: '<script>alert(1)</script>' }),
     ]);
 

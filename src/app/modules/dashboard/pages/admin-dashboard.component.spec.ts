@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -7,6 +8,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { environment } from '../../../../environments/environment';
 import { AdminDashboardComponent } from './admin-dashboard.component';
 import { AuthService } from '../../../core/services/auth.service';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { User, UserRole } from '../../../core/interfaces/user.interface';
 
 /** Doble liviano de `AuthService`: la real arrastra `PushRegistrationService`
@@ -480,3 +482,84 @@ describe('AdminDashboardComponent — "Stock bajo" (spec 122, US5)', () => {
     expect(el.textContent).not.toContain('Stock bajo');
   });
 });
+
+// spec 138 (FR-008, SC-002): el saludo y TODOS los ejes de la gráfica salen en la zona del negocio, aunque el
+// sistema del navegador esté en otra (estas pruebas se corren además con `TZ=Asia/Tokyo` y `TZ=UTC`).
+describe('AdminDashboardComponent — saludo y ejes en la zona del negocio (spec 138)', () => {
+  const pmBase = `${cashBase}/reports/payment-methods`;
+
+  afterEach(() => vi.useRealTimers());
+
+  async function crear(timezone: string, unit: 'hour' | 'day' | 'week' = 'hour', bucket = '2026-10-26T00:00:00Z') {
+    TestBed.configureTestingModule({
+      imports: [AdminDashboardComponent],
+      providers: [
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })),
+        { provide: AuthService, useValue: fakeAuthService() },
+      ],
+    });
+    TestBed.inject(TenantInfoService).hydrate({
+      id: 1, name: 'Heladería', host: 'h.skeilopos.com', logo_url: null, receipt_message: null, timezone,
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(AdminDashboardComponent);
+    fixture.detectChanges();
+    http.expectOne((r) => r.url === `${cashBase}/reports/period`).flush(periodReportFixture());
+    http.expectOne((r) => r.url === `${reportsBase}/sales`).flush({ by_day: [] });
+    http.expectOne((r) => r.url === pmBase).flush({
+      bucket_unit: unit,
+      rows: [{ bucket_start: bucket, payment_method_id: 'm1', payment_method_name: 'Efectivo', amount: '1000' }],
+    });
+    await Promise.resolve().then(() => Promise.resolve());
+    fixture.detectChanges();
+    return fixture.componentInstance;
+  }
+
+  describe('saludo', () => {
+    // 2026-10-26T00:30Z = 19:30 Bogotá · 18:30 Ciudad de México · 09:30 Tokio
+    async function saludo(timezone: string): Promise<string> {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-26T00:30:00Z'));
+      return (await crear(timezone)).greeting();
+    }
+
+    it('Bogotá a las 19:30 locales: Buenas noches', async () => {
+      expect(await saludo('America/Bogota')).toBe('Buenas noches');
+    });
+
+    it('Ciudad de México a las 18:30 locales: Buenas tardes', async () => {
+      expect(await saludo('America/Mexico_City')).toBe('Buenas tardes');
+    });
+
+    it('Tokio a las 09:30 locales: Buenos días', async () => {
+      expect(await saludo('Asia/Tokyo')).toBe('Buenos días');
+    });
+  });
+
+  describe('ejes de la gráfica por método de pago', () => {
+    // 2026-10-26T01:00Z = domingo 25/10 20:00 Bogotá · domingo 25/10 19:00 México · lunes 26/10 10:00 Tokio
+    const BUCKET = '2026-10-26T01:00:00Z';
+
+    it('por hora: la hora local del negocio', async () => {
+      expect((await crear('America/Mexico_City', 'hour', BUCKET)).pmBucketLabels()).toEqual(['7 p. m.']);
+      TestBed.resetTestingModule();
+      expect((await crear('Asia/Tokyo', 'hour', BUCKET)).pmBucketLabels()).toEqual(['10 a. m.']);
+    });
+
+    it('por día: el día de la semana del negocio', async () => {
+      expect((await crear('America/Bogota', 'day', BUCKET)).pmBucketLabels()).toEqual(['dom']);
+      TestBed.resetTestingModule();
+      expect((await crear('Asia/Tokyo', 'day', BUCKET)).pmBucketLabels()).toEqual(['lun']);
+    });
+
+    it('por semana: «Sem d/m» con el día del negocio', async () => {
+      expect((await crear('America/Bogota', 'week', BUCKET)).pmBucketLabels()).toEqual(['Sem 25/10']);
+      TestBed.resetTestingModule();
+      expect((await crear('Asia/Tokyo', 'week', BUCKET)).pmBucketLabels()).toEqual(['Sem 26/10']);
+    });
+  });
+});
+

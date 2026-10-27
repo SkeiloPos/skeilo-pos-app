@@ -4,6 +4,8 @@ import { ShiftSummary } from '../../cash-register/interfaces/cash.interface';
 import { ShiftReportsService } from '../services/shift-reports.service';
 import { ShiftSalesReport } from '../interfaces/shift-reports.interface';
 import { formatMoney } from '../../../shared/money';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
+import { formatInZone } from '../../../shared/date-format.util';
 import { ChartCardComponent } from '../../../shared/charts/chart-card.component';
 import { RankedBarsChartComponent } from '../../../shared/charts/ranked-bars-chart.component';
 import { ShareBarChartComponent, ShareItem } from '../../../shared/charts/share-bar-chart.component';
@@ -82,6 +84,7 @@ import { StatTileComponent } from '../../../shared/charts/stat-tile.component';
 export class ShiftSalesReportCardComponent implements OnInit {
   private readonly cashService = inject(CashService);
   private readonly shiftReportsService = inject(ShiftReportsService);
+  private readonly tenantInfo = inject(TenantInfoService);
 
   /** Avisa el turno elegido hacia afuera (spec 122, FR-007): la sección de
    *  "Ingresos por método de pago" del Dashboard necesita saber cuál, para
@@ -141,7 +144,8 @@ export class ShiftSalesReportCardComponent implements OnInit {
   }
 
   shiftLabel(s: ShiftSummary): string {
-    const fecha = new Date(s.opened_at).toLocaleString('es-CO', {
+    // spec 138 (FR-008): la fecha de apertura del turno en la zona del negocio, no en la del navegador.
+    const fecha = formatInZone(s.opened_at, this.tenantInfo.timezone(), {
       day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
     return `${s.register_name} · ${fecha}`;

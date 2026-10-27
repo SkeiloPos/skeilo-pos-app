@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { Component, inject } from '@angular/core';
 import { InvitationsService } from '../services/invitations.service';
 
@@ -40,7 +40,7 @@ const ROLE_BADGE_CLASSES: Record<string, string> = {
                   </p>
                 }
                 <p class="text-xs text-gray-500">
-                  Enviada el {{ invitation.sent_at | date: 'dd/MM/yyyy HH:mm' }}
+                  Enviada el {{ invitation.sent_at | tenantDate: 'dd/MM/yyyy HH:mm' }}
                 </p>
               </div>
               <div class="flex items-center gap-2 shrink-0">
@@ -74,7 +74,7 @@ const ROLE_BADGE_CLASSES: Record<string, string> = {
       </div>
     }
   `,
-  imports: [DatePipe],
+  imports: [TenantDatePipe],
 })
 export class PendingInvitationsListComponent {
   readonly invitationsService = inject(InvitationsService);

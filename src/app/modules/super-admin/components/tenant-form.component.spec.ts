@@ -36,6 +36,7 @@ describe('TenantFormComponent — host reservado (spec 091, A-101)', () => {
       name: 'Dueño Negocio',
       email: 'dueno@negocio.co',
       plan_id: 'plan-1',
+      timezone: 'America/Bogota', // obligatoria y sin valor inicial desde la spec 138
     });
   }
 
@@ -90,3 +91,98 @@ describe('TenantFormComponent — host reservado (spec 091, A-101)', () => {
     expect(c.form.controls.host.touched).toBe(true);
   });
 });
+
+// spec 138 (FR-010): la zona horaria se elige de la lista curada, es obligatoria y NO tiene valor inicial.
+describe('TenantFormComponent — zona horaria (spec 138, FR-010)', () => {
+  let createTenant: ReturnType<typeof vi.fn>;
+
+  function crear() {
+    createTenant = vi.fn(async () => undefined);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [TenantFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        {
+          provide: TenantService,
+          useValue: { createTenant, error: () => null, isSubmitting: () => false },
+        },
+        { provide: PlanService, useValue: { load: () => undefined, plans: () => [] } },
+      ],
+    });
+    const fixture = TestBed.createComponent(TenantFormComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function llenarSinZona(fixture: ReturnType<typeof crear>) {
+    fixture.componentInstance.form.patchValue({
+      tenant_name: 'Mi Negocio',
+      schema_name: 'minegocio',
+      host: 'minegocio',
+      name: 'Dueño Negocio',
+      email: 'dueno@negocio.co',
+      plan_id: 'plan-1',
+    });
+  }
+
+  const select = (fixture: ReturnType<typeof crear>) =>
+    (fixture.nativeElement as HTMLElement).querySelector('[data-testid="timezone"]') as HTMLSelectElement;
+
+  it('nace vacía: sin zona preseleccionada y el formulario es inválido', () => {
+    const fixture = crear();
+    expect(fixture.componentInstance.form.controls.timezone.value).toBe('');
+    expect(fixture.componentInstance.form.invalid).toBe(true);
+    expect(select(fixture).value).toBe('');
+  });
+
+  it('el selector ofrece «Selecciona una zona» (deshabilitada) y las siete zonas en español', () => {
+    const fixture = crear();
+    const opciones = Array.from(select(fixture).options).map((o) => [o.value, o.textContent?.trim(), o.disabled]);
+    expect(opciones).toEqual([
+      ['', 'Selecciona una zona', true],
+      ['America/Bogota', 'Bogotá (Colombia)', false],
+      ['America/Mexico_City', 'Ciudad de México', false],
+      ['America/Lima', 'Lima (Perú)', false],
+      ['America/Santiago', 'Santiago (Chile)', false],
+      ['America/Argentina/Buenos_Aires', 'Buenos Aires (Argentina)', false],
+      ['Europe/Madrid', 'Madrid (España)', false],
+      ['Asia/Tokyo', 'Tokio (Japón)', false],
+    ]);
+  });
+
+  it('«Guardar» no avanza sin elegir una zona y muestra el aviso', async () => {
+    const fixture = crear();
+    llenarSinZona(fixture);
+
+    await fixture.componentInstance.onSubmit();
+    fixture.detectChanges();
+
+    expect(createTenant).not.toHaveBeenCalled();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Debes elegir una zona horaria');
+  });
+
+  it('elegida «Ciudad de México», createTenant recibe timezone: America/Mexico_City', async () => {
+    const fixture = crear();
+    llenarSinZona(fixture);
+    const el = select(fixture);
+    el.value = 'America/Mexico_City';
+    el.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    await fixture.componentInstance.onSubmit();
+
+    expect(createTenant).toHaveBeenCalledOnce();
+    expect(createTenant.mock.calls[0][0].timezone).toBe('America/Mexico_City');
+  });
+
+  it('elegir una zona hace válido el formulario completo', () => {
+    const fixture = crear();
+    llenarSinZona(fixture);
+    expect(fixture.componentInstance.form.valid).toBe(false);
+    fixture.componentInstance.form.controls.timezone.setValue('Asia/Tokyo');
+    expect(fixture.componentInstance.form.valid).toBe(true);
+  });
+});
+

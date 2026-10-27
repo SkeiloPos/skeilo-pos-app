@@ -1,7 +1,9 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { AuthService } from '../../../core/services/auth.service';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
+import { formatInZone, zonedParts } from '../../../shared/date-format.util';
 import { ToastService } from '../../../shared/feedback/toast.service';
 import { VisibleInterval, startVisibleInterval } from '../../../core/realtime/visible-interval';
 import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.component';
@@ -82,21 +84,21 @@ export class PosTerminalHeaderComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
+  private readonly tenantInfo = inject(TenantInfoService);
 
   /** Reloj/fecha/turno de la barra superior -- un tick por minuto (no hace
    *  falta más precisión), pausado en segundo plano. */
-  readonly clockLabel = signal(this.formatClock(new Date()));
-  readonly dateLabel = signal(this.formatDate(new Date()));
-  readonly shiftLabel = signal(this.formatShift(new Date()));
+  // spec 138 (FR-008): hora, fecha y turno en la zona del NEGOCIO, no en la del navegador. Son `computed`
+  // sobre el instante actual y la zona: si la información del negocio llega después de montar la barra, el
+  // reloj se corrige solo sin esperar al siguiente tick.
+  private readonly now = signal(new Date());
+  readonly clockLabel = computed(() => this.formatClock(this.now()));
+  readonly dateLabel = computed(() => this.formatDate(this.now()));
+  readonly shiftLabel = computed(() => this.formatShift(this.now()));
   private clockTimer?: VisibleInterval;
 
   ngOnInit(): void {
-    this.clockTimer = startVisibleInterval(() => {
-      const now = new Date();
-      this.clockLabel.set(this.formatClock(now));
-      this.dateLabel.set(this.formatDate(now));
-      this.shiftLabel.set(this.formatShift(now));
-    }, 30_000);
+    this.clockTimer = startVisibleInterval(() => this.now.set(new Date()), 30_000);
   }
 
   ngOnDestroy(): void {
@@ -104,17 +106,18 @@ export class PosTerminalHeaderComponent implements OnInit, OnDestroy {
   }
 
   private formatClock(d: Date): string {
-    return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+    return formatInZone(d, this.tenantInfo.timezone(), { hour: '2-digit', minute: '2-digit' });
   }
 
   private formatDate(d: Date): string {
-    return d.toLocaleDateString('es-CO');
+    return formatInZone(d, this.tenantInfo.timezone(), {});
   }
 
   /** "Turno {Mañana/Tarde/Noche}: {usuario}" -- mismo dato que ya muestra el
    *  header global del dashboard (AuthService.currentUser()). */
   private formatShift(d: Date): string {
-    const h = d.getHours();
+    // La hora que decide Mañana/Tarde/Noche es la del negocio (`< 12` Mañana, `< 19` Tarde, resto Noche).
+    const h = zonedParts(d, this.tenantInfo.timezone())?.hour ?? 0;
     const periodo = h < 12 ? 'Mañana' : h < 19 ? 'Tarde' : 'Noche';
     const nombre = this.authService.currentUser()?.name;
     return nombre ? `Turno ${periodo}: ${nombre}` : `Turno ${periodo}`;

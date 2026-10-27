@@ -58,30 +58,84 @@ describe('inTimeWindow', () => {
 });
 
 describe('isPromoActiveNow', () => {
-  const now = new Date('2026-08-05T13:00:00'); // miércoles
+  // 2026-08-05T18:00Z = miércoles 13:00 en Bogotá
+  const now = new Date('2026-08-05T18:00:00Z');
+  const BOGOTA = 'America/Bogota';
 
   it('solo estado active', () => {
-    expect(isPromoActiveNow(promo({ status: 'draft' }), now)).toBe(false);
-    expect(isPromoActiveNow(promo({ status: 'active' }), now)).toBe(true);
+    expect(isPromoActiveNow(promo({ status: 'draft' }), now, BOGOTA)).toBe(false);
+    expect(isPromoActiveNow(promo({ status: 'active' }), now, BOGOTA)).toBe(true);
   });
 
   it('respeta días de la semana', () => {
-    expect(isPromoActiveNow(promo({ days_of_week: '2' }), now)).toBe(true); // miércoles = 2
-    expect(isPromoActiveNow(promo({ days_of_week: '0' }), now)).toBe(false);
+    expect(isPromoActiveNow(promo({ days_of_week: '2' }), now, BOGOTA)).toBe(true); // miércoles = 2
+    expect(isPromoActiveNow(promo({ days_of_week: '0' }), now, BOGOTA)).toBe(false);
+  });
+});
+
+// spec 138 (FR-009): la vigencia visual se evalúa en la zona del NEGOCIO. Promoción 18:00–20:00 contra
+// 2026-10-25T23:30Z: aplica en Bogotá (18:30) y no en Ciudad de México (17:30) ni en Madrid (00:30 del 26/10) — la misma
+// matriz que usa el backend. Se corre además con `TZ=Asia/Tokyo` y `TZ=UTC`: el resultado no puede cambiar.
+describe('isPromoActiveNow / getPromoDisplay en la zona del negocio (spec 138)', () => {
+  const ventana = promo({ start_time: '18:00', end_time: '20:00' });
+
+  it('misma promoción, mismo instante: según la zona aplica o no', () => {
+    const instante = new Date('2026-10-25T23:30:00Z');
+    expect(isPromoActiveNow(ventana, instante, 'America/Bogota')).toBe(true); // 18:30
+    expect(isPromoActiveNow(ventana, instante, 'America/Mexico_City')).toBe(false); // 17:30
+    expect(isPromoActiveNow(ventana, instante, 'Europe/Madrid')).toBe(false); // 00:30
+  });
+
+  it('instante de control: 22:30Z no aplica en ninguna; 00:30Z del 26/10 aplica en Bogotá y México', () => {
+    const control = new Date('2026-10-25T22:30:00Z');
+    for (const tz of ['America/Bogota', 'America/Mexico_City', 'Europe/Madrid']) {
+      expect(isPromoActiveNow(ventana, control, tz)).toBe(false);
+    }
+    const positivo = new Date('2026-10-26T00:30:00Z');
+    expect(isPromoActiveNow(ventana, positivo, 'America/Bogota')).toBe(true); // 19:30
+    expect(isPromoActiveNow(ventana, positivo, 'America/Mexico_City')).toBe(true); // 18:30
+    expect(isPromoActiveNow(ventana, positivo, 'Europe/Madrid')).toBe(false); // 01:30
+  });
+
+  it('el día de la semana es el del negocio (lunes = 0)', () => {
+    // 2026-10-26T01:00Z = domingo 25/10 en Bogotá (6) y lunes 26/10 en Madrid/Tokio (0).
+    const instante = new Date('2026-10-26T01:00:00Z');
+    expect(isPromoActiveNow(promo({ days_of_week: '6' }), instante, 'America/Bogota')).toBe(true);
+    expect(isPromoActiveNow(promo({ days_of_week: '0' }), instante, 'America/Bogota')).toBe(false);
+    expect(isPromoActiveNow(promo({ days_of_week: '0' }), instante, 'Asia/Tokyo')).toBe(true);
+  });
+
+  describe('starts_at/ends_at son hora de pared del negocio, sin pasar por new Date()', () => {
+    it('empieza el 25/10 a las 18:00 locales', () => {
+      const p = promo({ starts_at: '2026-10-25T18:00:00' });
+      // 22:59Z = 17:59 en Bogotá -> todavía no; 23:00Z = 18:00 -> ya.
+      expect(getPromoDisplay(p, new Date('2026-10-25T22:59:00Z'), 'America/Bogota')).toBe('scheduled');
+      expect(getPromoDisplay(p, new Date('2026-10-25T23:00:00Z'), 'America/Bogota')).toBe('live');
+      // La misma hora de pared en Madrid llega 6 horas antes (UTC+1): 17:00Z = 18:00 locales.
+      expect(getPromoDisplay(p, new Date('2026-10-25T17:00:00Z'), 'Europe/Madrid')).toBe('live');
+    });
+
+    it('vence el día de ends_at en la zona del negocio', () => {
+      const p = promo({ ends_at: '2026-10-25T00:00:00' });
+      // 2026-10-26T01:00Z sigue siendo el 25/10 en Bogotá (último día de vigencia) y ya es el 26 en Madrid.
+      expect(getPromoDisplay(p, new Date('2026-10-26T01:00:00Z'), 'America/Bogota')).toBe('live');
+      expect(getPromoDisplay(p, new Date('2026-10-26T01:00:00Z'), 'Europe/Madrid')).toBe('expired');
+    });
   });
 });
 
 describe('getPromoDisplay', () => {
-  const now = new Date('2026-08-05T13:00:00');
+  const now = new Date('2026-08-05T18:00:00Z'); // 13:00 en Bogotá
+  const BOGOTA = 'America/Bogota';
 
   it('draft / finished / live', () => {
-    expect(getPromoDisplay(promo({ status: 'draft' }), now)).toBe('draft');
-    expect(getPromoDisplay(promo({ status: 'finished' }), now)).toBe('finished');
-    expect(getPromoDisplay(promo({ status: 'active' }), now)).toBe('live');
+    expect(getPromoDisplay(promo({ status: 'draft' }), now, BOGOTA)).toBe('draft');
+    expect(getPromoDisplay(promo({ status: 'finished' }), now, BOGOTA)).toBe('finished');
+    expect(getPromoDisplay(promo({ status: 'active' }), now, BOGOTA)).toBe('live');
   });
 
   it('fuera de ventana horaria', () => {
-    expect(getPromoDisplay(promo({ start_time: '20:00', end_time: '22:00' }), now)).toBe(
+    expect(getPromoDisplay(promo({ start_time: '20:00', end_time: '22:00' }), now, BOGOTA)).toBe(
       'out_of_window',
     );
   });
