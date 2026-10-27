@@ -293,7 +293,14 @@ describe('ReportsService — gating de inventario/profitability (spec 062)', () 
 
 // spec 138 (FR-009): la «fecha específica» por defecto es el «hoy» del NEGOCIO, no el del navegador.
 describe('ReportsService — fecha específica por defecto en la zona del negocio (spec 138)', () => {
-  afterEach(() => vi.useRealTimers());
+  let http: HttpTestingController;
+
+  afterEach(() => {
+    vi.useRealTimers();
+    // Se usa la referencia capturada al armar el módulo: llamar `TestBed.inject` aquí podría instanciar un módulo NUEVO
+    // si el reinicio global de TestBed ya corrió, y dejarlo instanciado para el siguiente archivo del mismo worker.
+    http?.match(() => true);
+  });
 
   function servicio(timezone: string | null): ReportsService {
     TestBed.resetTestingModule();
@@ -311,10 +318,9 @@ describe('ReportsService — fecha específica por defecto en la zona del negoci
         id: 1, name: 'Heladería', host: 'h.skeilopos.com', logo_url: null, receipt_message: null, timezone,
       });
     }
+    http = TestBed.inject(HttpTestingController);
     return TestBed.inject(ReportsService);
   }
-
-  afterEach(() => TestBed.inject(HttpTestingController).match(() => true));
 
   // 2026-10-26T01:00Z = 20:00 del 25/10 en Bogotá · 19:00 del 25/10 en México · 02:00 del 26/10 en Madrid
   function conRelojEn(instante: string): void {
