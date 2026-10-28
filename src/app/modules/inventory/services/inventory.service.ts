@@ -349,8 +349,12 @@ export class InventoryService {
 
   /** Descarga el respaldo completo del inventario en `.xlsx` (spec 086/109: plantilla
    *  única con código y datos del proveedor preferido). */
-  exportItems(): Observable<HttpResponse<Blob>> {
+  exportItems(supplierId?: string, type?: InventoryItemType | ''): Observable<HttpResponse<Blob>> {
+    let params = new HttpParams();
+    if (supplierId) params = params.set('supplier_id', supplierId);
+    if (type) params = params.set('type_', type);
     return this.http.get(`${this.baseUrl}/items/export`, {
+      params,
       responseType: 'blob',
       observe: 'response',
     });
