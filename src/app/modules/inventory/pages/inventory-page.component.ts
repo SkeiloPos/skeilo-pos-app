@@ -205,31 +205,63 @@ type ActiveFilter = '' | 'active' | 'inactive';
                   class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400"
                 />
               </div>
+              <app-searchable-select
+                [ngModel]="service.itemsSupplierId()"
+                (ngModelChange)="onSupplierFilterChange($event)"
+                [options]="supplierFilterOptions()"
+                placeholder="Todos los proveedores"
+                class="w-48"
+              />
               <div class="relative">
-                <select
-                  [ngModel]="service.itemsSupplierId()"
-                  (ngModelChange)="onSupplierFilterChange($event)"
-                  class="appearance-none border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium pl-3 pr-8 py-2 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-colors"
+                <button
+                  #exportButtonOrigin="cdkOverlayOrigin"
+                  cdkOverlayOrigin
+                  type="button"
+                  (click)="toggleExportFilters($event)"
+                  class="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors"
                 >
-                  <option value="">Todos los proveedores</option>
-                  @for (s of suppliersService.suppliers(); track s.id) {
-                    <option [value]="s.id">{{ s.name }}</option>
-                  }
-                </select>
-                <app-mi-icon
-                  name="expand_more"
-                  [size]="16"
-                  class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400"
-                />
+                  <app-mi-icon name="download" [size]="16" />
+                  Exportar Inventario
+                </button>
+                <ng-template
+                  cdkConnectedOverlay
+                  [cdkConnectedOverlayOrigin]="exportButtonOrigin"
+                  [cdkConnectedOverlayOpen]="showExportFilters()"
+                  [cdkConnectedOverlayPositions]="actionsMenuPositions"
+                  [cdkConnectedOverlayScrollStrategy]="actionsMenuScrollStrategy"
+                  (detach)="showExportFilters.set(false)"
+                >
+                  <div
+                    (click)="$event.stopPropagation()"
+                    class="w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3 space-y-2"
+                  >
+                    <p class="text-xs font-medium text-gray-500">Filtrar exportación (opcional)</p>
+                    <app-searchable-select
+                      [ngModel]="exportSupplierId()"
+                      (ngModelChange)="exportSupplierId.set($event)"
+                      [options]="supplierFilterOptions()"
+                      placeholder="Todos los proveedores"
+                      class="w-full"
+                    />
+                    <select
+                      [ngModel]="exportType()"
+                      (ngModelChange)="exportType.set($event)"
+                      class="w-full border border-gray-300 bg-white text-slate-700 font-medium px-3 py-2 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff]"
+                    >
+                      <option value="">Todos los tipos</option>
+                      <option value="raw_material">Materia prima</option>
+                      <option value="packaged">Empacado</option>
+                    </select>
+                    <button
+                      type="button"
+                      (click)="exportInventory()"
+                      class="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#4a3aff] hover:bg-[#3c2fe0] text-white font-medium rounded-lg text-sm transition-colors"
+                    >
+                      Exportar
+                    </button>
+                  </div>
+                </ng-template>
               </div>
-              <button
-                type="button"
-                (click)="exportInventory()"
-                class="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors"
-              >
-                <app-mi-icon name="download" [size]="16" />
-                Exportar Inventario
-              </button>
               <button
                 type="button"
                 (click)="showImportModal.set(true)"
@@ -855,6 +887,10 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   readonly showForm = signal(false);
   readonly showAdjust = signal(false);
   readonly showImportModal = signal(false);
+  /** Filtros de exportación (spec 142): "todos" (vacío) como estado inicial. */
+  readonly showExportFilters = signal(false);
+  readonly exportSupplierId = signal('');
+  readonly exportType = signal<TypeFilter>('');
   readonly selectedItem = signal<InventoryItem | null>(null);
 
   readonly expandedId = signal<string | null>(null);
@@ -889,6 +925,12 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   readonly movementItemOptions = computed(() =>
     this.service.allItems().map((i) => ({ id: i.id, label: i.name })),
   );
+
+  /** Opciones para el filtro buscable de proveedor en la pestaña Insumos (spec 142). */
+  readonly supplierFilterOptions = computed(() => [
+    { id: '', label: 'Todos los proveedores' },
+    ...this.suppliersService.suppliers().map((s) => ({ id: s.id, label: s.name })),
+  ]);
 
   /** Búsqueda remota del picker de insumo (spec 098): ver product-form.component.ts. */
   readonly searchInventoryItems = (query: string): Promise<{ id: string; label: string }[]> =>
@@ -996,9 +1038,11 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
     this.service.setItemsLowStock(!this.service.itemsLowStock());
   }
 
-  /** Descarga el respaldo completo del inventario en `.xlsx` (spec 086). */
+  /** Descarga el inventario en `.xlsx` (spec 086), opcionalmente filtrado por
+   *  proveedor y/o tipo elegidos en el panel de exportación (spec 142). */
   exportInventory(): void {
-    this.service.exportItems().subscribe({
+    this.showExportFilters.set(false);
+    this.service.exportItems(this.exportSupplierId() || undefined, this.exportType() || undefined).subscribe({
       next: (resp) => {
         const blob = resp.body;
         if (!blob) return;
@@ -1112,6 +1156,20 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   toggleActionsMenu(id: string, event: Event): void {
     event.stopPropagation();
     this.openActionsId.set(this.openActionsId() === id ? null : id);
+  }
+
+  /** Mismo patrón que `toggleActionsMenu`/`closeActionsMenu` (spec 142): el
+   * panel de filtros de exportación también va por `CdkConnectedOverlay`, para
+   * no quedar recortado por el `overflow-hidden` de la tarjeta de la tabla
+   * cuando el inventario está vacío (no hay filas que le den alto al panel). */
+  @HostListener('document:click')
+  @HostListener('window:resize')
+  closeExportFilters(): void {
+    this.showExportFilters.set(false);
+  }
+  toggleExportFilters(event: Event): void {
+    event.stopPropagation();
+    this.showExportFilters.set(!this.showExportFilters());
   }
 
   onAdjusted(): void {

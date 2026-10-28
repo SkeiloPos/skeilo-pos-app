@@ -103,6 +103,20 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
     return btn;
   }
 
+  /** Abre el panel de filtros de exportación (spec 142) y confirma con "Exportar",
+   *  reemplazando el click único de antes de esta spec. El panel se renderiza vía
+   *  `CdkConnectedOverlay` (para no quedar recortado por el `overflow-hidden` de la
+   *  tarjeta de la tabla, ver spec 142) -- queda fuera de `fixture.nativeElement`,
+   *  en el `.cdk-overlay-container` que CDK agrega a `document.body`. */
+  function clickExport(fixture: ReturnType<typeof crear>): void {
+    exportButton(fixture).click();
+    fixture.detectChanges();
+    const buttons = Array.from(document.body.querySelectorAll('button')) as HTMLButtonElement[];
+    const confirmBtn = buttons.find((b) => b.textContent?.trim() === 'Exportar');
+    if (!confirmBtn) throw new Error('Botón "Exportar" del panel de filtros no encontrado');
+    confirmBtn.click();
+  }
+
   it('en éxito, llama a service.exportItems() y dispara la descarga vía blob URL + <a download>', () => {
     const fixture = crear();
     const service = TestBed.inject(InventoryService);
@@ -125,7 +139,7 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
       revokeObjectURL;
     const { clicks } = installAnchorSpy();
 
-    exportButton(fixture).click();
+    clickExport(fixture);
 
     expect(exportSpy).toHaveBeenCalled();
     expect(createObjectURL).toHaveBeenCalledWith(blob);
@@ -163,7 +177,7 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
       (URL as unknown as { revokeObjectURL: () => void }).revokeObjectURL = vi.fn();
       const { clicks } = installAnchorSpy();
 
-      exportButton(fixture).click();
+      clickExport(fixture);
 
       return clicks()[0].download;
     }
@@ -205,7 +219,7 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
       createObjectURL;
     const { clicks } = installAnchorSpy();
 
-    exportButton(fixture).click();
+    clickExport(fixture);
 
     expect(errorSpy).toHaveBeenCalled();
     expect(createObjectURL).not.toHaveBeenCalled();
