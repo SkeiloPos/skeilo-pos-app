@@ -1,5 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
 import { UserRole } from '../../../core/interfaces/user.interface';
@@ -27,7 +27,7 @@ const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [RouterLink, DatePipe, IconMiComponent],
+  imports: [RouterLink, TenantDatePipe, IconMiComponent],
   template: `
     <header
       class="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center gap-3 justify-between shrink-0 z-10"
@@ -83,7 +83,7 @@ const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
                   <li class="px-4 py-3 flex items-start gap-2" [class.bg-indigo-50]="!n.attended_at">
                     <div class="flex-1 min-w-0">
                       <p class="text-sm text-gray-700">{{ summarize(n) }}</p>
-                      <p class="text-xs text-gray-400">{{ n.created_at | date: 'short' }}</p>
+                      <p class="text-xs text-gray-400">{{ n.created_at | tenantDate: 'short' }}</p>
                     </div>
                     @if (!n.attended_at) {
                       <button

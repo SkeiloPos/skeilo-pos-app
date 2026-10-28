@@ -40,11 +40,6 @@ import { PromoDisplay, getPromoDisplay } from '../services/promotion-pricing.uti
 import { setDescriptor } from '../services/promotion-condition.util';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
-/** Zona horaria de respaldo mientras `TenantInfoService.info()` aún no cargó
- *  (spec 127: misma constante y mismo patrón ya usados en
- *  `reports.service.ts`/`tenant-date.pipe.ts`). */
-const DEFAULT_TIMEZONE = 'America/Bogota';
-
 /**
  * spec 083 (US3): tres pantallas fieles a los prototipos
  * (`~/Escritorio/promociones/*.html`) — listado, creación mínima (nombre +
@@ -1667,7 +1662,8 @@ export class PromotionsPageComponent implements OnInit {
   }
 
   displayOf(p: Promotion): PromoDisplay {
-    return getPromoDisplay(p, this.svc.ready() ? this.svc.now() : new Date());
+    // spec 138 (FR-009): la vigencia visual se evalúa en la zona del negocio, no en la del navegador.
+    return getPromoDisplay(p, this.svc.ready() ? this.svc.now() : new Date(), this.tenantInfo.timezone());
   }
 
   transitionsOf(p: Promotion): PromotionStatus[] {
@@ -1741,7 +1737,7 @@ export class PromotionsPageComponent implements OnInit {
       // Bogotá (UTC-5), `new Date().toISOString()` ya cae en "mañana" desde
       // las 19:00 locales, dejando la promoción con `starts_at` del día
       // siguiente (el defecto reportado).
-      starts_at: businessToday(this.tenantInfo.info()?.timezone ?? DEFAULT_TIMEZONE),
+      starts_at: businessToday(this.tenantInfo.timezone()),
     };
     const res = await this.svc.create(form, 'draft');
     if (!res) {

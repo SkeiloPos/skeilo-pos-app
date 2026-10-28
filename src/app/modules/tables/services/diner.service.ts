@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
+import { FALLBACK_TIMEZONE } from '../../../shared/date-format.util';
 import {
   MenuCategory,
   MenuOptionGroup,
@@ -26,6 +27,9 @@ import { DinerTokenStore } from './diner-token.store';
 export interface ResolvedBusiness {
   name: string;
   logo_url: string | null;
+  /** Zona horaria IANA del negocio (spec 138, FR-008). El comensal es anónimo y no puede pedir `GET /tenant`:
+   *  el menú público es la única vía por la que su navegador conoce la hora del negocio. */
+  timezone: string;
 }
 
 /**
@@ -360,6 +364,8 @@ export class DinerService {
         ? {
             name: (businessRaw['name'] as string) ?? '',
             logo_url: (businessRaw['logo_url'] as string) ?? null,
+            // Un backend anterior a la spec 138 no lo manda: se cae a la zona de respaldo compartida.
+            timezone: (businessRaw['timezone'] as string) ?? FALLBACK_TIMEZONE,
           }
         : null,
       categories: (categoriesRaw as Record<string, unknown>[]).map((c) => this.mapCategory(c)),

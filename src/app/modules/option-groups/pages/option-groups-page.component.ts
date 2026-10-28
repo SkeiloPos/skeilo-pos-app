@@ -25,111 +25,143 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   imports: [DecimalPipe, OptionGroupFormComponent, OptionFormComponent, IconMiComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="space-y-6">
+    <div class="ajustes-theme flex flex-col gap-5 pt-1">
       <!-- Header -->
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-xl font-bold text-gray-900">Grupos de opciones</h1>
-          <p class="text-sm text-gray-500 mt-0.5">Sabores, toppings y extras que se asignan a los productos</p>
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div class="flex-1" style="flex-basis: 260px">
+          <div class="font-semibold" style="font-family: var(--aj-font-display); font-size: 20px; letter-spacing: -0.02em">
+            Grupos de opciones
+          </div>
+          <p class="aj-muted mt-1">Sabores, toppings y extras que se asignan a los productos.</p>
         </div>
-        <button (click)="openCreateGroup()"
-          class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors">
+        <button (click)="openCreateGroup()" class="aj-btn-primary inline-flex items-center gap-2 whitespace-nowrap">
           <app-mi-icon name="add" [size]="16" />
           Nuevo grupo
         </button>
       </div>
 
       @if (service.error()) {
-        <p class="text-red-600 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">{{ service.error() }}</p>
+        <p
+          class="text-sm rounded-xl px-4 py-2"
+          style="color: var(--aj-color-error); background-color: var(--aj-color-error-soft); border: 1px solid var(--aj-color-error)"
+        >{{ service.error() }}</p>
       }
 
       @if (service.isLoading()) {
-        <p class="text-sm text-gray-400">Cargando grupos...</p>
+        <p class="aj-muted text-sm">Cargando grupos...</p>
       } @else if (service.groups().length === 0) {
-        <div class="bg-white rounded-xl border border-gray-100 flex flex-col items-center justify-center py-12">
-          <p class="text-sm text-gray-400">Aún no hay grupos de opciones</p>
+        <div class="text-center py-12" style="color: var(--aj-color-text-muted)">
+          <div class="aj-title font-medium" style="font-family: var(--aj-font-display); font-size: 18px">Sin grupos</div>
+          Crea el primero con «Nuevo grupo».
         </div>
       } @else {
-        <div class="grid gap-4 md:grid-cols-2">
-          @for (g of service.groups(); track g.id) {
-            <div class="bg-white rounded-xl border border-gray-100 overflow-hidden" [class.opacity-60]="!g.active">
-              <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between gap-2">
-                <div class="min-w-0">
-                  <p class="font-semibold text-gray-900 flex items-center gap-2">
-                    <span class="truncate">{{ g.name }}</span>
-                    <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-                      [class]="g.pricing_type === 'incluido' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'">
-                      {{ g.pricing_type === 'incluido' ? 'Incluido' : 'Con recargo' }}
-                    </span>
-                    @if (!g.active) {
-                      <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
-                        Inactivo
+        <!-- Maestro-detalle (design/ajustes.html): lista de grupos a la izquierda, detalle a la derecha. -->
+        <div class="grid gap-4" style="grid-template-columns: minmax(220px,300px) minmax(0,1fr); align-items: start">
+          <nav aria-label="Grupos de opciones" class="flex flex-col gap-2">
+            @for (g of service.groups(); track g.id) {
+              <button
+                type="button"
+                (click)="selectedGroupId.set(g.id)"
+                [attr.aria-current]="selectedGroupId() === g.id"
+                class="text-left flex items-center gap-3 rounded-xl transition-colors"
+                style="min-height: 64px; padding: 12px 14px"
+                [style.border]="selectedGroupId() === g.id ? '1px solid var(--aj-color-primary)' : '1px solid var(--aj-color-border)'"
+                [style.background-color]="selectedGroupId() === g.id ? 'var(--aj-color-primary-soft)' : 'var(--aj-color-surface)'"
+                [class.opacity-60]="!g.active"
+              >
+                <span class="flex-1 min-w-0">
+                  <span class="block font-semibold" style="color: var(--aj-color-text-primary)">{{ g.name }}</span>
+                  <span class="block text-xs aj-muted mt-0.5">Elige {{ g.min_select }}–{{ g.max_select }} · {{ g.options.length }} opción(es)</span>
+                </span>
+                @if (!g.active) {
+                  <span class="aj-badge aj-badge-neutral">Inactivo</span>
+                }
+              </button>
+            }
+          </nav>
+
+          @if (detailGroup(); as gm) {
+            <section [attr.aria-label]="'Detalle del grupo ' + gm.name" class="aj-card overflow-hidden">
+              <div class="p-5 flex flex-col gap-4" style="border-bottom: 1px solid var(--aj-color-border)">
+                <div class="flex justify-between gap-4 flex-wrap items-start">
+                  <div class="min-w-0">
+                    <h3 class="m-0 font-semibold" style="font-family: var(--aj-font-display); font-size: 20px">{{ gm.name }}</h3>
+                    <div class="flex gap-2 flex-wrap mt-2.5">
+                      <span class="aj-badge" [class]="gm.pricing_type === 'incluido' ? 'aj-badge-success' : 'aj-badge-warning'">
+                        {{ gm.pricing_type === 'incluido' ? 'Incluido' : 'Con recargo' }}
                       </span>
+                      <span class="aj-badge aj-badge-neutral">Elige {{ gm.min_select }}–{{ gm.max_select }}</span>
+                      <span class="aj-badge" [class]="gm.active ? 'aj-badge-success' : 'aj-badge-neutral'">
+                        {{ gm.active ? 'Activo' : 'Inactivo' }}
+                      </span>
+                    </div>
+                    <!-- Se dice una vez por grupo, no en cada una de las opciones. -->
+                    @if (hasOwnQuantities(gm)) {
+                      <p class="text-xs mt-2" style="color: var(--aj-color-warning)">
+                        Estas cantidades solo aplican si el tamaño del producto no define la suya.
+                      </p>
                     }
-                  </p>
-                  <p class="text-xs text-gray-500">Elige {{ g.min_select }}–{{ g.max_select }}</p>
-                  <!-- Se dice una vez por grupo, no en cada una de las 24 opciones. -->
-                  @if (hasOwnQuantities(g)) {
-                    <p class="text-xs text-amber-600 mt-0.5">
-                      Estas cantidades solo aplican si el tamaño del producto no define la suya.
-                    </p>
-                  }
+                  </div>
+                  <button (click)="openOptionForm(gm)" class="aj-btn-primary inline-flex items-center justify-center gap-2 whitespace-nowrap" style="min-width: 220px">
+                    <app-mi-icon name="add" [size]="16" />
+                    Agregar opción
+                  </button>
                 </div>
-                <div class="flex items-center gap-1 shrink-0">
-                  <button (click)="openOptionForm(g)"
-                    class="px-2 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">
-                    + Opción
+                <div class="flex gap-2 flex-wrap">
+                  <button (click)="openEditGroup(gm)" class="aj-btn-secondary inline-flex items-center gap-2 text-sm">
+                    <app-mi-icon name="pencil" [size]="16" />
+                    Editar grupo
                   </button>
-                  <button (click)="openEditGroup(g)" title="Editar grupo"
-                    class="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                    ✏️
-                  </button>
-                  <button (click)="toggleGroup(g)" [title]="g.active ? 'Desactivar grupo' : 'Reactivar grupo'"
-                    class="p-1.5 rounded-lg transition-colors"
-                    [class]="g.active
-                      ? 'text-gray-400 hover:text-red-600 hover:bg-red-50'
-                      : 'text-gray-400 hover:text-green-600 hover:bg-green-50'">
-                    {{ g.active ? '🔴' : '🟢' }}
+                  <button (click)="toggleGroup(gm)" class="aj-btn-secondary inline-flex items-center gap-2 text-sm">
+                    <app-mi-icon [name]="gm.active ? 'block' : 'autorenew'" [size]="16" />
+                    {{ gm.active ? 'Desactivar' : 'Reactivar' }}
                   </button>
                 </div>
               </div>
-              @if (g.options.length === 0) {
-                <p class="px-4 py-3 text-sm text-gray-400">Sin opciones todavía</p>
+
+              @if (gm.options.length === 0) {
+                <p class="aj-muted text-center py-8">Este grupo aún no tiene opciones.</p>
               } @else {
-                <ul class="divide-y divide-gray-50">
-                  @for (o of g.options; track o.id) {
-                    <li class="px-4 py-2 flex items-center justify-between gap-2 text-sm" [class.opacity-50]="!o.active">
-                      <span class="text-gray-800 min-w-0 truncate">
-                        {{ o.name }}
-                        <!-- El insumo concreto, no un "consume insumo" genérico: esta es la
-                             pantalla donde se corrige, así que hay que ver qué descuenta. -->
-                        @if (consumeLabel(o); as label) {
-                          <span class="text-xs text-gray-400">· {{ label }}</span>
-                        } @else {
-                          <span class="text-xs text-amber-600">· sin insumo</span>
-                        }
-                      </span>
-                      <span class="flex items-center gap-1 shrink-0">
-                        <span class="text-gray-600">
-                          @if (o.extra_price > 0) { <span> +{{ o.extra_price | number:'1.2-2' }} </span> } @else { <span> — </span> }
-                        </span>
-                        <button (click)="openEditOption(g, o)" title="Editar opción"
-                          class="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                          ✏️
-                        </button>
-                        <button (click)="toggleOption(o)" [title]="o.active ? 'Desactivar opción' : 'Reactivar opción'"
-                          class="p-1.5 rounded-lg transition-colors"
-                          [class]="o.active
-                            ? 'text-gray-400 hover:text-red-600 hover:bg-red-50'
-                            : 'text-gray-400 hover:text-green-600 hover:bg-green-50'">
-                          {{ o.active ? '🔴' : '🟢' }}
-                        </button>
-                      </span>
-                    </li>
-                  }
-                </ul>
+                <div class="overflow-x-auto">
+                  <table class="w-full" style="min-width: 520px; border-collapse: collapse">
+                    <caption class="sr-only">Opciones de {{ gm.name }}</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col" class="aj-th">OPCIÓN</th>
+                        <th scope="col" class="aj-th">INSUMO</th>
+                        <th scope="col" class="aj-th" style="text-align: right">PRECIO EXTRA</th>
+                        <th scope="col" class="aj-th" style="text-align: right">ACCIONES</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (o of gm.options; track o.id) {
+                        <tr [class.opacity-50]="!o.active">
+                          <th scope="row" class="aj-td text-left font-semibold">{{ o.name }}</th>
+                          <td class="aj-td">
+                            @if (consumeLabel(o); as label) {
+                              <span class="text-sm" style="color: var(--aj-color-text-secondary)">{{ label }}</span>
+                            } @else {
+                              <span class="text-sm" style="color: var(--aj-color-warning)">Sin insumo</span>
+                            }
+                          </td>
+                          <td class="aj-td text-right" style="color: var(--aj-color-text-secondary)">
+                            @if (o.extra_price > 0) { {{ o.extra_price | number:'1.2-2' }} } @else { — }
+                          </td>
+                          <td class="aj-td text-right whitespace-nowrap">
+                            <button (click)="openEditOption(gm, o)" class="aj-icon-btn" title="Editar opción {{ o.name }}" [attr.aria-label]="'Editar opción ' + o.name">
+                              <app-mi-icon name="pencil" [size]="18" />
+                            </button>
+                            <button (click)="toggleOption(o)" class="aj-icon-btn" [title]="o.active ? 'Desactivar opción ' + o.name : 'Reactivar opción ' + o.name">
+                              <app-mi-icon [name]="o.active ? 'block' : 'autorenew'" [size]="18" />
+                            </button>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
               }
-            </div>
+            </section>
           }
         </div>
       }
@@ -178,6 +210,14 @@ export class OptionGroupsPageComponent implements OnInit {
   readonly editingGroup = signal<OptionGroup | null>(null);
   readonly editingOption = signal<Option | null>(null);
 
+  /** Grupo elegido en el nav maestro-detalle (design/ajustes.html); no confundir con
+   * `selectedGroup`, que es el grupo al que se le está agregando/editando una opción
+   * desde el modal. */
+  readonly selectedGroupId = signal<string | null>(null);
+  readonly detailGroup = computed(
+    () => this.service.groups().find((g) => g.id === this.selectedGroupId()) ?? null,
+  );
+
   async ngOnInit(): Promise<void> {
     // Insumos y unidades para poder nombrar lo que descuenta cada opción; en paralelo
     // porque ninguna de las tres depende de las otras.
@@ -188,6 +228,9 @@ export class OptionGroupsPageComponent implements OnInit {
         ? this.unitMeasureService.loadUnitMeasures()
         : null,
     ]);
+    if (!this.selectedGroupId() && this.service.groups().length > 0) {
+      this.selectedGroupId.set(this.service.groups()[0].id);
+    }
   }
 
   /** Alguna opción trae cantidad propia, que solo aplica como respaldo del tamaño. */

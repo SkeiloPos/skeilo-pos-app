@@ -25,32 +25,31 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
   imports: [ReactiveFormsModule, SearchableSelectComponent, MoneyInputComponent, IconMiComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 class="text-base font-bold text-gray-900">
+    <div class="ajustes-theme fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div class="aj-card shadow-xl w-full max-w-md" style="background-color: var(--aj-color-surface)">
+        <div class="px-6 py-4 flex items-center justify-between" style="border-bottom: 1px solid var(--aj-color-border)">
+          <h2 class="aj-title text-base font-bold">
             {{ option ? 'Editar opción' : 'Nueva opción' }} @if (group) { <span> · {{ group.name }} </span> }
           </h2>
-          <button type="button" (click)="close.emit()" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <button type="button" (click)="close.emit()" class="aj-muted transition-colors">
             <app-mi-icon name="close" ariaLabel="Cerrar" [size]="20" />
           </button>
         </div>
 
         <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="p-6 space-y-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
-            <input formControlName="name" type="text" placeholder="Ej. Chocolate"
-              class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <label class="block text-sm font-medium mb-1" style="color: var(--aj-color-text-secondary)">Nombre *</label>
+            <input formControlName="name" type="text" placeholder="Ej. Chocolate" class="aj-input w-full px-3 py-2 text-sm">
           </div>
 
           @if (isIncluido()) {
-            <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-500">
+            <div class="aj-muted rounded-xl p-3 text-sm" style="border: 1px solid var(--aj-color-border); background-color: var(--aj-color-surface-soft)">
               Este grupo es "Incluido" — el precio ya está cubierto por la presentación, sin
               recargo por opción.
             </div>
           } @else {
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Precio extra</label>
+              <label class="block text-sm font-medium mb-1" style="color: var(--aj-color-text-secondary)">Precio extra</label>
               <app-money-input formControlName="extra_price" [decimals]="2" placeholder="0"
                 sizeClass="px-3 py-2 rounded-xl text-sm" />
             </div>
@@ -58,7 +57,7 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
           @if (inventarioIncluido) {
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Insumo que consume (opcional)</label>
+              <label class="block text-sm font-medium mb-1" style="color: var(--aj-color-text-secondary)">Insumo que consume (opcional)</label>
               <!-- Buscador y no un select plano: el catálogo real pasa de 70 insumos. -->
               <app-searchable-select formControlName="inventory_item_id"
                 [options]="inventoryOptions()" [search]="searchInventoryItems" placeholder="Ninguno" />
@@ -66,36 +65,33 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
             @if (form.value.inventory_item_id) {
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">
+                <label class="block text-sm font-medium mb-1" style="color: var(--aj-color-text-secondary)">
                   Cantidad consumida
-                  @if (selectedUnit(); as u) { <span class="text-gray-400 font-normal">(en {{ u }})</span> }
+                  @if (selectedUnit(); as u) { <span class="aj-muted font-normal">(en {{ u }})</span> }
                 </label>
-                <input formControlName="item_quantity" type="number" min="0" step="0.001" placeholder="0"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <p class="text-xs text-gray-400 mt-1">
+                <input formControlName="item_quantity" type="number" min="0" step="0.001" placeholder="0" class="aj-input w-full px-3 py-2 text-sm">
+                <p class="aj-muted text-xs mt-1">
                   <strong>Solo se usa si ningún tamaño define una cantidad</strong> para este
                   grupo. Si un tamaño la define, manda la suya y esta se ignora — nunca se suman.
                 </p>
               </div>
             }
           } @else {
-            <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-500">
+            <div class="aj-muted rounded-xl p-3 text-sm" style="border: 1px solid var(--aj-color-border); background-color: var(--aj-color-surface-soft)">
               Tu plan actual no incluye el módulo de inventario — esta opción solo puede
               configurarse por nombre y precio.
             </div>
           }
 
           @if (service.error()) {
-            <p class="text-red-600 text-sm">{{ service.error() }}</p>
+            <p class="text-sm" style="color: var(--aj-color-error)">{{ service.error() }}</p>
           }
 
           <div class="flex gap-3 pt-2">
-            <button type="button" (click)="close.emit()"
-              class="flex-1 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+            <button type="button" (click)="close.emit()" class="aj-btn-secondary flex-1 py-2.5 text-sm">
               Cancelar
             </button>
-            <button type="submit" [disabled]="form.invalid || service.isSubmitting()"
-              class="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-40 transition-colors">
+            <button type="submit" [disabled]="form.invalid || service.isSubmitting()" class="aj-btn-primary flex-1 py-2.5 text-sm">
               {{ service.isSubmitting() ? 'Guardando...' : option ? 'Guardar cambios' : 'Agregar opción' }}
             </button>
           </div>

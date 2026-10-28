@@ -60,6 +60,10 @@ interface PurchaseItemResponse {
   presentation_quantity: string | null;
   presentation_label: string | null;
   conversion_factor: string | null;
+  unit_measure_id: string;
+  conversion_factor_applied: string;
+  quantity_base: string;
+  cost_base: string;
 }
 
 interface PurchaseResponse {
@@ -67,8 +71,11 @@ interface PurchaseResponse {
   supplier_id: string | null;
   invoice_number: string | null;
   status: Purchase['status'];
+  is_incomplete: boolean;
   total: string;
   purchased_at: string;
+  voided_at: string | null;
+  voided_by: string | null;
   items?: PurchaseItemResponse[];
 }
 
@@ -430,35 +437,84 @@ export class InventoryService {
 
   /** Register a purchase; refreshes items (stock rises) and the purchase list. */
   async createPurchase(form: PurchaseForm): Promise<boolean> {
-    return this.postPurchase(`${this.baseUrl}/purchases`, form);
+    return this.postPurchase('POST', `${this.baseUrl}/purchases`, form);
   }
 
   /** Crear una orden de compra (draft, sin alta de stock) — RF-022. */
   async createPurchaseOrder(form: PurchaseForm): Promise<boolean> {
-    return this.postPurchase(`${this.baseUrl}/purchases/order`, form);
+    return this.postPurchase('POST', `${this.baseUrl}/purchases/order`, form);
   }
 
-  private async postPurchase(url: string, form: PurchaseForm): Promise<boolean> {
+  /** Guardar un borrador incompleto (spec 140, User Story 3, FR-013/FR-017): a diferencia
+   *  de `createPurchase`/`createPurchaseOrder`, no exige ≥1 línea con cantidad/costo
+   *  completos -- el backend acepta `allow_incomplete: true` incluso sin ninguna línea. */
+  async saveDraft(form: PurchaseForm): Promise<boolean> {
+    return this.postPurchase('POST', `${this.baseUrl}/purchases/order`, form, true);
+  }
+
+  /** Registrar compra editando un borrador/orden ya existente (spec 140): reabrir un
+   *  borrador y guardar de nuevo actualiza ESE registro -- nunca crea uno nuevo que el
+   *  usuario tendría que borrar a mano. Solo válido mientras la compra sigue en
+   *  `status='draft'` (el backend rechaza con 409 si ya se recibió algo). */
+  async updatePurchase(purchaseId: string, form: PurchaseForm): Promise<boolean> {
+    return this.postPurchase('PUT', `${this.baseUrl}/purchases/${purchaseId}`, form);
+  }
+
+  /** Actualizar una orden de compra / borrador existente sin alta de stock (spec 140). */
+  async updatePurchaseOrder(purchaseId: string, form: PurchaseForm): Promise<boolean> {
+    return this.postPurchase('PUT', `${this.baseUrl}/purchases/${purchaseId}/order`, form);
+  }
+
+  /** Actualizar un borrador incompleto existente (spec 140), mismo criterio que `saveDraft`. */
+  async updateDraft(purchaseId: string, form: PurchaseForm): Promise<boolean> {
+    return this.postPurchase('PUT', `${this.baseUrl}/purchases/${purchaseId}/order`, form, true);
+  }
+
+  private async postPurchase(
+    method: 'POST' | 'PUT', url: string, form: PurchaseForm, allowIncomplete = false,
+  ): Promise<boolean> {
     const payload: PurchaseCreatePayload = {
       supplier_id: form.supplier_id || null,
       invoice_number: form.invoice_number || null,
-      items: form.items.map(i => i.supplier_item_id
-        ? {
+      ...(allowIncomplete ? { allow_incomplete: true } : {}),
+      items: form.items.map(i => {
+        // Guardar borrador (spec 140): una línea sin cantidad/costo capturado no debe
+        // forzarse a 0 en el payload -- el backend ya acepta `undefined` cuando
+        // `allow_incomplete=true` (a diferencia de `createPurchase`/`createPurchaseOrder`,
+        // que siempre envían el número, aunque sea 0).
+        const quantity = allowIncomplete && !i.quantity ? undefined : i.quantity;
+        const unitCost = allowIncomplete && !i.unit_cost ? undefined : i.unit_cost;
+        if (i.supplier_item_id) {
+          return {
             inventory_item_id: i.inventory_item_id,
             supplier_item_id: i.supplier_item_id,
-            presentation_quantity: i.quantity,
-            presentation_unit_cost: i.unit_cost,
-          }
-        : {
+            presentation_quantity: quantity,
+            presentation_unit_cost: unitCost,
+          };
+        }
+        if (i.unit_measure_id) {
+          return {
             inventory_item_id: i.inventory_item_id,
-            quantity: i.quantity,
-            unit_cost: i.unit_cost,
-          }),
+            unit_measure_id: i.unit_measure_id,
+            quantity,
+            unit_cost: unitCost,
+          };
+        }
+        return {
+          inventory_item_id: i.inventory_item_id,
+          quantity,
+          unit_cost: unitCost,
+        };
+      }),
     };
     this.isSubmitting.set(true);
     this.otherError.set(null);
     try {
-      await firstValueFrom(this.http.post<PurchaseResponse>(url, payload));
+      await firstValueFrom(
+        method === 'PUT'
+          ? this.http.put<PurchaseResponse>(url, payload)
+          : this.http.post<PurchaseResponse>(url, payload),
+      );
       await Promise.all([
         this.queryClient.invalidateQueries({ queryKey: ['inventory-items'] }),
         this.loadLowStock(),
@@ -489,6 +545,48 @@ export class InventoryService {
         this.loadLowStock(),
         this.loadPurchases(),
       ]);
+      return true;
+    } catch (err) {
+      this.otherError.set(this.extractError(err));
+      return false;
+    } finally {
+      this.isSubmitting.set(false);
+    }
+  }
+
+  /** Anular una compra confirmada (spec 134, US3): revierte el stock en la cantidad base
+   *  guardada en cada línea. */
+  async voidPurchase(purchaseId: string): Promise<boolean> {
+    this.isSubmitting.set(true);
+    this.otherError.set(null);
+    try {
+      await firstValueFrom(
+        this.http.post<PurchaseResponse>(`${this.baseUrl}/purchases/${purchaseId}/void`, {}),
+      );
+      await Promise.all([
+        this.queryClient.invalidateQueries({ queryKey: ['inventory-items'] }),
+        this.loadLowStock(),
+        this.loadPurchases(),
+      ]);
+      return true;
+    } catch (err) {
+      this.otherError.set(this.extractError(err));
+      return false;
+    } finally {
+      this.isSubmitting.set(false);
+    }
+  }
+
+  /** Eliminar una orden de compra / borrador pendiente (spec 140): a diferencia de
+   *  `voidPurchase` (compra ya recibida, revierte stock), esto es un hard-delete -- solo
+   *  válido mientras la compra sigue en `status='draft'` (el backend rechaza con 409 si ya
+   *  se recibió algo). */
+  async deletePurchase(purchaseId: string): Promise<boolean> {
+    this.isSubmitting.set(true);
+    this.otherError.set(null);
+    try {
+      await firstValueFrom(this.http.delete<void>(`${this.baseUrl}/purchases/${purchaseId}`));
+      await this.loadPurchases();
       return true;
     } catch (err) {
       this.otherError.set(this.extractError(err));
@@ -566,8 +664,11 @@ export class InventoryService {
       supplier_id: p.supplier_id,
       invoice_number: p.invoice_number,
       status: p.status ?? 'received',
+      isIncomplete: p.is_incomplete ?? false,
       total: Number(p.total),
       purchased_at: p.purchased_at,
+      voided_at: p.voided_at,
+      voided_by: p.voided_by,
       items: (p.items ?? []).map(it => ({
         id: it.id,
         inventory_item_id: it.inventory_item_id,
@@ -578,6 +679,10 @@ export class InventoryService {
         presentation_quantity: it.presentation_quantity === null ? null : Number(it.presentation_quantity),
         presentation_label: it.presentation_label,
         conversion_factor: it.conversion_factor === null ? null : Number(it.conversion_factor),
+        unit_measure_id: it.unit_measure_id,
+        conversion_factor_applied: Number(it.conversion_factor_applied),
+        quantity_base: Number(it.quantity_base),
+        cost_base: Number(it.cost_base),
       })),
     };
   }

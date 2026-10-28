@@ -24,19 +24,21 @@ import {
   InventoryItemType,
   InventoryMovement,
   Purchase,
-  PurchaseStatus,
 } from '../interfaces/inventory.interface';
 import { InventoryService } from '../services/inventory.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
+import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { InventoryItemFormComponent } from '../components/inventory-item-form.component';
 import { StockAdjustModalComponent } from '../components/stock-adjust-modal.component';
 import { InventoryImportModalComponent } from '../components/inventory-import-modal.component';
-import { PurchaseFormComponent } from '../components/purchase-form.component';
 import { SearchableSelectComponent } from '../../../shared/searchable-select/searchable-select.component';
 import { PaginationBarComponent } from '../../../shared/pagination/pagination-bar.component';
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { PlanSummaryService } from '../../plan/services/plan-summary.service';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { formatMoney } from '../../../shared/money';
+import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
+import { businessToday } from '../../../shared/date-format.util';
 
 type Tab = 'items' | 'purchases' | 'movements';
 type TypeFilter = '' | InventoryItemType;
@@ -52,7 +54,6 @@ type ActiveFilter = '' | 'active' | 'inactive';
     InventoryItemFormComponent,
     StockAdjustModalComponent,
     InventoryImportModalComponent,
-    PurchaseFormComponent,
     SearchableSelectComponent,
     PaginationBarComponent,
     IconMiComponent,
@@ -70,15 +71,19 @@ type ActiveFilter = '' | 'active' | 'inactive';
         </div>
         <div class="flex gap-2">
           @if (tab() === 'items') {
-            <button (click)="openCreate()"
-              class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors">
+            <button
+              (click)="openCreate()"
+              class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+            >
               <app-mi-icon name="add" [size]="16" />
               Nuevo insumo
             </button>
           }
           @if (tab() === 'purchases') {
-            <button (click)="showPurchase.set(true)"
-              class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors">
+            <button
+              (click)="goToNewPurchase()"
+              class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+            >
               <app-mi-icon name="add" [size]="16" />
               Nueva compra
             </button>
@@ -88,83 +93,148 @@ type ActiveFilter = '' | 'active' | 'inactive';
 
       <!-- Tabs -->
       <div class="flex gap-1 border-b border-gray-200">
-        <button (click)="setTab('items')" class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
-          [class]="tab() === 'items' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'">
+        <button
+          (click)="setTab('items')"
+          class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+          [class]="
+            tab() === 'items'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          "
+        >
           Insumos
         </button>
         @if (comprasIncluido()) {
-          <button (click)="setTab('purchases')" class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
-            [class]="tab() === 'purchases' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'">
+          <button
+            (click)="setTab('purchases')"
+            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+            [class]="
+              tab() === 'purchases'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            "
+          >
             Compras
           </button>
         }
-        <button (click)="setTab('movements')" class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
-          [class]="tab() === 'movements' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'">
+        <button
+          (click)="setTab('movements')"
+          class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+          [class]="
+            tab() === 'movements'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          "
+        >
           Movimientos
         </button>
       </div>
 
       @if (service.error()) {
-        <p class="text-red-600 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">{{ service.error() }}</p>
+        <p class="text-red-600 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-2">
+          {{ service.error() }}
+        </p>
       }
 
       <!-- ============ TAB: INSUMOS ============ -->
       @if (tab() === 'items') {
         <!-- Alert -->
-        <button type="button" (click)="toggleLowFilter()"
+        <button
+          type="button"
+          (click)="toggleLowFilter()"
           class="text-left rounded-xl border p-4 transition-colors max-w-xs w-full"
-          [class]="service.itemsLowStock()
-            ? 'bg-amber-100 border-amber-300'
-            : 'bg-amber-50 border-amber-100 hover:bg-amber-100'">
+          [class]="
+            service.itemsLowStock()
+              ? 'bg-amber-100 border-amber-300'
+              : 'bg-amber-50 border-amber-100 hover:bg-amber-100'
+          "
+        >
           <p class="text-xs text-amber-700 font-medium uppercase tracking-wide">Bajo mínimo</p>
           <p class="text-2xl font-bold text-amber-800 mt-1">{{ service.lowStockItems().length }}</p>
         </button>
 
         <!-- Table -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
-          <div class="flex items-center justify-between gap-4 p-4 border-b border-gray-200 bg-gray-50/50 flex-wrap">
+          <div
+            class="flex items-center justify-between gap-4 p-4 border-b border-gray-200 bg-gray-50/50 flex-wrap"
+          >
             <div class="relative flex-1 max-w-md">
-              <app-mi-icon name="search" [size]="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              <input [ngModel]="searchSignal()" (ngModelChange)="onSearchInput($event)" type="text"
+              <app-mi-icon
+                name="search"
+                [size]="16"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+              />
+              <input
+                [ngModel]="searchSignal()"
+                (ngModelChange)="onSearchInput($event)"
+                type="text"
                 placeholder="Buscar por nombre..."
-                class="w-full pl-10 pr-3 py-2 bg-white text-slate-800 placeholder-slate-400 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-all">
+                class="w-full pl-10 pr-3 py-2 bg-white text-slate-800 placeholder-slate-400 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-all"
+              />
             </div>
             <div class="flex items-center gap-3 flex-wrap">
               <div class="relative">
-                <select [ngModel]="service.itemsType()" (ngModelChange)="onTypeFilterChange($event)"
-                  class="appearance-none border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium pl-3 pr-8 py-2 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-colors">
+                <select
+                  [ngModel]="service.itemsType()"
+                  (ngModelChange)="onTypeFilterChange($event)"
+                  class="appearance-none border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium pl-3 pr-8 py-2 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-colors"
+                >
                   <option value="">Todos los tipos</option>
                   <option value="raw_material">Materia prima</option>
                   <option value="packaged">Empacado</option>
                 </select>
-                <app-mi-icon name="expand_more" [size]="16" class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400" />
+                <app-mi-icon
+                  name="expand_more"
+                  [size]="16"
+                  class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400"
+                />
               </div>
               <div class="relative">
-                <select [ngModel]="service.itemsActive()" (ngModelChange)="onActiveFilterChange($event)"
-                  class="appearance-none border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium pl-3 pr-8 py-2 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-colors">
+                <select
+                  [ngModel]="service.itemsActive()"
+                  (ngModelChange)="onActiveFilterChange($event)"
+                  class="appearance-none border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium pl-3 pr-8 py-2 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-colors"
+                >
                   <option value="">Activos e inactivos</option>
                   <option value="active">Solo activos</option>
                   <option value="inactive">Solo inactivos</option>
                 </select>
-                <app-mi-icon name="expand_more" [size]="16" class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400" />
+                <app-mi-icon
+                  name="expand_more"
+                  [size]="16"
+                  class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400"
+                />
               </div>
               <div class="relative">
-                <select [ngModel]="service.itemsSupplierId()" (ngModelChange)="onSupplierFilterChange($event)"
-                  class="appearance-none border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium pl-3 pr-8 py-2 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-colors">
+                <select
+                  [ngModel]="service.itemsSupplierId()"
+                  (ngModelChange)="onSupplierFilterChange($event)"
+                  class="appearance-none border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium pl-3 pr-8 py-2 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4a3aff]/30 focus:border-[#4a3aff] shadow-sm transition-colors"
+                >
                   <option value="">Todos los proveedores</option>
                   @for (s of suppliersService.suppliers(); track s.id) {
                     <option [value]="s.id">{{ s.name }}</option>
                   }
                 </select>
-                <app-mi-icon name="expand_more" [size]="16" class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400" />
+                <app-mi-icon
+                  name="expand_more"
+                  [size]="16"
+                  class="pointer-events-none absolute inset-y-0 right-2.5 text-slate-400"
+                />
               </div>
-              <button type="button" (click)="exportInventory()"
-                class="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors">
+              <button
+                type="button"
+                (click)="exportInventory()"
+                class="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors"
+              >
                 <app-mi-icon name="download" [size]="16" />
                 Exportar Inventario
               </button>
-              <button type="button" (click)="showImportModal.set(true)"
-                class="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors">
+              <button
+                type="button"
+                (click)="showImportModal.set(true)"
+                class="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors"
+              >
                 <app-mi-icon name="upload" [size]="16" />
                 Importar Excel
               </button>
@@ -174,36 +244,91 @@ type ActiveFilter = '' | 'active' | 'inactive';
           @if (showImportModal()) {
             <app-inventory-import-modal
               (close)="showImportModal.set(false)"
-              (imported)="service.refreshItems()" />
+              (imported)="service.refreshItems()"
+            />
           }
           @if (service.isLoading()) {
-            <div class="flex items-center justify-center py-12"><p class="text-sm text-gray-400">Cargando insumos...</p></div>
+            <div class="flex items-center justify-center py-12">
+              <p class="text-sm text-gray-400">Cargando insumos...</p>
+            </div>
           } @else if (service.items().length === 0) {
-            <div class="flex flex-col items-center justify-center py-12"><p class="text-sm text-gray-400">No se encontraron insumos</p></div>
+            <div class="flex flex-col items-center justify-center py-12">
+              <p class="text-sm text-gray-400">No se encontraron insumos</p>
+            </div>
           } @else {
             <div class="overflow-x-auto">
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-gray-100 bg-gray-50">
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Código</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Unidad</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Proveedor preferido</th>
-                    <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock</th>
-                    <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Mínimo</th>
-                    <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Costo</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Estado</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Creado</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actualizado</th>
-                    <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Acciones</th>
+                    <th
+                      class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Código
+                    </th>
+                    <th
+                      class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Nombre
+                    </th>
+                    <th
+                      class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Tipo
+                    </th>
+                    <th
+                      class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Unidad
+                    </th>
+                    <th
+                      class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Proveedor preferido
+                    </th>
+                    <th
+                      class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Stock
+                    </th>
+                    <th
+                      class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Mínimo
+                    </th>
+                    <th
+                      class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Costo
+                    </th>
+                    <th
+                      class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Estado
+                    </th>
+                    <th
+                      class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Creado
+                    </th>
+                    <th
+                      class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Actualizado
+                    </th>
+                    <th
+                      class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Acciones
+                    </th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
                   @for (i of service.items(); track i.id) {
                     <tr class="hover:bg-gray-50 transition-colors" [class.opacity-50]="!i.active">
                       <td class="px-4 py-3 text-gray-500 whitespace-nowrap">{{ i.code }}</td>
-                      <td class="px-4 py-3"><p class="font-medium text-gray-900">{{ i.name }}</p></td>
+                      <td class="px-4 py-3">
+                        <p class="font-medium text-gray-900">{{ i.name }}</p>
+                      </td>
                       <td class="px-4 py-3 text-gray-600">{{ typeLabel(i.type) }}</td>
                       <td class="px-4 py-3 text-gray-600">{{ unitAbbr(i.unit_measure_id) }}</td>
                       <td class="px-4 py-3 text-gray-600">
@@ -213,21 +338,36 @@ type ActiveFilter = '' | 'active' | 'inactive';
                           <span class="text-gray-400 italic">Sin proveedor</span>
                         }
                       </td>
-                      <td class="px-4 py-3 text-right font-semibold" [class]="isLow(i) ? 'text-amber-600' : 'text-gray-900'">
-                        {{ i.current_stock | number:'1.0-3' }}
+                      <td
+                        class="px-4 py-3 text-right font-semibold"
+                        [class]="isLow(i) ? 'text-amber-600' : 'text-gray-900'"
+                      >
+                        {{ i.current_stock | number: '1.0-3' }}
                       </td>
-                      <td class="px-4 py-3 text-right text-gray-500">{{ i.min_stock | number:'1.0-3' }}</td>
-                      <td class="px-4 py-3 text-right text-gray-500">{{ i.unit_cost | number:'1.2-2' }}</td>
+                      <td class="px-4 py-3 text-right text-gray-500">
+                        {{ i.min_stock | number: '1.0-3' }}
+                      </td>
+                      <td class="px-4 py-3 text-right text-gray-500">
+                        {{ i.unit_cost | number: '1.2-2' }}
+                      </td>
                       <td class="px-4 py-3">
                         @if (isLow(i)) {
-                          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Bajo mínimo</span>
+                          <span
+                            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700"
+                            >Bajo mínimo</span
+                          >
                         } @else {
-                          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">OK</span>
+                          <span
+                            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700"
+                            >OK</span
+                          >
                         }
                       </td>
-                      <td class="px-4 py-3 text-gray-500 whitespace-nowrap">{{ i.created_at | tenantDate:'short' }}</td>
                       <td class="px-4 py-3 text-gray-500 whitespace-nowrap">
-                        {{ i.updated_at ? (i.updated_at | tenantDate:'short') : '—' }}
+                        {{ i.created_at | tenantDate: 'short' }}
+                      </td>
+                      <td class="px-4 py-3 text-gray-500 whitespace-nowrap">
+                        {{ i.updated_at ? (i.updated_at | tenantDate: 'short') : '—' }}
                       </td>
                       <td class="px-4 py-3 text-right relative">
                         <div class="relative inline-block text-left">
@@ -240,9 +380,23 @@ type ActiveFilter = '' | 'active' | 'inactive';
                             (click)="toggleActionsMenu(i.id, $event)"
                             class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition focus:outline-none focus:ring-2 focus:ring-indigo-400"
                           >
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <svg
+                              class="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                              />
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                              />
                             </svg>
                           </button>
                           <ng-template
@@ -257,26 +411,45 @@ type ActiveFilter = '' | 'active' | 'inactive';
                               (click)="$event.stopPropagation()"
                               class="w-44 bg-white rounded-lg border border-gray-100 shadow-lg py-1 text-left"
                             >
-                              <button type="button" (click)="openEdit(i); closeActionsMenu()"
-                                class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 transition-colors">
+                              <button
+                                type="button"
+                                (click)="openEdit(i); closeActionsMenu()"
+                                class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 transition-colors"
+                              >
                                 Editar
                               </button>
-                              <button type="button" (click)="openAdjust(i); closeActionsMenu()"
-                                class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors">
+                              <button
+                                type="button"
+                                (click)="openAdjust(i); closeActionsMenu()"
+                                class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors"
+                              >
                                 Ajustar
                               </button>
-                              <button type="button" (click)="openKardex(i); closeActionsMenu()"
-                                class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors">
+                              <button
+                                type="button"
+                                (click)="openKardex(i); closeActionsMenu()"
+                                class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors"
+                              >
                                 Kardex
                               </button>
-                              <button type="button" (click)="openSuppliers(i); closeActionsMenu()"
-                                class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors">
+                              <button
+                                type="button"
+                                (click)="openSuppliers(i); closeActionsMenu()"
+                                class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors"
+                              >
                                 Proveedores
                               </button>
                               <div class="border-b border-gray-100 my-1"></div>
-                              <button type="button" (click)="service.toggleActive(i.id, i.active); closeActionsMenu()"
+                              <button
+                                type="button"
+                                (click)="service.toggleActive(i.id, i.active); closeActionsMenu()"
                                 class="w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors"
-                                [class]="i.active ? 'text-red-600 hover:bg-red-50' : 'text-green-700 hover:bg-green-50'">
+                                [class]="
+                                  i.active
+                                    ? 'text-red-600 hover:bg-red-50'
+                                    : 'text-green-700 hover:bg-green-50'
+                                "
+                              >
                                 {{ i.active ? 'Desactivar' : 'Activar' }}
                               </button>
                             </div>
@@ -289,11 +462,14 @@ type ActiveFilter = '' | 'active' | 'inactive';
               </table>
             </div>
             <app-pagination-bar
-              [page]="service.itemsPage()" [size]="service.itemsSize()"
-              [total]="service.itemsTotal()" [totalPages]="service.itemsTotalPages()"
+              [page]="service.itemsPage()"
+              [size]="service.itemsSize()"
+              [total]="service.itemsTotal()"
+              [totalPages]="service.itemsTotalPages()"
               [loading]="service.isLoading()"
               (pageChange)="service.loadItems($event, service.itemsSize())"
-              (sizeChange)="service.loadItems(1, $event)" />
+              (sizeChange)="service.loadItems(1, $event)"
+            />
           }
         </div>
       }
@@ -302,9 +478,13 @@ type ActiveFilter = '' | 'active' | 'inactive';
       @if (tab() === 'purchases' && comprasIncluido()) {
         <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
           @if (service.isLoading()) {
-            <div class="flex items-center justify-center py-12"><p class="text-sm text-gray-400">Cargando compras...</p></div>
+            <div class="flex items-center justify-center py-12">
+              <p class="text-sm text-gray-400">Cargando compras...</p>
+            </div>
           } @else if (service.purchases().length === 0) {
-            <div class="flex flex-col items-center justify-center py-12"><p class="text-sm text-gray-400">Aún no hay compras registradas</p></div>
+            <div class="flex flex-col items-center justify-center py-12">
+              <p class="text-sm text-gray-400">Aún no hay compras registradas</p>
+            </div>
           } @else {
             <div class="divide-y divide-gray-50">
               @for (p of service.purchases(); track p.id) {
@@ -313,19 +493,52 @@ type ActiveFilter = '' | 'active' | 'inactive';
                     <button type="button" (click)="toggleExpanded(p.id)" class="flex-1 text-left">
                       <p class="font-medium text-gray-900">{{ supplierName(p.supplier_id) }}</p>
                       <p class="text-xs text-gray-500">
-                        {{ p.purchased_at | tenantDate:'short' }}
-                        @if (p.invoice_number) { <span> · Factura {{ p.invoice_number }} </span> }
+                        {{ p.purchased_at | tenantDate: 'short' }}
+                        @if (p.invoice_number) {
+                          <span> · Factura {{ p.invoice_number }} </span>
+                        }
                         · {{ p.items.length }} ítem(s)
                       </p>
                     </button>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" [class]="purchaseChip(p.status)">
-                      {{ purchaseLabel(p.status) }}
+                    <span
+                      class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                      [class]="purchaseChip(p)"
+                    >
+                      {{ purchaseLabel(p) }}
                     </span>
-                    @if (p.status !== 'received') {
-                      <button type="button" (click)="openReceive(p)"
-                        class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">Recibir</button>
+                    @if (p.status === 'draft' && p.isIncomplete) {
+                      <button
+                        type="button"
+                        (click)="reopenDraft(p)"
+                        class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold"
+                      >
+                        Continuar
+                      </button>
+                    } @else if (p.status !== 'received') {
+                      <button
+                        type="button"
+                        (click)="openReceive(p)"
+                        class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold"
+                      >
+                        Recibir
+                      </button>
                     }
-                    <span class="text-sm font-bold text-gray-900 w-20 text-right">{{ p.total | number:'1.2-2' }}</span>
+                    @if (p.status === 'draft') {
+                      <button
+                        type="button"
+                        (click)="deleteDraft(p); $event.stopPropagation()"
+                        [attr.aria-label]="
+                          'Eliminar ' + (p.isIncomplete ? 'borrador' : 'orden de compra')
+                        "
+                        title="Eliminar"
+                        class="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50"
+                      >
+                        <app-mi-icon name="delete" [size]="18" />
+                      </button>
+                    }
+                    <span class="text-sm font-bold text-gray-900 w-20 text-right">{{
+                      p.total | number: '1.2-2'
+                    }}</span>
                   </div>
                   @if (expandedId() === p.id) {
                     <div class="mt-3 rounded-lg bg-gray-50 border border-gray-100 overflow-hidden">
@@ -345,13 +558,20 @@ type ActiveFilter = '' | 'active' | 'inactive';
                                 {{ itemName(it.inventory_item_id) }}
                                 @if (it.presentation_label) {
                                   <span class="block text-gray-400">
-                                    {{ it.presentation_quantity | number:'1.0-3' }} {{ it.presentation_label }}
+                                    {{ it.presentation_quantity | number: '1.0-3' }}
+                                    {{ it.presentation_label }}
                                   </span>
                                 }
                               </td>
-                              <td class="px-3 py-2 text-right text-gray-600">{{ it.quantity | number:'1.0-3' }}</td>
-                              <td class="px-3 py-2 text-right text-gray-600">{{ it.unit_cost | number:'1.2-2' }}</td>
-                              <td class="px-3 py-2 text-right text-gray-700">{{ (it.quantity * it.unit_cost) | number:'1.2-2' }}</td>
+                              <td class="px-3 py-2 text-right text-gray-600">
+                                {{ it.quantity | number: '1.0-3' }}
+                              </td>
+                              <td class="px-3 py-2 text-right text-gray-600">
+                                {{ it.unit_cost | number: '1.2-2' }}
+                              </td>
+                              <td class="px-3 py-2 text-right text-gray-700">
+                                {{ it.quantity * it.unit_cost | number: '1.2-2' }}
+                              </td>
                             </tr>
                           }
                         </tbody>
@@ -363,12 +583,29 @@ type ActiveFilter = '' | 'active' | 'inactive';
             </div>
             @if (service.purchasesTotalPages() > 1) {
               <div class="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-                <span class="text-xs text-gray-500">Página {{ service.purchasesPage() }} de {{ service.purchasesTotalPages() }}</span>
+                <span class="text-xs text-gray-500"
+                  >Página {{ service.purchasesPage() }} de {{ service.purchasesTotalPages() }}</span
+                >
                 <div class="flex gap-2">
-                  <button type="button" (click)="goToPurchasesPage(service.purchasesPage() - 1)" [disabled]="service.purchasesPage() <= 1 || service.isLoading()"
-                    class="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 text-xs font-medium">Anterior</button>
-                  <button type="button" (click)="goToPurchasesPage(service.purchasesPage() + 1)" [disabled]="service.purchasesPage() >= service.purchasesTotalPages() || service.isLoading()"
-                    class="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 text-xs font-medium">Siguiente</button>
+                  <button
+                    type="button"
+                    (click)="goToPurchasesPage(service.purchasesPage() - 1)"
+                    [disabled]="service.purchasesPage() <= 1 || service.isLoading()"
+                    class="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 text-xs font-medium"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    type="button"
+                    (click)="goToPurchasesPage(service.purchasesPage() + 1)"
+                    [disabled]="
+                      service.purchasesPage() >= service.purchasesTotalPages() ||
+                      service.isLoading()
+                    "
+                    class="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 text-xs font-medium"
+                  >
+                    Siguiente
+                  </button>
                 </div>
               </div>
             }
@@ -380,35 +617,68 @@ type ActiveFilter = '' | 'active' | 'inactive';
       @if (tab() === 'movements') {
         <div class="bg-white rounded-xl border border-gray-100 p-4">
           <label class="block text-sm font-medium text-gray-700 mb-1">Insumo</label>
-          <app-searchable-select [ngModel]="movementItemId()" (ngModelChange)="onMovementItemChange($event)"
-            [options]="movementItemOptions()" [search]="searchInventoryItems" placeholder="Seleccionar insumo..." class="w-full max-w-md" />
+          <app-searchable-select
+            [ngModel]="movementItemId()"
+            (ngModelChange)="onMovementItemChange($event)"
+            [options]="movementItemOptions()"
+            [search]="searchInventoryItems"
+            placeholder="Seleccionar insumo..."
+            class="w-full max-w-md"
+          />
         </div>
 
         <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
           @if (!movementItemId()) {
-            <div class="flex items-center justify-center py-12"><p class="text-sm text-gray-400">Selecciona un insumo para ver su kardex</p></div>
+            <div class="flex items-center justify-center py-12">
+              <p class="text-sm text-gray-400">Selecciona un insumo para ver su kardex</p>
+            </div>
           } @else if (movementsLoading()) {
-            <div class="flex items-center justify-center py-12"><p class="text-sm text-gray-400">Cargando movimientos...</p></div>
+            <div class="flex items-center justify-center py-12">
+              <p class="text-sm text-gray-400">Cargando movimientos...</p>
+            </div>
           } @else if (movements().length === 0) {
-            <div class="flex items-center justify-center py-12"><p class="text-sm text-gray-400">Sin movimientos para este insumo</p></div>
+            <div class="flex items-center justify-center py-12">
+              <p class="text-sm text-gray-400">Sin movimientos para este insumo</p>
+            </div>
           } @else {
             <div class="overflow-x-auto">
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-gray-100 bg-gray-50">
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Fecha</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
-                    <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cantidad</th>
-                    <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Motivo</th>
+                    <th
+                      class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Fecha
+                    </th>
+                    <th
+                      class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Tipo
+                    </th>
+                    <th
+                      class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Cantidad
+                    </th>
+                    <th
+                      class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    >
+                      Motivo
+                    </th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
                   @for (m of movements(); track m.id) {
                     <tr class="hover:bg-gray-50 transition-colors">
-                      <td class="px-4 py-3 text-gray-600">{{ m.moved_at | tenantDate:'short' }}</td>
+                      <td class="px-4 py-3 text-gray-600">
+                        {{ m.moved_at | tenantDate: 'short' }}
+                      </td>
                       <td class="px-4 py-3 text-gray-600">{{ m.type }}</td>
-                      <td class="px-4 py-3 text-right font-semibold" [class]="m.quantity < 0 ? 'text-red-600' : 'text-green-600'">
-                        {{ m.quantity | number:'1.0-3' }}
+                      <td
+                        class="px-4 py-3 text-right font-semibold"
+                        [class]="m.quantity < 0 ? 'text-red-600' : 'text-green-600'"
+                      >
+                        {{ m.quantity | number: '1.0-3' }}
                       </td>
                       <td class="px-4 py-3 text-gray-500">{{ m.reason || '—' }}</td>
                     </tr>
@@ -418,12 +688,26 @@ type ActiveFilter = '' | 'active' | 'inactive';
             </div>
             @if (movementsTotalPages() > 1) {
               <div class="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-                <span class="text-xs text-gray-500">Página {{ movementsPage() }} de {{ movementsTotalPages() }}</span>
+                <span class="text-xs text-gray-500"
+                  >Página {{ movementsPage() }} de {{ movementsTotalPages() }}</span
+                >
                 <div class="flex gap-2">
-                  <button type="button" (click)="goToMovementsPage(movementsPage() - 1)" [disabled]="movementsPage() <= 1 || movementsLoading()"
-                    class="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 text-xs font-medium">Anterior</button>
-                  <button type="button" (click)="goToMovementsPage(movementsPage() + 1)" [disabled]="movementsPage() >= movementsTotalPages() || movementsLoading()"
-                    class="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 text-xs font-medium">Siguiente</button>
+                  <button
+                    type="button"
+                    (click)="goToMovementsPage(movementsPage() - 1)"
+                    [disabled]="movementsPage() <= 1 || movementsLoading()"
+                    class="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 text-xs font-medium"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    type="button"
+                    (click)="goToMovementsPage(movementsPage() + 1)"
+                    [disabled]="movementsPage() >= movementsTotalPages() || movementsLoading()"
+                    class="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50 text-xs font-medium"
+                  >
+                    Siguiente
+                  </button>
                 </div>
               </div>
             }
@@ -434,53 +718,93 @@ type ActiveFilter = '' | 'active' | 'inactive';
 
     <!-- Modals -->
     @if (showForm()) {
-      <app-inventory-item-form [item]="selectedItem()" (close)="showForm.set(false)" (saved)="showForm.set(false)"></app-inventory-item-form>
+      <app-inventory-item-form
+        [item]="selectedItem()"
+        (close)="showForm.set(false)"
+        (saved)="showForm.set(false)"
+      ></app-inventory-item-form>
     }
     @if (showAdjust()) {
-      <app-stock-adjust-modal [item]="selectedItem()" (close)="showAdjust.set(false)" (saved)="onAdjusted()"></app-stock-adjust-modal>
+      <app-stock-adjust-modal
+        [item]="selectedItem()"
+        (close)="showAdjust.set(false)"
+        (saved)="onAdjusted()"
+      ></app-stock-adjust-modal>
     }
-    @if (showPurchase()) {
-      <app-purchase-form (close)="showPurchase.set(false)" (saved)="showPurchase.set(false)"></app-purchase-form>
-    }
-
     <!-- Modal recepción de orden de compra (RF-022) -->
     @if (receivePurchase(); as rp) {
       <div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]">
           <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <h2 class="text-base font-bold text-gray-900">Recibir compra</h2>
-            <button type="button" (click)="receivePurchase.set(null)" class="text-gray-400 hover:text-gray-600">
+            <button
+              type="button"
+              (click)="receivePurchase.set(null)"
+              class="text-gray-400 hover:text-gray-600"
+            >
               <app-mi-icon name="close" ariaLabel="Cerrar" [size]="20" />
             </button>
           </div>
           <div class="p-6 space-y-3 overflow-y-auto">
-            <p class="text-sm text-gray-500">Indica cuánto recibes ahora de cada ítem. Puedes recibir parcialmente.</p>
+            <p class="text-sm text-gray-500">
+              Indica cuánto recibes ahora de cada ítem. Puedes recibir parcialmente.
+            </p>
             @for (row of receiveRows(); track row.purchase_item_id) {
               <div class="flex items-center gap-3">
                 <div class="flex-1">
-                  <p class="text-sm font-medium text-gray-800">{{ itemName(row.inventory_item_id) }}</p>
+                  <p class="text-sm font-medium text-gray-800">
+                    {{ itemName(row.inventory_item_id) }}
+                  </p>
                   <p class="text-xs text-gray-400">
                     @if (row.presentation_label && row.conversion_factor) {
-                      <span>Pendiente: {{ row.pending / row.conversion_factor | number:'1.0-3' }} de {{ row.quantity / row.conversion_factor | number:'1.0-3' }} {{ row.presentation_label }}</span>
+                      <span
+                        >Pendiente: {{ row.pending / row.conversion_factor | number: '1.0-3' }} de
+                        {{ row.quantity / row.conversion_factor | number: '1.0-3' }}
+                        {{ row.presentation_label }}</span
+                      >
                     } @else {
-                      <span>Pendiente: {{ row.pending | number:'1.0-3' }} de {{ row.quantity | number:'1.0-3' }}</span>
+                      <span
+                        >Pendiente: {{ row.pending | number: '1.0-3' }} de
+                        {{ row.quantity | number: '1.0-3' }}</span
+                      >
                     }
                   </p>
                 </div>
-                <input type="number" min="0"
-                  [max]="row.presentation_label && row.conversion_factor ? row.pending / row.conversion_factor : row.pending"
+                <input
+                  type="number"
+                  min="0"
+                  [max]="
+                    row.presentation_label && row.conversion_factor
+                      ? row.pending / row.conversion_factor
+                      : row.pending
+                  "
                   [(ngModel)]="row.receive"
-                  class="w-28 px-2 py-1.5 border border-gray-200 rounded-lg text-sm" />
+                  class="w-28 px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                />
               </div>
             }
             @if (service.error()) {
-              <div class="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-600">{{ service.error() }}</div>
+              <div
+                class="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-600"
+              >
+                {{ service.error() }}
+              </div>
             }
           </div>
           <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
-            <button type="button" (click)="receivePurchase.set(null)" class="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100">Cancelar</button>
-            <button type="button" (click)="submitReceive(rp.id)" [disabled]="service.isSubmitting()"
-              class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold">
+            <button
+              type="button"
+              (click)="receivePurchase.set(null)"
+              class="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              (click)="submitReceive(rp.id)"
+              [disabled]="service.isSubmitting()"
+              class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold"
+            >
               {{ service.isSubmitting() ? 'Recibiendo…' : 'Confirmar recepción' }}
             </button>
           </div>
@@ -495,8 +819,10 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   readonly suppliersService = inject(SuppliersService);
   readonly planSummaryService = inject(PlanSummaryService);
   private readonly toast = inject(ToastService);
+  private readonly confirm = inject(ConfirmService);
   private readonly router = inject(Router);
   private readonly overlay = inject(Overlay);
+  private readonly tenantInfo = inject(TenantInfoService);
 
   readonly actionsMenuPositions: ConnectionPositionPair[] = [
     { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
@@ -528,7 +854,6 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
 
   readonly showForm = signal(false);
   readonly showAdjust = signal(false);
-  readonly showPurchase = signal(false);
   readonly showImportModal = signal(false);
   readonly selectedItem = signal<InventoryItem | null>(null);
 
@@ -536,10 +861,17 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
 
   // Recepción de compra (RF-022)
   readonly receivePurchase = signal<Purchase | null>(null);
-  readonly receiveRows = signal<{
-    purchase_item_id: string; inventory_item_id: string; quantity: number; pending: number;
-    receive: number; presentation_label: string | null; conversion_factor: number | null;
-  }[]>([]);
+  readonly receiveRows = signal<
+    {
+      purchase_item_id: string;
+      inventory_item_id: string;
+      quantity: number;
+      pending: number;
+      receive: number;
+      presentation_label: string | null;
+      conversion_factor: number | null;
+    }[]
+  >([]);
 
   readonly movementItemId = signal('');
   readonly movements = signal<InventoryMovement[]>([]);
@@ -548,21 +880,23 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   readonly movementsTotalPages = signal(1);
 
   private readonly unitMap = computed(
-    () => new Map(this.unitMeasureService.unitMeasures().map(u => [u.id, u.abbreviation]))
+    () => new Map(this.unitMeasureService.unitMeasures().map((u) => [u.id, u.abbreviation])),
   );
   private readonly itemMap = computed(
-    () => new Map(this.service.allItems().map(i => [i.id, i.name]))
+    () => new Map(this.service.allItems().map((i) => [i.id, i.name])),
   );
   /** Opciones para el select con buscador de insumos del tab Movimientos. */
   readonly movementItemOptions = computed(() =>
-    this.service.allItems().map(i => ({ id: i.id, label: i.name }))
+    this.service.allItems().map((i) => ({ id: i.id, label: i.name })),
   );
 
   /** Búsqueda remota del picker de insumo (spec 098): ver product-form.component.ts. */
   readonly searchInventoryItems = (query: string): Promise<{ id: string; label: string }[]> =>
-    this.service.searchActiveItems(query).then(items => items.map(i => ({ id: i.id, label: i.name })));
+    this.service
+      .searchActiveItems(query)
+      .then((items) => items.map((i) => ({ id: i.id, label: i.name })));
   private readonly supplierMap = computed(
-    () => new Map(this.suppliersService.suppliers().map(s => [s.id, s.name]))
+    () => new Map(this.suppliersService.suppliers().map((s) => [s.id, s.name])),
   );
 
   async ngOnInit(): Promise<void> {
@@ -604,6 +938,37 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   }
 
   // --- paginación de Compras ---
+  goToNewPurchase(): void {
+    this.router.navigate(['/dashboard/inventario/compras/nueva']);
+  }
+
+  /** Reabrir un borrador incompleto (spec 140, FR-017): `GET /purchases` ya trae `items`,
+   *  así que basta pasar la `Purchase` completa por estado de navegación -- sin endpoint de
+   *  detalle nuevo (contracts/purchases-api.md). */
+  reopenDraft(p: Purchase): void {
+    this.router.navigate(['/dashboard/inventario/compras/nueva'], { state: { draft: p } });
+  }
+
+  /** Eliminar una orden de compra / borrador pendiente (spec 140): solo aplica mientras
+   *  `status === 'draft'` -- nunca se le dio alta de stock, así que no hay nada que revertir
+   *  (a diferencia de anular una compra ya recibida). */
+  async deleteDraft(p: Purchase): Promise<void> {
+    const ok = await this.confirm.ask({
+      title: p.isIncomplete ? 'Eliminar borrador' : 'Eliminar orden de compra',
+      message: `Se eliminará ${p.isIncomplete ? 'el borrador' : 'la orden de compra'} de ${this.supplierName(p.supplier_id)} por ${formatMoney(p.total)}. Esta acción no se puede deshacer.`,
+      confirmText: 'Eliminar',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    const done = await this.service.deletePurchase(p.id);
+    if (done) {
+      this.toast.success(p.isIncomplete ? 'Borrador eliminado.' : 'Orden de compra eliminada.');
+    } else {
+      this.toast.error(this.service.error() ?? 'No se pudo eliminar.');
+    }
+  }
+
   goToPurchasesPage(page: number): void {
     if (page < 1 || page > this.service.purchasesTotalPages()) return;
     this.service.loadPurchases(page);
@@ -651,27 +1016,32 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   private exportFilename(contentDisposition: string | null): string {
     const match = contentDisposition ? /filename="?([^"]+)"?/.exec(contentDisposition) : null;
     if (match) return match[1];
-    const today = new Date().toISOString().slice(0, 10);
-    return `inventario_${today}.xlsx`;
+    // spec 138 (A-147): el día del respaldo es el día local del negocio, no el día UTC.
+    return `inventario_${businessToday(this.tenantInfo.timezone())}.xlsx`;
   }
   toggleExpanded(id: string): void {
-    this.expandedId.update(current => (current === id ? null : id));
+    this.expandedId.update((current) => (current === id ? null : id));
   }
 
   // --- recepción de compra (RF-022) ---
-  purchaseLabel(s: PurchaseStatus): string {
-    return { draft: 'Orden', partial: 'Parcial', received: 'Recibida' }[s];
+  /** spec 140: `status='draft'` cubre dos cosas distintas -- `isIncomplete=true` es un
+   *  borrador guardado sin exigir líneas completas (User Story 3), `false` sigue siendo la
+   *  orden de compra pendiente validada de siempre (User Story 2, sin cambios). */
+  purchaseLabel(p: Pick<Purchase, 'status' | 'isIncomplete'>): string {
+    if (p.status === 'draft' && p.isIncomplete) return 'Borrador';
+    return { draft: 'Orden', partial: 'Parcial', received: 'Recibida' }[p.status];
   }
-  purchaseChip(s: PurchaseStatus): string {
+  purchaseChip(p: Pick<Purchase, 'status' | 'isIncomplete'>): string {
+    if (p.status === 'draft' && p.isIncomplete) return 'bg-indigo-50 text-indigo-600';
     return {
       draft: 'bg-gray-100 text-gray-600',
       partial: 'bg-amber-100 text-amber-700',
       received: 'bg-emerald-100 text-emerald-700',
-    }[s];
+    }[p.status];
   }
   openReceive(p: Purchase): void {
     this.receiveRows.set(
-      p.items.map(it => {
+      p.items.map((it) => {
         const pending = it.quantity - it.received_quantity;
         // spec 107: si la línea se pactó en una presentación, "pendiente" y "a recibir" se
         // muestran y se capturan en esa presentación, no en unidad base.
@@ -693,10 +1063,12 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   }
   async submitReceive(purchaseId: string): Promise<void> {
     const items = this.receiveRows()
-      .filter(r => Number(r.receive) > 0)
-      .map(r => r.presentation_label && r.conversion_factor
-        ? { purchase_item_id: r.purchase_item_id, presentation_quantity: Number(r.receive) }
-        : { purchase_item_id: r.purchase_item_id, quantity: Number(r.receive) });
+      .filter((r) => Number(r.receive) > 0)
+      .map((r) =>
+        r.presentation_label && r.conversion_factor
+          ? { purchase_item_id: r.purchase_item_id, presentation_quantity: Number(r.receive) }
+          : { purchase_item_id: r.purchase_item_id, quantity: Number(r.receive) },
+      );
     if (items.length === 0) {
       this.toast.info('Indica al menos una cantidad a recibir');
       return;
@@ -745,7 +1117,8 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   onAdjusted(): void {
     this.showAdjust.set(false);
     // Refresh the kardex (preserving its current page) if we're viewing this item's movements.
-    if (this.movementItemId()) this.onMovementItemChange(this.movementItemId(), this.movementsPage());
+    if (this.movementItemId())
+      this.onMovementItemChange(this.movementItemId(), this.movementsPage());
   }
 
   // --- movements ---

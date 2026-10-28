@@ -82,4 +82,42 @@ describe('TenantDatePipe', () => {
     expect(pipe.transform(null)).toBeNull();
     expect(pipe.transform(undefined)).toBeNull();
   });
+  // spec 138: zona explícita como 3.er parámetro (lista de tenants de Super Admin).
+  describe('zona explícita (tercer parámetro)', () => {
+    const INSTANTE = '2026-10-25T23:30:00.000Z';
+
+    it('el mismo instante se ve distinto según la zona pedida', () => {
+      tenantInfo.info.set({ ...tenantInfoFixture, timezone: 'America/Bogota' });
+      expect(pipe.transform(INSTANTE, 'HH:mm', 'Asia/Tokyo')).toBe('08:30');
+      expect(pipe.transform(INSTANTE, 'HH:mm', 'America/Mexico_City')).toBe('17:30');
+      expect(pipe.transform(INSTANTE, 'HH:mm', 'Europe/Madrid')).toBe('00:30');
+    });
+
+    it('la zona explícita gana a la del tenant actual', () => {
+      tenantInfo.info.set({ ...tenantInfoFixture, timezone: 'Asia/Tokyo' });
+      expect(pipe.transform(INSTANTE, 'HH:mm', 'America/Mexico_City')).toBe('17:30');
+    });
+
+    it('sin zona explícita usa la del tenant actual', () => {
+      tenantInfo.info.set({ ...tenantInfoFixture, timezone: 'America/Mexico_City' });
+      expect(pipe.transform(INSTANTE, 'HH:mm')).toBe('17:30');
+    });
+
+    it('sin zona explícita ni tenant cargado usa el respaldo de Bogotá', () => {
+      tenantInfo.info.set(null);
+      expect(pipe.transform(INSTANTE, 'HH:mm')).toBe('18:30');
+    });
+
+    it('una zona explícita vacía o nula se trata como ausente', () => {
+      tenantInfo.info.set({ ...tenantInfoFixture, timezone: 'America/Mexico_City' });
+      expect(pipe.transform(INSTANTE, 'HH:mm', '')).toBe('17:30');
+      expect(pipe.transform(INSTANTE, 'HH:mm', undefined)).toBe('17:30');
+    });
+
+    it('el cambio de día de Tokio respecto de UTC (fecha de vencimiento de un plan)', () => {
+      // 16:00Z del 1/nov = 01:00 del 2/nov en Tokio, aunque el navegador esté en Bogotá.
+      expect(pipe.transform('2026-11-01T16:00:00+00:00', 'dd/MM/yyyy', 'Asia/Tokyo')).toBe('02/11/2026');
+      expect(pipe.transform('2026-11-01T16:00:00+00:00', 'dd/MM/yyyy', 'America/Bogota')).toBe('01/11/2026');
+    });
+  });
 });

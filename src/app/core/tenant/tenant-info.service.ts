@@ -3,6 +3,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { createCachedLoader } from '../../shared/cached-loader.util';
+import { FALLBACK_TIMEZONE } from '../../shared/date-format.util';
 import { TenantContextService } from './tenant-context.service';
 
 /** `TenantInfoResponse` — datos del negocio del tenant actual. */
@@ -17,6 +18,10 @@ export interface TenantInfo {
   receipt_message: string | null;
   /** Zona horaria IANA del negocio (spec 030). Solo lectura — `update()` no la persiste. */
   timezone: string;
+  /** Permite capturar una línea de compra en una unidad distinta de la base del insumo
+   *  (spec 134, FR-016). Editable únicamente por ADMIN. Opcional: el backend siempre lo
+   *  envía, pero muchos fixtures de test construyen un `TenantInfo` parcial. */
+  unit_conversion_enabled?: boolean;
 }
 
 /** Cierre de la factura cuando el negocio no ha configurado uno propio. */
@@ -65,6 +70,10 @@ export class TenantInfoService {
   });
 
   readonly logoUrl = computed(() => this.info()?.logo_url ?? null);
+
+  /** Zona horaria IANA del negocio; `America/Bogota` mientras `info()` no cargó (spec 138, FR-008).
+   *  Es la que usan todas las pantallas para mostrar fechas y calcular «hoy». */
+  readonly timezone = computed(() => this.info()?.timezone ?? FALLBACK_TIMEZONE);
 
   /** Mensaje de cierre de la factura; nunca vacío. */
   readonly receiptMessage = computed(

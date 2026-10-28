@@ -40,6 +40,7 @@ import { DiningSessionService } from './dining-session.service';
 import { TableSessionService } from './table-session.service';
 import { SalesService } from '../../sales/services/sales.service';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
+import { formatInZone } from '../../../shared/date-format.util';
 import {
   ReceiptContext,
   ReceiptData,
@@ -918,7 +919,8 @@ export class PosTerminalStore {
     return this.ordersOfTable(t).map((order) => ({
       order,
       items: this.persistedItemsView(order),
-      createdAtLabel: new Date(order.created_at).toLocaleTimeString('es-CO', {
+      // spec 138 (FR-008): la hora del pedido en la zona del negocio, no en la del navegador.
+      createdAtLabel: formatInZone(order.created_at, this.tenantInfo.timezone(), {
         hour: '2-digit',
         minute: '2-digit',
       }),
@@ -3223,7 +3225,12 @@ export class PosTerminalStore {
     const todas = this.lastReceipts();
     const receipts = index == null ? todas : todas.slice(index, index + 1);
     if (receipts.length === 0) return;
-    printReceiptHtml(buildReceiptHtml(receipts, { paperWidthMm: this.printer.paperWidthMm() }));
+    printReceiptHtml(
+      buildReceiptHtml(receipts, {
+        paperWidthMm: this.printer.paperWidthMm(),
+        timezone: this.tenantInfo.timezone(),
+      }),
+    );
   }
 
   /** "Mesa 4", para el encabezado del ticket de pre-cuenta y de la factura. */
@@ -3271,6 +3278,7 @@ export class PosTerminalStore {
     printReceiptHtml(
       buildReceiptHtml([saleToReceipt(sale, this.receiptContext())], {
         paperWidthMm: this.printer.paperWidthMm(),
+        timezone: this.tenantInfo.timezone(),
       }),
     );
   }
