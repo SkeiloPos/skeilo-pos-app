@@ -646,17 +646,17 @@ describe('ProductSelectComponent — [fromPromotions]/[existingQtyFor] (spec 081
     expect(component.quantity()).toBe(3); // de 1 en 1, no de 2 en 2
   });
 
-  it('(b) fromPromotions == true, min_qty == 2, sin unidades previas: quantity arranca en 2 y avanza de 2 en 2', () => {
+  it('(b) fromPromotions == true, min_qty == 2, sin unidades previas: quantity arranca en 2, pero el stepper avanza de 1 en 1 (bug fix: antes saltaba de min_qty en min_qty y no dejaba pedir, p. ej., 3 unidades)', () => {
     const v = makeVariant({ id: 'v1', promotion: promocion({ min_qty: 2 }) });
     create(makeProduct({ variants: [v] }), { fromPromotions: true, existingQtyFor: () => 0 });
 
     expect(component.quantity()).toBe(2);
     component.inc();
-    expect(component.quantity()).toBe(4);
+    expect(component.quantity()).toBe(3); // de 1 en 1, no de 2 en 2 -- el 3er producto va a precio normal
     component.dec();
     expect(component.quantity()).toBe(2);
-    component.dec(); // ya está en el mínimo: no baja de un paso completo dentro del modal
-    expect(component.quantity()).toBe(2);
+    component.dec(); // ya no se bloquea en min_qty: el motor cobra el remanente a precio normal
+    expect(component.quantity()).toBe(1);
   });
 
   it('(c) fromPromotions == true, min_qty == 1: quantity arranca en 1, igual que si no viniera de "Promociones" (FR-005)', () => {
@@ -689,20 +689,9 @@ describe('ProductSelectComponent — [fromPromotions]/[existingQtyFor] (spec 081
     expect(component.quantity()).toBe(1); // vuelve a 1 al salir de la variante cubierta
   });
 
-  it('confirm() emite stepQuantity == min_qty solo cuando fromPromotions && min_qty > 1', () => {
+  it('confirm() nunca emite stepQuantity (bug fix: el +/- del carrito también debe avanzar de 1 en 1, nunca de min_qty en min_qty, aunque venga de "Promociones")', () => {
     const v = makeVariant({ id: 'v1', promotion: promocion({ min_qty: 2 }) });
     create(makeProduct({ variants: [v] }), { fromPromotions: true, existingQtyFor: () => 0 });
-
-    let emitted: ProductSelection | undefined;
-    component.added.subscribe((sel) => (emitted = sel));
-    component.confirm();
-
-    expect(emitted?.stepQuantity).toBe(2);
-  });
-
-  it('confirm() no emite stepQuantity fuera de "Promociones" (FR-010)', () => {
-    const v = makeVariant({ id: 'v1', promotion: promocion({ min_qty: 2 }) });
-    create(makeProduct({ variants: [v] })); // fromPromotions por defecto: false
 
     let emitted: ProductSelection | undefined;
     component.added.subscribe((sel) => (emitted = sel));

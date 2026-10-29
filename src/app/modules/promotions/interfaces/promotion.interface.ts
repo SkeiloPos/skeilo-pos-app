@@ -68,6 +68,9 @@ export interface Promotion {
   end_time: string | null;
   /** Marca de "finalizada por la migración de la spec 063" (FR-025). */
   closed_by_refactor_at: string | null;
+  /** spec 144 (FR-010): visibilidad en el menú QR, independiente de `status`
+   *  -- mismo patrón que `Category`/`Product`. */
+  visible_en_qr: boolean;
   /** spec 063 (revisión 2026-09-01, FR-001): reemplaza type/value/min_qty/
    *  condition_text/variants sueltos — cada regla lleva los suyos. */
   rules: PromotionRule[];
@@ -144,6 +147,14 @@ export interface PromotionCreatePayload extends PromotionScalars {
  * spec 127 (FR-005): `starts_at` se suma a los escalares editables.
  */
 export type PromotionUpdatePayload = Partial<PromotionScalars>;
+
+/** spec 144 (FR-001/FR-010): toggle de `visible_en_qr`, aparte de
+ *  `PromotionScalars`/`PromotionUpdatePayload` porque no se edita desde el
+ *  formulario de escalares -- es editable sin importar el `status` de la
+ *  promoción, a diferencia del resto de `PromotionUpdatePayload`. */
+export interface PromotionVisibilityPayload {
+  visible_en_qr: boolean;
+}
 
 export interface PromotionShapePayload {
   rules: PromotionRuleInPayload[];

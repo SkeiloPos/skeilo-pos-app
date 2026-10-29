@@ -36,6 +36,7 @@ function promo(overrides: Partial<Promotion> = {}): Promotion {
     start_time: null,
     end_time: null,
     closed_by_refactor_at: null,
+    visible_en_qr: true,
     rules: [
       {
         id: 'r1', type: 'percent', value: '10', min_qty: 1,

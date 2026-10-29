@@ -15,7 +15,7 @@ import {
   MenuProduct,
   MenuVariantPromotion,
 } from '../../products/interfaces/product.interface';
-import { ResolvedBusiness } from '../services/diner.service';
+import { MenuPromotionAnnouncement, ResolvedBusiness } from '../services/diner.service';
 import { DiningOrder, DiningOrderItem } from '../interfaces/dining.interface';
 import { simulateTranslation } from '../../../testing/simulate-translation';
 
@@ -28,6 +28,9 @@ import { simulateTranslation } from '../../../testing/simulate-translation';
 class FakeDinerService {
   categories: MenuCategory[] = [];
   business: ResolvedBusiness | null = null;
+  /** spec 144: anuncios de promociones del menú QR firmado -- vacío por defecto,
+   *  igual que el backend real cuando ninguna promoción pasa el filtro. */
+  promotions: MenuPromotionAnnouncement[] = [];
   /** spec 089: si se fija, `myOrders()` lo lanza (un 401 de sesión, con o sin cierre). */
   myOrdersError: unknown = null;
   async resolveByToken() {
@@ -35,6 +38,7 @@ class FakeDinerService {
       table: { id: 't1', number: 1, name: null },
       business: this.business,
       categories: this.categories,
+      promotions: this.promotions,
     };
   }
   leave = vi.fn(async (): Promise<void> => {});
@@ -104,7 +108,11 @@ describe('PublicMenuComponent', () => {
   async function createComponent(
     token: string,
     categories: MenuCategory[] = [],
-    opts: { withSession?: boolean; business?: ResolvedBusiness | null } = {},
+    opts: {
+      withSession?: boolean;
+      business?: ResolvedBusiness | null;
+      promotions?: MenuPromotionAnnouncement[];
+    } = {},
   ): Promise<{ fixture: ComponentFixture<PublicMenuComponent>; component: PublicMenuComponent }> {
     TestBed.resetTestingModule();
     // `DinerTokenStore` lee `localStorage` al construirse: fijar el
@@ -114,6 +122,7 @@ describe('PublicMenuComponent', () => {
     const diner = new FakeDinerService();
     diner.categories = categories;
     diner.business = opts.business ?? null;
+    diner.promotions = opts.promotions ?? [];
     TestBed.configureTestingModule({
       imports: [PublicMenuComponent],
       providers: [
@@ -541,6 +550,17 @@ describe('PublicMenuComponent', () => {
     };
   }
 
+  // spec 144: anuncio del menú QR firmado -- la pestaña "Promociones" existe
+  // solo cuando `promotions` trae al menos uno de estos.
+  function anuncio(over: Partial<MenuPromotionAnnouncement> = {}): MenuPromotionAnnouncement {
+    return {
+      promotion_id: 'promo-1',
+      promotion_name: '2x1 helados',
+      rules: [{ text: 'Llevando 2 pagas $12.000', variant_count: 1, min_qty: 2, value: 12000 }],
+      ...over,
+    };
+  }
+
   async function carta(variants: MenuProduct['variants']): Promise<HTMLElement> {
     const categories: MenuCategory[] = [
       { id: 'c1', name: 'Granizados', products: [product({ variants })] },
@@ -676,13 +696,24 @@ describe('PublicMenuComponent', () => {
     expect(el.textContent).not.toContain(' x $');
   });
 
-  // ── spec 081 (US1) — pestaña dedicada de "Promociones" ────────────────────
+  // ── spec 081 (US1) / spec 144 (revierte FR-001 de 081) — pestaña dedicada de
+  // "Promociones" ────────────────────────────────────────────────────────────
 
-  it('FR-001/FR-008: la pestaña "Promociones" aparece en la navegación aunque no haya ninguna promoción vigente', async () => {
+  it('spec 144 FR-005/FR-006: la pestaña "Promociones" NO aparece en la navegación cuando `promotions` resuelve vacío', async () => {
     const categories: MenuCategory[] = [
       { id: 'c1', name: 'Helados', products: [product({ id: 'p1' })] },
     ];
-    const { fixture } = await createComponent('tok-1', categories, { withSession: true });
+    const { fixture } = await createComponent('tok-1', categories, { withSession: true, promotions: [] });
+
+    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(texto).not.toContain('Promociones');
+  });
+
+  it('spec 144 FR-005/FR-006: la pestaña "Promociones" aparece cuando `promotions` trae al menos un anuncio', async () => {
+    const categories: MenuCategory[] = [
+      { id: 'c1', name: 'Helados', products: [product({ id: 'p1' })] },
+    ];
+    const { fixture } = await createComponent('tok-1', categories, { withSession: true, promotions: [anuncio()] });
 
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(texto).toContain('Promociones');
@@ -704,7 +735,7 @@ describe('PublicMenuComponent', () => {
         ],
       },
     ];
-    const { fixture, component } = await createComponent('tok-1', categories, { withSession: true });
+    const { fixture, component } = await createComponent('tok-1', categories, { withSession: true, promotions: [anuncio()] });
 
     component.selectCategory(PROMOTIONS_TAB_ID);
     fixture.detectChanges();
@@ -722,26 +753,13 @@ describe('PublicMenuComponent', () => {
         ],
       },
     ];
-    const { fixture, component } = await createComponent('tok-1', categories, { withSession: true });
+    const { fixture, component } = await createComponent('tok-1', categories, { withSession: true, promotions: [anuncio()] });
 
     component.selectCategory(PROMOTIONS_TAB_ID);
     fixture.detectChanges();
 
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector('[data-testid="promo-badge"]')).not.toBeNull();
-  });
-
-  it('FR-008: sin ninguna promoción vigente, "Promociones" muestra un aviso en vez de una grilla vacía sin explicación', async () => {
-    const categories: MenuCategory[] = [
-      { id: 'c1', name: 'Helados', products: [product({ id: 'p1' })] },
-    ];
-    const { fixture, component } = await createComponent('tok-1', categories, { withSession: true });
-
-    component.selectCategory(PROMOTIONS_TAB_ID);
-    fixture.detectChanges();
-
-    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(texto).toContain('No hay promociones activas en este momento');
   });
 
   it('FR-009: seleccionar una categoría normal después de "Promociones" sigue mostrando todos sus productos, con o sin promoción', async () => {
@@ -754,7 +772,7 @@ describe('PublicMenuComponent', () => {
         ],
       },
     ];
-    const { fixture, component } = await createComponent('tok-1', categories, { withSession: true });
+    const { fixture, component } = await createComponent('tok-1', categories, { withSession: true, promotions: [anuncio()] });
 
     component.selectCategory(PROMOTIONS_TAB_ID);
     component.selectCategory('c1');
@@ -792,7 +810,7 @@ describe('PublicMenuComponent', () => {
         ],
       },
     ];
-    const { component } = await createComponent('tok-1', categories, { withSession: true });
+    const { component } = await createComponent('tok-1', categories, { withSession: true, promotions: [anuncio()] });
 
     component.selectCategory(PROMOTIONS_TAB_ID);
     component.openProduct(component.visibleProducts()[0]);
@@ -806,11 +824,22 @@ describe('PublicMenuComponent', () => {
     const categories: MenuCategory[] = [
       { id: 'c1', name: 'Helados', products: [product({ id: 'p1' })] },
     ];
-    const { component } = await createComponent('tok-1', categories, { withSession: true });
+    const { component } = await createComponent('tok-1', categories, { withSession: true, promotions: [anuncio()] });
 
     component.selectCategory(PROMOTIONS_TAB_ID);
 
     expect(component.activeCategory()).toBeNull();
+  });
+
+  it('spec 144: con "Promociones" seleccionada, si `promotions` queda vacía (p. ej. tras un refresco) cae a la primera categoría en vez de quedar sin pestaña resaltada', async () => {
+    const categories: MenuCategory[] = [
+      { id: 'c1', name: 'Helados', products: [product({ id: 'p1' })] },
+    ];
+    const { component } = await createComponent('tok-1', categories, { withSession: true, promotions: [] });
+
+    component.selectCategory(PROMOTIONS_TAB_ID);
+
+    expect(component.activeCategory()?.id).toBe('c1');
   });
 
   it('FR-014: al ingresar con al menos una promoción vigente, "Promociones" queda seleccionada por defecto, sin que el comensal presione nada', async () => {
@@ -820,7 +849,7 @@ describe('PublicMenuComponent', () => {
         products: [product({ id: 'p1', name: 'Con promo', variants: [{ id: 'v1', name: 'Único', price: 8000, option_groups: [], available: true, promotion: promocion() }] })],
       },
     ];
-    const { component } = await createComponent('tok-1', categories, { withSession: true });
+    const { component } = await createComponent('tok-1', categories, { withSession: true, promotions: [anuncio()] });
 
     expect(component.activeCategoryId()).toBe(PROMOTIONS_TAB_ID);
   });
@@ -1419,7 +1448,7 @@ describe('PublicMenuComponent', () => {
     const categories: MenuCategory[] = [
       { id: 'c1', name: 'Helados', products: [product({ id: 'p1', name: 'Fresa' })] },
     ];
-    const { fixture, component } = await createComponent('tok-1', categories, { withSession: true });
+    const { fixture, component } = await createComponent('tok-1', categories, { withSession: true, promotions: [anuncio()] });
     const el = fixture.nativeElement as HTMLElement;
     const traduccion = simulateTranslation(el);
     const mensaje = (): string => (el.querySelector('p.text-gray-600.font-medium')?.textContent ?? '').replace(/\s+/g, ' ').trim();
@@ -1429,7 +1458,8 @@ describe('PublicMenuComponent', () => {
       traduccion.refresh(); // el traductor sigue activo: traduce lo recién pintado
     };
 
-    // Sin ninguna promoción vigente.
+    // La pestaña existe (hay anuncio), pero ningún producto trae `promotion` en su
+    // variante -- el filtro por `hasPromotion()` deja la grilla vacía.
     cambiar(() => component.selectCategory(PROMOTIONS_TAB_ID));
     expect(mensaje()).toBe('No hay promociones activas en este momento.');
 

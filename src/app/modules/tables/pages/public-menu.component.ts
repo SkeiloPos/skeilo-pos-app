@@ -310,17 +310,20 @@ const REFRESH_DEBOUNCE_MS = 250;
                 </button>
                 <nav class="flex-1 min-w-0 overflow-x-auto">
                   <div class="flex gap-1 min-w-max">
-                    <!-- spec 081 (FR-001): siempre visible, incluso sin promociones vigentes
-                         (FR-008) — categoría virtual, no reemplaza las de abajo. -->
-                    <button
-                      (click)="selectCategory(promotionsTabId)"
-                      class="px-4 h-12 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors"
-                      [class]="activeCategoryId() === promotionsTabId
-                        ? 'border-violet-700 text-violet-700'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'"
-                    >
-                      Promociones
-                    </button>
+                    <!-- spec 144 (FR-005/FR-006): la pestaña solo existe mientras haya al
+                         menos un anuncio de promoción vigente + visible en QR + alcanzable
+                         (revierte la decisión de spec 081, que la dejaba siempre visible). -->
+                    @if (promotionAnnouncements().length > 0) {
+                      <button
+                        (click)="selectCategory(promotionsTabId)"
+                        class="px-4 h-12 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors"
+                        [class]="activeCategoryId() === promotionsTabId
+                          ? 'border-violet-700 text-violet-700'
+                          : 'border-transparent text-gray-500 hover:text-gray-700'"
+                      >
+                        Promociones
+                      </button>
+                    }
                     @for (category of categories(); track category.id) {
                       <button
                         (click)="selectCategory(category.id)"
@@ -1069,9 +1072,15 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
    * ninguna categoría real — sin este `null` explícito, el `find()` fallaría y el
    * `?? this.categories()[0]` resolvería a la primera categoría, pintándola también
    * como activa en las pestañas (dos pestañas resaltadas a la vez).
+   *
+   * spec 144: si la pestaña queda sin promociones (p. ej. un refresco la vació)
+   * mientras estaba seleccionada, ya no existe como botón — cae a la primera
+   * categoría real en vez de quedarse en un estado sin pestaña resaltada.
    */
   readonly activeCategory = computed<MenuCategory | null>(() => {
-    if (this.activeCategoryId() === PROMOTIONS_TAB_ID) return null;
+    if (this.activeCategoryId() === PROMOTIONS_TAB_ID && this.promotionAnnouncements().length > 0) {
+      return null;
+    }
     return (
       this.categories().find((c) => c.id === this.activeCategoryId()) ??
       // TS tipa el índice como no-nulo, pero con la carta vacía es `undefined`:
@@ -1097,7 +1106,7 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
         .flatMap((c) => c.products)
         .filter((p) => normalizeText(p.name).includes(q));
     }
-    if (this.activeCategoryId() === PROMOTIONS_TAB_ID) {
+    if (this.activeCategoryId() === PROMOTIONS_TAB_ID && this.promotionAnnouncements().length > 0) {
       return this.categories()
         .flatMap((c) => c.products)
         .filter((p) => this.hasPromotion(p));
