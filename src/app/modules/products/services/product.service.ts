@@ -1,4 +1,4 @@
-import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams, HttpResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { QueryClient } from '@tanstack/angular-query-experimental';
 import { Observable, firstValueFrom } from 'rxjs';
@@ -15,6 +15,7 @@ import {
   ProductDetail,
   ProductDraft,
   ProductForm,
+  ProductImportJob,
   ProductUpdatePayload,
   RecipeItem,
   RecipeLineDraft,
@@ -56,6 +57,8 @@ function toNameConflict(err: unknown): VariantNameConflict | null {
 /** Raw backend product. */
 interface ProductResponse {
   id: string;
+  /** spec 143. */
+  code: string;
   category_id: string;
   /** spec 097: resuelto en el servidor, sin depender de `GET /categories`. */
   category_name?: string | null;
@@ -375,6 +378,52 @@ export class ProductService {
     );
     if (ok) await this.queryClient.invalidateQueries({ queryKey: ['products'] });
     return ok;
+  }
+
+  // --- Export/import masivo de la carta (spec 143) ---
+
+  /** Descarga la carta completa (4 hojas) en `.xlsx`. */
+  exportProducts(): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.productsUrl}/export`, {
+      responseType: 'blob',
+      observe: 'response',
+    });
+  }
+
+  /** Sube un `.xlsx` para importación masiva (spec 143). El backend valida la
+   *  estructura de inmediato (422 si no corresponde a la plantilla, 409 si ya hay
+   *  una importación en curso) y responde 202 con el job recién creado, sin
+   *  esperar a que termine de procesarse. */
+  importProducts(file: File): Promise<ProductImportJob> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return firstValueFrom(
+      this.http.post<ProductImportJob>(`${this.productsUrl}/import`, form),
+    );
+  }
+
+  /** Job de importación más reciente del negocio (en curso o finalizado), o
+   *  `null` si nunca se ha corrido ninguno. */
+  getCurrentImportJob(): Promise<ProductImportJob | null> {
+    return firstValueFrom(
+      this.http.get<ProductImportJob | null>(`${this.productsUrl}/import/current`),
+    );
+  }
+
+  /** Un job de importación puntual, por id -- usado por el sondeo del modal. */
+  getImportJob(jobId: string): Promise<ProductImportJob> {
+    return firstValueFrom(
+      this.http.get<ProductImportJob>(`${this.productsUrl}/import/${jobId}`),
+    );
+  }
+
+  /** Descarga el reporte de filas fallidas de un job (`.xlsx`); solo tiene
+   *  sentido cuando `has_errors` es `true`. */
+  downloadImportErrors(jobId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.productsUrl}/import/${jobId}/errors`, {
+      responseType: 'blob',
+      observe: 'response',
+    });
   }
 
   // --- Variants ---
@@ -803,6 +852,7 @@ export class ProductService {
   private toProduct(p: ProductResponse): Product {
     return {
       id: p.id,
+      code: p.code,
       category_id: p.category_id,
       category_name: p.category_name ?? null,
       name: p.name,

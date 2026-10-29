@@ -10,6 +10,7 @@ import { ToastService } from '../../../shared/feedback/toast.service';
 
 const PRODUCT = {
   id: 'p1',
+  code: '0001',
   category_id: 'c1',
   category_name: 'Postres fríos',
   name: 'Fresa boom',
