@@ -9,11 +9,12 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { RelativeTimePipe } from '../../../shared/relative-time.pipe';
 import { AuthService } from '../../../core/services/auth.service';
 import { UserRole } from '../../../core/interfaces/user.interface';
+import { ProductImportModalComponent } from '../components/product-import-modal.component';
 
 @Component({
   selector: 'app-products-page',
   standalone: true,
-  imports: [FormsModule, PaginationBarComponent, IconMiComponent, RelativeTimePipe],
+  imports: [FormsModule, PaginationBarComponent, IconMiComponent, RelativeTimePipe, ProductImportModalComponent],
   template: `
     <div class="space-y-6">
       <!-- Header -->
@@ -25,14 +26,35 @@ import { UserRole } from '../../../core/interfaces/user.interface';
           </p>
         </div>
         @if (isAdmin()) {
-          <button
-            (click)="openCreate()"
-            class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors"
-          >
-            <app-mi-icon name="add" [size]="16" /> Nuevo producto
-          </button>
+          <div class="flex items-center gap-2">
+            <button
+              (click)="openCreate()"
+              class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors"
+            >
+              <app-mi-icon name="add" [size]="16" /> Nuevo producto
+            </button>
+            <button
+              (click)="exportProducts()"
+              class="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors"
+            >
+              <app-mi-icon name="download" [size]="16" /> Exportar carta
+            </button>
+            <button
+              (click)="showImportModal.set(true)"
+              class="flex items-center gap-2 px-3 py-2 border border-gray-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors"
+            >
+              <app-mi-icon name="upload" [size]="16" /> Importar Excel
+            </button>
+          </div>
         }
       </div>
+
+      @if (showImportModal()) {
+        <app-product-import-modal
+          (close)="showImportModal.set(false)"
+          (imported)="productService.loadProducts()"
+        />
+      }
 
       <!-- Filters -->
       <div class="flex gap-3 flex-wrap">
@@ -306,8 +328,32 @@ export class ProductsPageComponent implements OnInit, OnDestroy {
   statusFilterValue: 'all' | 'active' | 'inactive' = 'all';
   availabilityFilterValue: 'all' | 'available' | 'sold_out' = 'all';
 
+  readonly showImportModal = signal(false);
+
   ngOnInit(): void {
     this.productService.loadProducts();
+  }
+
+  /** Descarga la carta completa en `.xlsx` (spec 143). */
+  exportProducts(): void {
+    this.productService.exportProducts().subscribe({
+      next: (resp) => {
+        const blob = resp.body;
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = this.exportFilename(resp.headers.get('content-disposition'));
+        a.click();
+        URL.revokeObjectURL(url);
+      },
+      error: () => this.toast.error('No se pudo exportar la carta'),
+    });
+  }
+
+  private exportFilename(contentDisposition: string | null): string {
+    const match = contentDisposition ? /filename="?([^"]+)"?/.exec(contentDisposition) : null;
+    return match ? match[1] : 'carta.xlsx';
   }
 
   ngOnDestroy(): void {

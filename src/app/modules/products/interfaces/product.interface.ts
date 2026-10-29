@@ -30,6 +30,9 @@ export type OptionGroupSelectionMode = 'conteo' | 'cantidad';
 /** A product (list/detail). Mirrors backend `ProductResponse`/`ProductListResponse`. */
 export interface Product {
   id: string;
+  /** spec 143: identificador estable, autogenerado y editable, usado como
+   *  código de referencia cruzada por el export/import masivo de la carta. */
+  code: string;
   category_id: string;
   /** spec 097: resuelto por el backend, sin depender de `GET /categories` (tope 100
    *  por página) cargado aparte en el cliente. */
@@ -599,3 +602,34 @@ export interface MenuCategory {
 /** Nombre de la presentación del catálogo que nombra la variante de un producto sin tamaños
  *  (A-74/A-79). El backend la crea si el tenant no la tiene. */
 export const DEFAULT_PRESENTATION_NAME = 'Presentación única';
+
+// --- Export/import masivo de la carta (spec 143) ---
+
+export type ProductImportJobStatus = 'procesando' | 'finalizado' | 'interrumpido';
+
+/** Resultado de un import en curso o finalizado. Mirrors backend
+ *  `ProductImportJobResponse` (`GET /products/import/current`, `GET
+ *  /products/import/{id}`, y la respuesta de `POST /products/import`). */
+export interface ProductImportJob {
+  id: string;
+  status: ProductImportJobStatus;
+  file_name: string;
+  /** ISO datetime. */
+  started_at: string;
+  /** ISO datetime; null mientras `status === 'procesando'`. */
+  finished_at: string | null;
+  total_rows: number;
+  created_count: number;
+  updated_count: number;
+  failed_count: number;
+  has_errors: boolean;
+}
+
+/** Una fila fallida del reporte de errores descargable (`GET
+ *  /products/import/{id}/errors`). */
+export interface ImportRowError {
+  hoja: string;
+  fila: number;
+  codigo: string | null;
+  motivo: string;
+}
