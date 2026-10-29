@@ -691,6 +691,7 @@ describe('PromotionsPageComponent', () => {
       start_time: null,
       end_time: null,
       closed_by_refactor_at: null,
+      visible_en_qr: true,
       rules: [
         { id: 'r1', type: 'percent', value: '10', min_qty: 1, condition_text: null, variants: [] },
       ],
@@ -715,6 +716,7 @@ describe('PromotionsPageComponent', () => {
       start_time: null,
       end_time: null,
       closed_by_refactor_at: null,
+      visible_en_qr: true,
       rules: [
         {
           id: 'r1',
@@ -750,6 +752,7 @@ describe('PromotionsPageComponent', () => {
       start_time: null,
       end_time: null,
       closed_by_refactor_at: null,
+      visible_en_qr: true,
       rules: [
         {
           id: 'r1',
@@ -1355,5 +1358,99 @@ describe('PromotionsPageComponent', () => {
 
       expect(c.openActionsId()).toBeNull();
     });
+  });
+
+  describe('spec 144 (US2, T016): switch "Visible en QR" en el listado', () => {
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+
+    function promoCon(over: Partial<Promotion>): Promotion {
+      return {
+        id: 'p1', name: 'Promo X', description: null, status: 'draft',
+        starts_at: null, ends_at: null, days_of_week: null, start_time: null, end_time: null,
+        closed_by_refactor_at: null, visible_en_qr: true, rules: [],
+        ...over,
+      } as unknown as Promotion;
+    }
+
+    async function renderOneRow(
+      fixture: ReturnType<typeof TestBed.createComponent<PromotionsPageComponent>>,
+      promo: Promotion,
+    ): Promise<void> {
+      await tick();
+      const req = http.expectOne(
+        (r) =>
+          r.url.endsWith('/promotions') &&
+          r.params.get('page') === '1' &&
+          !r.params.has('status') &&
+          !r.params.has('closed_by_refactor'),
+      );
+      req.flush({ items: [promo], total: 1, page: 1, size: 20, pages: 1 });
+      const start = Date.now();
+      while (
+        fixture.componentInstance.svc.promotions().length === 0 &&
+        Date.now() - start < 500
+      ) {
+        await tick();
+        fixture.detectChanges();
+      }
+    }
+
+    it('el indicador refleja visible_en_qr=true ("Visible")', async () => {
+      const fixture = TestBed.createComponent(PromotionsPageComponent);
+      fixture.detectChanges();
+      await renderOneRow(fixture, promoCon({ visible_en_qr: true }));
+      fixture.detectChanges();
+
+      const el = fixture.nativeElement as HTMLElement;
+      const switchEl = el.querySelector('button[role="switch"]');
+      expect(switchEl?.getAttribute('aria-checked')).toBe('true');
+      expect(el.textContent).toContain('Visible');
+    });
+
+    it('el indicador refleja visible_en_qr=false ("Oculta en QR")', async () => {
+      const fixture = TestBed.createComponent(PromotionsPageComponent);
+      fixture.detectChanges();
+      await renderOneRow(fixture, promoCon({ visible_en_qr: false }));
+      fixture.detectChanges();
+
+      const el = fixture.nativeElement as HTMLElement;
+      const switchEl = el.querySelector('button[role="switch"]');
+      expect(switchEl?.getAttribute('aria-checked')).toBe('false');
+      expect(el.textContent).toContain('Oculta en QR');
+    });
+
+    it('accionar el switch llama a toggleVisibleQr(id, visible_en_qr actual)', async () => {
+      const fixture = TestBed.createComponent(PromotionsPageComponent);
+      fixture.detectChanges();
+      const promo = promoCon({ status: 'active', visible_en_qr: true });
+      await renderOneRow(fixture, promo);
+      fixture.detectChanges();
+      const c = fixture.componentInstance;
+      const spy = vi.spyOn(c.svc, 'toggleVisibleQr').mockResolvedValue(undefined);
+
+      const switchEl = (fixture.nativeElement as HTMLElement).querySelector(
+        'button[role="switch"]',
+      ) as HTMLButtonElement;
+      switchEl.click();
+      await tick();
+
+      expect(spy).toHaveBeenCalledWith('p1', true);
+    });
+
+    it.each(['draft', 'active', 'paused', 'finished'] as const)(
+      'el control permanece visible y habilitado para status=%s (FR-010, no solo para Activa)',
+      async (status) => {
+        const fixture = TestBed.createComponent(PromotionsPageComponent);
+        fixture.detectChanges();
+        await renderOneRow(fixture, promoCon({ status }));
+        fixture.detectChanges();
+
+        const switchEl = (fixture.nativeElement as HTMLElement).querySelector(
+          'button[role="switch"]',
+        ) as HTMLButtonElement;
+        expect(switchEl).not.toBeNull();
+        expect(switchEl.disabled).toBe(false);
+      },
+    );
   });
 });

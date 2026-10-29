@@ -19,6 +19,7 @@ import {
   PromotionStatus,
   PromotionStatusPayload,
   PromotionUpdatePayload,
+  PromotionVisibilityPayload,
   RuleVariantConflictError,
 } from '../interfaces/promotion.interface';
 
@@ -212,6 +213,14 @@ export class PromotionService {
   async remove(id: string): Promise<boolean> {
     const done = await this.submit(() => this.http.delete<void>(`${this.baseUrl}/${id}`));
     return done !== null;
+  }
+
+  /** spec 144 (US2, FR-001/FR-010): a diferencia de `update()`, editable sin
+   *  importar el `status` de la promoción -- mismo patrón que
+   *  `category.service.ts::toggleVisibleQr`. */
+  async toggleVisibleQr(id: string, current: boolean): Promise<void> {
+    const payload: PromotionVisibilityPayload = { visible_en_qr: !current };
+    await this.submit(() => this.http.patch<Promotion>(`${this.baseUrl}/${id}`, payload));
   }
 
   private async submit<T>(request: () => Observable<T>): Promise<T | null> {

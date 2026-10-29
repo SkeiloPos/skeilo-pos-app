@@ -62,9 +62,9 @@ import { DiningCartService } from '../services/dining-cart.service';
 
               <div class="flex items-center justify-between gap-3 flex-wrap">
                 <!-- 44 px: el objetivo táctil mínimo cómodo con el pulgar. -->
-                <!-- spec 081 (FR-004/FR-006): el paso lo decide stepFor(line) — 1 (libre) para
-                     lo agregado desde una categoría normal, min_qty de la regla para lo
-                     agregado desde "Promociones" (research.md D3, contrato §3). -->
+                <!-- El paso siempre es 1 (stepFor(line), que ya no recibe min_qty de
+                     "Promociones" -- el motor de descuento agrupa de a min_qty y cobra el
+                     remanente a precio normal, sin necesidad de forzar el stepper). -->
                 <div class="flex items-center gap-1 p-0.5 rounded-full bg-gray-50 shrink-0">
                   <button
                     (click)="
