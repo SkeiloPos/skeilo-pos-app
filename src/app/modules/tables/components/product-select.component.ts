@@ -456,7 +456,7 @@ export interface ProductSelection {
               <button
                 type="button"
                 (click)="dec()"
-                [disabled]="quantity() === minQty()"
+                [disabled]="quantity() === 1"
                 aria-label="Quitar uno"
                 class="w-11 h-11 rounded-full bg-white text-gray-700 shadow-sm hover:bg-gray-50 active:scale-95 text-xl font-bold leading-none flex items-center justify-center transition disabled:opacity-40"
               >−</button>
@@ -1105,11 +1105,14 @@ export class ProductSelectComponent implements OnInit {
   }
 
   inc(): void {
-    this.quantity.update((q) => q + this.minQty());
+    this.quantity.update((q) => q + 1);
   }
 
   dec(): void {
-    this.quantity.update((q) => Math.max(this.minQty(), q - this.minQty()));
+    // El paso es siempre 1: el motor de promociones (`lineTotal`/`packagePrice`)
+    // ya agrupa de a `minQty` y cobra el remanente a precio normal -- no hace
+    // falta forzar que la cantidad sea múltiplo de `minQty`.
+    this.quantity.update((q) => Math.max(1, q - 1));
     this.autoAdjustCantidadOptions();
   }
 
@@ -1173,7 +1176,6 @@ export class ProductSelectComponent implements OnInit {
   confirm(): void {
     const variant = this.selectedVariant();
     if (!variant || !this.canConfirm()) return;
-    const minQty = this.minQty();
     this.added.emit({
       product: this.product,
       variant,
@@ -1181,7 +1183,10 @@ export class ProductSelectComponent implements OnInit {
       toppings: this.selectedToppingsList(),
       quantity: this.quantity(),
       notes: this.notes().trim() || null,
-      stepQuantity: this.fromPromotions && minQty > 1 ? minQty : undefined,
+      // El paso del +/- en el carrito es siempre 1, sin importar `minQty` --
+      // mismo ajuste que `inc()`/`dec()` de arriba (el motor de promociones ya
+      // agrupa de a `minQty` y cobra el remanente a precio normal).
+      stepQuantity: undefined,
     });
   }
 }

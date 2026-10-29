@@ -291,6 +291,7 @@ const NAME_TAKEN_MESSAGE = 'Ya existe una promoción con ese nombre';
                       <th class="py-3 px-5 w-[33%]">Reglas</th>
                       <th class="py-3 px-5 w-[25%]">Vigencia</th>
                       <th class="py-3 px-5 w-[10%]">Estado</th>
+                      <th class="py-3 px-5 w-[10%]">Visible en QR</th>
                       <th class="py-3 px-5 text-right w-[10%]">
                         <span class="sr-only">Acciones</span>
                       </th>
@@ -315,6 +316,27 @@ const NAME_TAKEN_MESSAGE = 'Ya existe una promoción con ese nombre';
                           >
                             {{ displayLabel(displayOf(p)) }}
                           </span>
+                        </td>
+                        <td class="py-4 px-5">
+                          <!-- spec 144 (US2, FR-010): a diferencia del switch de Categoria/Producto,
+                               habilitado sin importar el status de la promoción -- el negocio pidió
+                               poder ocultar una promoción activa y vigente sin pausarla ni desactivarla. -->
+                          <div class="flex items-center gap-2">
+                            <button
+                              type="button"
+                              (click)="onToggleVisibleQr(p)"
+                              role="switch"
+                              [attr.aria-checked]="p.visible_en_qr"
+                              [title]="p.visible_en_qr ? 'Ocultar del menú QR' : 'Mostrar en menú QR'"
+                              class="relative w-11 h-6 rounded-full transition-colors shrink-0"
+                              [class]="p.visible_en_qr ? 'bg-indigo-600' : 'bg-gray-300'"
+                            >
+                              <span class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" [class]="p.visible_en_qr ? 'left-[22px]' : 'left-0.5'"></span>
+                            </button>
+                            <span class="text-xs font-medium text-gray-500">
+                              {{ p.visible_en_qr ? 'Visible' : 'Oculta en QR' }}
+                            </span>
+                          </div>
                         </td>
                         <td class="py-4 px-5 text-right whitespace-nowrap relative">
                           <div class="relative inline-block text-left">
@@ -1697,6 +1719,23 @@ export class PromotionsPageComponent implements OnInit {
     } else if (this.svc.otherError()) {
       this.toast.error(this.svc.otherError()!);
     }
+  }
+
+  /** spec 144 (US2, FR-001/FR-010): sin confirmación ni restricción por `status`
+   *  -- el negocio pidió poder ocultar/mostrar una promoción activa y vigente
+   *  "sin tener que pausarla ni desactivarla". */
+  async onToggleVisibleQr(p: Promotion): Promise<void> {
+    const willBeVisible = !p.visible_en_qr;
+    await this.svc.toggleVisibleQr(p.id, p.visible_en_qr);
+    if (this.svc.otherError()) {
+      this.toast.error(this.svc.otherError()!);
+      return;
+    }
+    this.toast.success(
+      willBeVisible
+        ? `${p.name} visible en el menú QR`
+        : `${p.name} oculta del menú QR`,
+    );
   }
 
   async removePromotion(p: Promotion): Promise<void> {
