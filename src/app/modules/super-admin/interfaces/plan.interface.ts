@@ -13,7 +13,6 @@ export interface Plan {
   metodos_pago_activos_limit: number | null;
 
   inventario_access: boolean;
-  compras_access: boolean;
   promociones_access: boolean;
 
   precio_mensual: string | null;
@@ -37,7 +36,6 @@ export interface PlanCreatePayload {
   metodos_pago_activos_limit?: number | null;
 
   inventario_access?: boolean;
-  compras_access?: boolean;
   promociones_access?: boolean;
 
   precio_mensual?: number | null;

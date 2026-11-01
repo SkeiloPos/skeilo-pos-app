@@ -4,8 +4,10 @@ import {
   OnDestroy,
   OnInit,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -661,7 +663,7 @@ export class ProductFormComponent implements OnInit, OnDestroy {
 
   /**
    * spec 064: si el plan del tenant incluye el módulo Inventario. Fail-closed mientras
-   * `summary()` no ha cargado (mismo criterio que `inventory-page.component.ts::comprasIncluido`)
+   * `summary()` no ha cargado (mismo criterio que `PlanSummaryService.includes()`, spec 141)
    * -- más seguro que dejar activar el switch y toparse con un 403 del backend después.
    */
   readonly inventarioIncluido = computed(() => {
@@ -1205,6 +1207,28 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     );
   });
 
+  /** `true` en cuanto se pidió (o se descartó por tenerlas ya) la lista de unidades de medida. */
+  private unitMeasuresRequested = false;
+
+  constructor() {
+    // Spec 141 (FR-014): `/unit-measures` es del módulo Inventario. Sin él el formulario carga igual, sin
+    // esa petición. Si el resumen del plan llega después de `ngOnInit` (recarga directa), la carga sale
+    // en cuanto llega — una sola vez (`unitMeasuresRequested`).
+    effect(() => {
+      if (this.planSummaryService.includes('inventario')) {
+        untracked(() => void this.ensureUnitMeasures());
+      }
+    });
+  }
+
+  private ensureUnitMeasures(): Promise<void> | null {
+    if (this.unitMeasuresRequested || !this.planSummaryService.includes('inventario')) return null;
+    this.unitMeasuresRequested = true;
+    return this.unitMeasureService.unitMeasures().length === 0
+      ? this.unitMeasureService.loadUnitMeasures()
+      : null;
+  }
+
   async ngOnInit(): Promise<void> {
     this.loading.set(true);
     // Spec 105 (FR-001/FR-002): ya no se precarga el catálogo completo de categorías,
@@ -1214,9 +1238,7 @@ export class ProductFormComponent implements OnInit, OnDestroy {
     // precargándose: fuera del alcance de esta corrección (FR-001/FR-002 solo cubren los
     // tres selectores de categoría, insumos y presentación).
     await Promise.all([
-      this.unitMeasureService.unitMeasures().length === 0
-        ? this.unitMeasureService.loadUnitMeasures()
-        : null,
+      this.ensureUnitMeasures(),
       this.optionGroupService.groups().length === 0 ? this.optionGroupService.loadGroups() : null,
     ]);
 

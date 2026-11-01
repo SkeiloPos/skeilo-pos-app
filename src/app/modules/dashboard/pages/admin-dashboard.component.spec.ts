@@ -10,6 +10,20 @@ import { AdminDashboardComponent } from './admin-dashboard.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { User, UserRole } from '../../../core/interfaces/user.interface';
+import { PlanSummaryService } from '../../plan/services/plan-summary.service';
+import { PlanSummary } from '../../plan/interfaces/plan-summary.interface';
+
+/** Resumen de plan para las pruebas de «Stock bajo» (spec 141): con o sin el módulo Inventario. */
+function planConInventario(inventario: boolean): PlanSummary {
+  return {
+    plan_name: 'Plan de prueba',
+    ciclo_facturacion: null,
+    plan_vence_en: null,
+    vencido: false,
+    resources: {},
+    modules: { inventario, promociones: false },
+  };
+}
 
 /** Doble liviano de `AuthService`: la real arrastra `PushRegistrationService`
  *  → `SwPush`, que este banco de pruebas no provee (spec 122, FR-001/FR-010). */
@@ -448,6 +462,8 @@ describe('AdminDashboardComponent — "Stock bajo" (spec 122, US5)', () => {
       ],
     });
     const http = TestBed.inject(HttpTestingController);
+    // spec 141 (FR-014): «Stock bajo» solo se pide con el módulo Inventario en el plan.
+    TestBed.inject(PlanSummaryService).summary.set(planConInventario(true));
     const fixture = TestBed.createComponent(AdminDashboardComponent);
     fixture.detectChanges();
     http.expectOne((r) => r.url === `${cashBase}/reports/period`).flush(periodReportFixture());
@@ -479,6 +495,81 @@ describe('AdminDashboardComponent — "Stock bajo" (spec 122, US5)', () => {
 
   it('sin insumos bajo mínimo, la sección no se muestra (sin lista vacía confusa)', async () => {
     const { el } = await crear([]);
+    expect(el.textContent).not.toContain('Stock bajo');
+  });
+});
+
+// spec 141 (FR-014, US3.3): «Stock bajo» es del módulo Inventario. Sin él no hay petición (si no, el 403 de
+// fondo dispararía el aviso global de módulo perdido sin que el usuario hubiera hecho nada) ni tarjeta.
+describe('AdminDashboardComponent — «Stock bajo» según el plan (spec 141)', () => {
+  const lowStockBase = `${environment.apiBaseUrl}/inventory/items/low-stock`;
+  const LOW_STOCK = [{ id: 'i1', name: 'Leche de coco', current_stock: '2', min_stock: '5' }];
+
+  function montar(summary: PlanSummary | null) {
+    TestBed.configureTestingModule({
+      imports: [AdminDashboardComponent],
+      providers: [
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })),
+        { provide: AuthService, useValue: fakeAuthService() },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const plan = TestBed.inject(PlanSummaryService);
+    if (summary) plan.summary.set(summary);
+    const fixture = TestBed.createComponent(AdminDashboardComponent);
+    fixture.detectChanges();
+    return { http, plan, fixture, el: fixture.nativeElement as HTMLElement };
+  }
+
+  async function asentar(fixture: { detectChanges(): void }) {
+    await Promise.resolve().then(() => Promise.resolve());
+    fixture.detectChanges();
+  }
+
+  it('sin el módulo: 0 peticiones a /inventory/items/low-stock y sin tarjeta «Stock bajo»', async () => {
+    const { http, fixture, el } = montar(planConInventario(false));
+    await asentar(fixture);
+
+    http.expectNone((r) => r.url === lowStockBase);
+    expect(el.textContent).not.toContain('Stock bajo');
+  });
+
+  it('con el módulo: la petición sale una sola vez', async () => {
+    const { http, fixture } = montar(planConInventario(true));
+    await asentar(fixture);
+
+    http.expectOne((r) => r.url === lowStockBase).flush(LOW_STOCK);
+    fixture.detectChanges();
+    http.expectNone((r) => r.url === lowStockBase);
+  });
+
+  it('con el plan aún desconocido: no sale; si el resumen llega después de ngOnInit, sale una vez al llegar', async () => {
+    const { http, plan, fixture, el } = montar(null);
+    await asentar(fixture);
+    http.expectNone((r) => r.url === lowStockBase);
+
+    plan.summary.set(planConInventario(true));
+    fixture.detectChanges();
+    await asentar(fixture);
+
+    http.expectOne((r) => r.url === lowStockBase).flush(LOW_STOCK);
+    await asentar(fixture);
+    expect(el.textContent).toContain('Stock bajo');
+  });
+
+  it('si el módulo se pierde durante la sesión, la tarjeta desaparece aunque quedara una lista cargada', async () => {
+    const { http, plan, fixture, el } = montar(planConInventario(true));
+    await asentar(fixture);
+    http.expectOne((r) => r.url === lowStockBase).flush(LOW_STOCK);
+    await asentar(fixture);
+    expect(el.textContent).toContain('Stock bajo');
+
+    plan.summary.set(planConInventario(false));
+    fixture.detectChanges();
+
     expect(el.textContent).not.toContain('Stock bajo');
   });
 });

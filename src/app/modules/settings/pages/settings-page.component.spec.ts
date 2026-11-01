@@ -12,7 +12,7 @@ function makeSummary(partial: Partial<PlanSummary>): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: true, compras: true, promociones: true },
+    modules: { inventario: true, promociones: true },
     ...partial,
   };
 }
@@ -36,7 +36,7 @@ describe('SettingsPageComponent.visibleTabs', () => {
   });
 
   it('hides "Unidades de medida" when the plan does not include Inventario', () => {
-    planSummary.set(makeSummary({ modules: { inventario: false, compras: true, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true } }));
     const settings = createComponent();
 
     const paths = settings.visibleTabs().map((t) => t.path);
@@ -45,7 +45,7 @@ describe('SettingsPageComponent.visibleTabs', () => {
   });
 
   it('shows "Unidades de medida" when the plan includes Inventario', () => {
-    planSummary.set(makeSummary({ modules: { inventario: true, compras: true, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: true, promociones: true } }));
     const settings = createComponent();
 
     expect(settings.visibleTabs().map((t) => t.path)).toContain('unidades');
@@ -59,7 +59,7 @@ describe('SettingsPageComponent.visibleTabs', () => {
   });
 
   it('hides "Unidades de medida" when the tenant is vencido, regardless of module flags', () => {
-    planSummary.set(makeSummary({ vencido: true, modules: { inventario: true, compras: true, promociones: true } }));
+    planSummary.set(makeSummary({ vencido: true, modules: { inventario: true, promociones: true } }));
     const settings = createComponent();
 
     expect(settings.visibleTabs().map((t) => t.path)).not.toContain('unidades');

@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DiningSessionService } from '../../tables/services/dining-session.service';
 import { DiningOrder } from '../../tables/interfaces/dining.interface';
@@ -6,6 +6,7 @@ import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { CashService } from '../../cash-register/services/cash.service';
 import { InventoryService } from '../../inventory/services/inventory.service';
+import { PlanSummaryService } from '../../plan/services/plan-summary.service';
 import { ShiftReportsService } from '../services/shift-reports.service';
 import { PeriodSalesReport } from '../interfaces/shift-reports.interface';
 import { ShiftSalesReportCardComponent } from '../components/shift-sales-report-card.component';
@@ -296,7 +297,7 @@ const TREND_WINDOW_DAYS = 10;
       </app-chart-card>
 
       <!-- Stock bajo (spec 122, FR-008): reutiliza InventoryService.loadLowStock(), ya existente. -->
-      @if (inventoryService.lowStockItems().length > 0) {
+      @if (inventarioIncluido() && inventoryService.lowStockItems().length > 0) {
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <div class="flex items-center justify-between mb-3">
             <h2 class="text-sm font-semibold text-gray-800">Stock bajo</h2>
@@ -324,6 +325,19 @@ export class AdminDashboardComponent implements OnInit {
   private readonly tenantDate = inject(TenantDatePipe);
   private readonly tenantInfo = inject(TenantInfoService);
   readonly inventoryService = inject(InventoryService);
+  private readonly planSummaryService = inject(PlanSummaryService);
+
+  /** Spec 141 (FR-014): «Stock bajo» pertenece al módulo Inventario. Sin él no se pide ni se pinta la tarjeta. */
+  readonly inventarioIncluido = computed(() => this.planSummaryService.includes('inventario'));
+
+  constructor() {
+    // Carga de fondo condicionada al plan, no a `ngOnInit`: en una recarga directa el resumen del plan
+    // puede llegar después de la primera vista. Fail-closed mientras es desconocido (`includes`) y
+    // reactivo: la petición sale una sola vez en cuanto el resumen dice que el módulo está incluido.
+    effect(() => {
+      if (this.inventarioIncluido()) untracked(() => void this.inventoryService.loadLowStock());
+    });
+  }
 
   /** Solo alimenta `activeOrdersCount` (el 4º KPI) -- la lista de "Órdenes
    *  recientes" que antes la consumía se retiró del Dashboard a pedido del
@@ -587,7 +601,6 @@ export class AdminDashboardComponent implements OnInit {
     this.loadPeriodReport();
     this.loadTrend();
     this.loadPaymentMethods();
-    this.inventoryService.loadLowStock();
   }
 
   /** Única razón de esta llamada: `activeOrdersCount` (el 4º KPI). */

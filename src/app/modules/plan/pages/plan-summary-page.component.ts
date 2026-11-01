@@ -12,7 +12,6 @@ const RESOURCE_LABEL: Record<string, string> = {
 
 const MODULE_LABEL: Record<string, string> = {
   inventario: 'Inventario',
-  compras: 'Compras',
   promociones: 'Promociones',
 };
 
@@ -113,7 +112,7 @@ export class PlanSummaryPageComponent implements OnInit {
 
   readonly resourceKeys = computed(() => Object.keys(this.summary()?.resources ?? {}));
   readonly moduleKeys = computed(
-    () => Object.keys(this.summary()?.modules ?? {}) as ('inventario' | 'compras' | 'promociones')[],
+    () => Object.keys(this.summary()?.modules ?? {}) as ('inventario' | 'promociones')[],
   );
 
   ngOnInit(): void {

@@ -27,6 +27,7 @@ import {
 } from '../interfaces/inventory.interface';
 import { InventoryService } from '../services/inventory.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
+import { isModuleNotInPlan } from '../../../core/module-access/module-access.messages';
 import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { InventoryItemFormComponent } from '../components/inventory-item-form.component';
 import { StockAdjustModalComponent } from '../components/stock-adjust-modal.component';
@@ -104,19 +105,17 @@ type ActiveFilter = '' | 'active' | 'inactive';
         >
           Insumos
         </button>
-        @if (comprasIncluido()) {
-          <button
-            (click)="setTab('purchases')"
-            class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
-            [class]="
-              tab() === 'purchases'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            "
-          >
-            Compras
-          </button>
-        }
+        <button
+          (click)="setTab('purchases')"
+          class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+          [class]="
+            tab() === 'purchases'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          "
+        >
+          Compras
+        </button>
         <button
           (click)="setTab('movements')"
           class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
@@ -507,7 +506,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
       }
 
       <!-- ============ TAB: COMPRAS ============ -->
-      @if (tab() === 'purchases' && comprasIncluido()) {
+      @if (tab() === 'purchases') {
         <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
           @if (service.isLoading()) {
             <div class="flex items-center justify-center py-12">
@@ -870,14 +869,6 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   }
   readonly openActionsId = signal<string | null>(null);
 
-  /** Pestaña "Compras" (spec 033): oculta si el plan no incluye
-   * `compras_access`, o si el tenant está vencido — mismo criterio que
-   * `plan-module.guard.ts`. */
-  readonly comprasIncluido = computed(() => {
-    const summary = this.planSummaryService.summary();
-    return summary !== null && summary.modules.compras && !summary.vencido;
-  });
-
   readonly tab = signal<Tab>('items');
 
   /** Local echo of the search box; the actual query to the service is debounced. */
@@ -1053,7 +1044,10 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
         a.click();
         URL.revokeObjectURL(url);
       },
-      error: () => this.toast.error('No se pudo exportar el inventario'),
+      // Spec 141: si el módulo se perdió, el interceptor ya avisó y llevó al inicio; no se duplica el aviso.
+      error: (err: unknown) => {
+        if (!isModuleNotInPlan(err)) this.toast.error('No se pudo exportar el inventario');
+      },
     });
   }
 

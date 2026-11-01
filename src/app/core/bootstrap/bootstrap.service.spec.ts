@@ -32,7 +32,7 @@ function bootstrapResponse(partial: Partial<BootstrapResponse> = {}): BootstrapR
       plan_vence_en: null,
       vencido: false,
       resources: {},
-      modules: { inventario: false, compras: false, promociones: false },
+      modules: { inventario: false, promociones: false },
     },
     notifications: { items: [], total: 0, page: 1, size: 20 },
     ...partial,

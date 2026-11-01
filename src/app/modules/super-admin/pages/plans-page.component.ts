@@ -118,7 +118,6 @@ export class PlansPageComponent implements OnInit {
   moduleSummary(plan: Plan): string {
     const included = [
       plan.inventario_access && 'Inventario',
-      plan.compras_access && 'Compras',
       plan.promociones_access && 'Promociones',
     ].filter(Boolean);
     return included.length === 0 ? 'Ninguno' : included.join(', ');
