@@ -1,3 +1,4 @@
+import { computed } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import {
@@ -148,6 +149,85 @@ describe('PlanSummaryService', () => {
       req1.flush(planSummary({ plan_name: 'Vieja respuesta tardía' }));
       await normal;
       expect(service.summary()?.plan_name).toBe('Vieja respuesta tardía');
+    });
+  });
+
+  describe('includes (spec 141: predicado fail-closed para CARGAR datos, FR-014)', () => {
+    it('summary = null (plan desconocido) → false', () => {
+      expect(service.summary()).toBeNull();
+
+      expect(service.includes('inventario')).toBe(false);
+      expect(service.includes('promociones')).toBe(false);
+    });
+
+    it('plan vencido → false aunque el módulo figure como incluido', () => {
+      service.summary.set(planSummary({ vencido: true, modules: { inventario: true, promociones: true } }));
+
+      expect(service.includes('inventario')).toBe(false);
+    });
+
+    it('módulo ausente del plan → false', () => {
+      service.summary.set(planSummary({ modules: { inventario: false, promociones: true } }));
+
+      expect(service.includes('inventario')).toBe(false);
+      expect(service.includes('promociones')).toBe(true);
+    });
+
+    it('módulo incluido y plan no vencido → true', () => {
+      service.summary.set(planSummary({ modules: { inventario: true, promociones: false } }));
+
+      expect(service.includes('inventario')).toBe(true);
+    });
+
+    it('es reactivo: leído dentro de un computed cambia cuando el resumen llega o cambia', () => {
+      const incluido = computed(() => service.includes('inventario'));
+      expect(incluido()).toBe(false); // todavía sin resumen
+
+      service.summary.set(planSummary({ modules: { inventario: true, promociones: false } }));
+      expect(incluido()).toBe(true); // llegó el resumen
+
+      service.summary.set(planSummary({ modules: { inventario: false, promociones: false } }));
+      expect(incluido()).toBe(false); // se perdió el módulo
+    });
+  });
+
+  describe('markModuleMissing (spec 141: el menú se corrige en el acto, FR-016)', () => {
+    it('pone el módulo en false de inmediato y de forma síncrona, sin ninguna petición', () => {
+      service.summary.set(planSummary({ modules: { inventario: true, promociones: true } }));
+
+      service.markModuleMissing('inventario');
+
+      expect(service.summary()!.modules.inventario).toBe(false);
+      expect(service.includes('inventario')).toBe(false);
+      http.expectNone(PLAN);
+    });
+
+    it('no toca otros módulos ni el resto del resumen', () => {
+      const original = planSummary({ plan_name: 'Pro', modules: { inventario: true, promociones: true } });
+      service.summary.set(original);
+
+      service.markModuleMissing('inventario');
+
+      expect(service.summary()!.modules.promociones).toBe(true);
+      expect(service.summary()!.plan_name).toBe('Pro');
+      // actualización inmutable: el objeto anterior no se mutó
+      expect(original.modules.inventario).toBe(true);
+    });
+
+    it('si el resumen aún no llegó (null), no hace nada', () => {
+      expect(service.summary()).toBeNull();
+
+      service.markModuleMissing('inventario');
+
+      expect(service.summary()).toBeNull();
+    });
+
+    it('una clave que no es un módulo del resumen no agrega propiedades', () => {
+      service.summary.set(planSummary({ modules: { inventario: true, promociones: true } }));
+
+      service.markModuleMissing('compras' as never);
+
+      expect(Object.keys(service.summary()!.modules)).toEqual(['inventario', 'promociones']);
     });
   });
 
