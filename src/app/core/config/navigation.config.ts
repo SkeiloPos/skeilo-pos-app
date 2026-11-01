@@ -109,6 +109,7 @@ export const NAV_ITEMS: NavItem[] = [
     route: '/dashboard/proveedores',
     group: 'ADMINISTRACIÓN',
     roles: [UserRole.ADMIN],
+    moduleKey: 'inventario',
     frame: { label: 'Proveedores', icon: 'truck', group: 'Inventario' },
   },
   {

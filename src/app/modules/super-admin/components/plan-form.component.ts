@@ -3,6 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { Plan, PlanCreatePayload } from '../interfaces/plan.interface';
 import { PlanService } from '../services/plan.service';
 import { MoneyInputComponent } from '../../../shared/money-input/money-input.component';
+import { ConfirmService } from '../../../shared/feedback/confirm.service';
 
 interface LimitGroup {
   value: FormControl<number>;
@@ -24,10 +25,17 @@ function buildLimitGroup(value: number | null): FormGroup<LimitGroup> {
   });
 }
 
-/** Alta/edición de un plan del Super Admin: ocho características (cinco
- * límites numéricos con toggle "ilimitado", tres accesos de módulo) y dos
+/** Texto fijo de la confirmación al quitar «Inventario» de un plan existente (spec 141, FR-019). */
+const QUITAR_INVENTARIO_MENSAJE =
+  'Los negocios con este plan perderán Inventario, Proveedores y Compras de inmediato';
+
+/** Alta/edición de un plan del Super Admin: siete características (cinco
+ * límites numéricos con toggle "ilimitado", dos accesos de módulo) y dos
  * precios de referencia (spec 033, Historia de Usuario 1). Mismo patrón que
- * `payment-method-catalog-form.component.ts`. */
+ * `payment-method-catalog-form.component.ts`.
+ *
+ * Spec 141: «Inventario» es un solo interruptor que incluye Proveedores y Compras;
+ * «Compras» ya no es un módulo configurable. */
 @Component({
   selector: 'app-plan-form',
   standalone: true,
@@ -94,12 +102,12 @@ function buildLimitGroup(value: number | null): FormGroup<LimitGroup> {
 
           <div class="space-y-2">
             <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Accesos de módulo</h3>
-            <label class="flex items-center gap-2 text-sm text-gray-700">
-              <input type="checkbox" formControlName="inventario_access" /> Inventario
-            </label>
-            <label class="flex items-center gap-2 text-sm text-gray-700">
-              <input type="checkbox" formControlName="compras_access" /> Compras
-            </label>
+            <div>
+              <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" formControlName="inventario_access" /> Inventario
+              </label>
+              <p class="text-xs text-gray-400 ml-6">Incluye Proveedores y Compras</p>
+            </div>
             <label class="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" formControlName="promociones_access" /> Promociones
             </label>
@@ -159,6 +167,7 @@ export class PlanFormComponent implements OnInit {
   @Output() cancelled = new EventEmitter<void>();
 
   readonly planService = inject(PlanService);
+  private readonly confirm = inject(ConfirmService);
   readonly limitFields = LIMIT_FIELDS;
 
   readonly form = new FormGroup({
@@ -170,7 +179,6 @@ export class PlanFormComponent implements OnInit {
     productos_limit: buildLimitGroup(null),
     metodos_pago_activos_limit: buildLimitGroup(null),
     inventario_access: new FormControl(false, { nonNullable: true }),
-    compras_access: new FormControl(false, { nonNullable: true }),
     promociones_access: new FormControl(false, { nonNullable: true }),
     precio_mensual: new FormControl<number | null>(null),
     precio_anual: new FormControl<number | null>(null),
@@ -182,7 +190,6 @@ export class PlanFormComponent implements OnInit {
       name: this.plan.name,
       description: this.plan.description ?? null,
       inventario_access: this.plan.inventario_access,
-      compras_access: this.plan.compras_access,
       promociones_access: this.plan.promociones_access,
       precio_mensual: this.plan.precio_mensual !== null ? Number(this.plan.precio_mensual) : null,
       precio_anual: this.plan.precio_anual !== null ? Number(this.plan.precio_anual) : null,
@@ -212,7 +219,6 @@ export class PlanFormComponent implements OnInit {
       name: raw.name,
       description: raw.description,
       inventario_access: raw.inventario_access,
-      compras_access: raw.compras_access,
       promociones_access: raw.promociones_access,
       precio_mensual: raw.precio_mensual,
       precio_anual: raw.precio_anual,
@@ -224,6 +230,17 @@ export class PlanFormComponent implements OnInit {
         ? null
         : raw.metodos_pago_activos_limit.value,
     };
+
+    // Solo al EDITAR un plan que hoy incluye Inventario y se está quitando (US1.8). No al crear, no al
+    // reasignar el plan de un negocio y no al quitar solo «Promociones» (US1.9).
+    if (this.plan?.inventario_access === true && payload.inventario_access === false) {
+      const confirmado = await this.confirm.ask({
+        title: 'Quitar Inventario del plan',
+        message: QUITAR_INVENTARIO_MENSAJE,
+        tone: 'danger',
+      });
+      if (!confirmado) return;
+    }
 
     const ok = this.plan
       ? await this.planService.update(this.plan.id, payload)

@@ -10,6 +10,8 @@ import { InventoryService } from '../../inventory/services/inventory.service';
 import { UnitMeasureService } from '../../../core/services/unit-measure.service';
 import { Option, OptionGroup } from '../../products/interfaces/product.interface';
 import { SearchableSelectComponent } from '../../../shared/searchable-select/searchable-select.component';
+import { PlanSummaryService } from '../../plan/services/plan-summary.service';
+import { PlanSummary } from '../../plan/interfaces/plan-summary.interface';
 
 const API = environment.apiBaseUrl;
 const GROUPS = `${API}/option-groups`;
@@ -196,5 +198,81 @@ describe('OptionFormComponent', () => {
     expect(el.querySelector('svg')).toBeNull();
     const icon = el.querySelector('app-mi-icon .material-icons-outlined');
     expect(icon?.textContent?.trim()).toBe('close');
+  });
+});
+
+/**
+ * Spec 141 (FR-014, research H2): el formulario de adición abre en un negocio sin el módulo Inventario sin pedir
+ * `/inventory/items` ni `/unit-measures`. El selector de insumo sigue oculto por `inventarioIncluido`.
+ */
+describe('OptionFormComponent — cargas de fondo según el plan (spec 141)', () => {
+  let fixture: ComponentFixture<OptionFormComponent>;
+  let loadAllItems: ReturnType<typeof vi.spyOn>;
+  let loadUnitMeasures: ReturnType<typeof vi.spyOn>;
+
+  function planConInventario(inventario: boolean): PlanSummary {
+    return {
+      plan_name: 'Plan de prueba',
+      ciclo_facturacion: null,
+      plan_vence_en: null,
+      vencido: false,
+      resources: {},
+      modules: { inventario, promociones: false },
+    };
+  }
+
+  function montar(summary: PlanSummary | null): void {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [OptionFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: InventoryService, useClass: FakeInventoryService },
+        { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
+      ],
+    });
+    TestBed.inject(PlanSummaryService).summary.set(summary);
+    loadAllItems = vi.spyOn(TestBed.inject(InventoryService) as unknown as FakeInventoryService, 'loadAllItems');
+    loadUnitMeasures = vi.spyOn(
+      TestBed.inject(UnitMeasureService) as unknown as FakeUnitMeasureService,
+      'loadUnitMeasures',
+    );
+    // allItems() / unitMeasures() vacíos: así la condición `length === 0` no enmascara el plan.
+    (TestBed.inject(InventoryService) as unknown as FakeInventoryService).allItems.set([]);
+    fixture = TestBed.createComponent(OptionFormComponent);
+    fixture.componentInstance.group = makeGroup();
+    fixture.componentInstance.option = null;
+    fixture.componentInstance.inventarioIncluido = summary?.modules.inventario === true;
+    fixture.detectChanges(); // ngOnInit
+  }
+
+  it('sin el módulo: 0 llamadas a insumos y unidades, y el formulario abre', () => {
+    montar(planConInventario(false));
+
+    expect(loadAllItems).not.toHaveBeenCalled();
+    expect(loadUnitMeasures).not.toHaveBeenCalled();
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Insumo que consume');
+    expect(fixture.nativeElement.querySelector('form')).not.toBeNull();
+  });
+
+  it('con el módulo: se piden una sola vez', () => {
+    montar(planConInventario(true));
+
+    expect(loadAllItems).toHaveBeenCalledTimes(1);
+    expect(loadUnitMeasures).toHaveBeenCalledTimes(1);
+  });
+
+  it('con el plan desconocido no se piden; si el resumen llega después de ngOnInit, se piden una vez al llegar', async () => {
+    montar(null);
+    expect(loadAllItems).not.toHaveBeenCalled();
+    expect(loadUnitMeasures).not.toHaveBeenCalled();
+
+    TestBed.inject(PlanSummaryService).summary.set(planConInventario(true));
+    fixture.detectChanges();
+    await Promise.resolve();
+
+    expect(loadAllItems).toHaveBeenCalledTimes(1);
+    expect(loadUnitMeasures).toHaveBeenCalledTimes(1);
   });
 });

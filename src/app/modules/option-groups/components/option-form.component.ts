@@ -6,13 +6,16 @@ import {
   OnInit,
   Output,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { InventoryService } from '../../inventory/services/inventory.service';
 import { buildUnitLookup } from '../../inventory/services/unit-lookup';
 import { UnitMeasureService } from '../../../core/services/unit-measure.service';
+import { PlanSummaryService } from '../../plan/services/plan-summary.service';
 import { Option, OptionForm, OptionGroup } from '../../products/interfaces/product.interface';
 import { OptionGroupService } from '../services/option-group.service';
 import { SearchableSelectComponent } from '../../../shared/searchable-select/searchable-select.component';
@@ -119,7 +122,33 @@ export class OptionFormComponent implements OnInit {
   readonly service = inject(OptionGroupService);
   readonly inventoryService = inject(InventoryService);
   private readonly unitMeasureService = inject(UnitMeasureService);
+  private readonly planSummaryService = inject(PlanSummaryService);
   private readonly fb = inject(FormBuilder);
+
+  /** `true` en cuanto se pidieron (o se descartaron por tenerlos ya) los insumos y las unidades. */
+  private inventoryDataRequested = false;
+
+  constructor() {
+    // Spec 141 (FR-014): sin el módulo Inventario el formulario abre igual (precio puro), sin pedir
+    // `/inventory/items` ni `/unit-measures`. Reactivo: si el resumen del plan llega tarde, sale al llegar.
+    effect(() => {
+      if (this.planSummaryService.includes('inventario')) {
+        untracked(() => this.ensureInventoryData());
+      }
+    });
+  }
+
+  private ensureInventoryData(): void {
+    if (this.inventoryDataRequested || !this.planSummaryService.includes('inventario')) return;
+    this.inventoryDataRequested = true;
+    // `allItems()`, no `items()`: este último es la página actual (20), así que un
+    // insumo fuera de la primera página era inseleccionable — y sin poder ligar el
+    // insumo, la opción no descuenta nada.
+    if (this.inventoryService.allItems().length === 0) this.inventoryService.loadAllItems();
+    if (this.unitMeasureService.unitMeasures().length === 0) {
+      this.unitMeasureService.loadUnitMeasures();
+    }
+  }
 
   readonly inventoryOptions = computed(() =>
     this.inventoryService.allItems().map((i) => ({ id: i.id, label: i.name })),
@@ -154,13 +183,7 @@ export class OptionFormComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    // `allItems()`, no `items()`: este último es la página actual (20), así que un
-    // insumo fuera de la primera página era inseleccionable — y sin poder ligar el
-    // insumo, la opción no descuenta nada.
-    if (this.inventoryService.allItems().length === 0) this.inventoryService.loadAllItems();
-    if (this.unitMeasureService.unitMeasures().length === 0) {
-      this.unitMeasureService.loadUnitMeasures();
-    }
+    this.ensureInventoryData();
     this.service.error.set(null);
     if (this.option) {
       this.form.setValue({

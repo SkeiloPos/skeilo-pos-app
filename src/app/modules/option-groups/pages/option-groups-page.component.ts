@@ -3,8 +3,10 @@ import {
   Component,
   OnInit,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { Option, OptionGroup } from '../../products/interfaces/product.interface';
@@ -196,7 +198,7 @@ export class OptionGroupsPageComponent implements OnInit {
   /**
    * spec 064: gating por PLAN (no por producto -- un grupo de opciones es compartido
    * entre productos, research.md Decisión 5). Fail-closed mientras el plan no ha
-   * cargado: mismo criterio que `inventory-page.component.ts::comprasIncluido`, para no
+   * cargado: mismo criterio que `PlanSummaryService.includes()` (spec 141), para no
    * dejar editar insumo/cantidad y toparse con un 403 del backend un instante después.
    */
   readonly inventarioIncluido = computed(() => {
@@ -218,16 +220,35 @@ export class OptionGroupsPageComponent implements OnInit {
     () => this.service.groups().find((g) => g.id === this.selectedGroupId()) ?? null,
   );
 
-  async ngOnInit(): Promise<void> {
-    // Insumos y unidades para poder nombrar lo que descuenta cada opción; en paralelo
-    // porque ninguna de las tres depende de las otras.
-    await Promise.all([
-      this.service.loadGroups(),
+  /** `true` en cuanto se pidieron (o se descartaron por tenerlos ya) los insumos y las unidades. */
+  private inventoryDataRequested = false;
+
+  constructor() {
+    // Spec 141 (FR-014): `/inventory/items` y `/unit-measures` son del módulo Inventario. Sin él la pantalla
+    // carga los grupos igual, sin esas peticiones. Si el resumen del plan llega después de `ngOnInit`
+    // (recarga directa), salen en cuanto llega — una sola vez (`inventoryDataRequested`).
+    effect(() => {
+      if (this.planSummaryService.includes('inventario')) {
+        untracked(() => void this.ensureInventoryData());
+      }
+    });
+  }
+
+  private ensureInventoryData(): Promise<unknown> | null {
+    if (this.inventoryDataRequested || !this.planSummaryService.includes('inventario')) return null;
+    this.inventoryDataRequested = true;
+    return Promise.all([
       this.inventoryService.allItems().length === 0 ? this.inventoryService.loadAllItems() : null,
       this.unitMeasureService.unitMeasures().length === 0
         ? this.unitMeasureService.loadUnitMeasures()
         : null,
     ]);
+  }
+
+  async ngOnInit(): Promise<void> {
+    // Insumos y unidades para poder nombrar lo que descuenta cada opción (solo con el módulo
+    // Inventario); en paralelo porque ninguna de las tres depende de las otras.
+    await Promise.all([this.service.loadGroups(), this.ensureInventoryData()]);
     if (!this.selectedGroupId() && this.service.groups().length > 0) {
       this.selectedGroupId.set(this.service.groups()[0].id);
     }

@@ -251,7 +251,7 @@ export const dashboardRoutes: Routes = [
           import('../suppliers/pages/supplier-detail-page.component').then(
             (m) => m.SupplierDetailPageComponent,
           ),
-        canActivate: [roleGuard([UserRole.ADMIN])],
+        canActivate: [roleGuard([UserRole.ADMIN]), planModuleGuard('inventario')],
       },
       {
         path: 'proveedores',
@@ -259,7 +259,7 @@ export const dashboardRoutes: Routes = [
           import('../suppliers/pages/suppliers-page.component').then(
             (m) => m.SuppliersPageComponent,
           ),
-        canActivate: [roleGuard([UserRole.ADMIN])],
+        canActivate: [roleGuard([UserRole.ADMIN]), planModuleGuard('inventario')],
       },
       {
         path: 'users',

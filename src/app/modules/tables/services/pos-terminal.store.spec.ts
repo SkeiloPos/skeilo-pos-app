@@ -27,6 +27,8 @@ import { CashService } from '../../cash-register/services/cash.service';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { UpdateGateService } from '../../../core/update/update-gate.service';
+import { PlanSummaryService } from '../../plan/services/plan-summary.service';
+import { PlanSummary } from '../../plan/interfaces/plan-summary.interface';
 
 const API = environment.apiBaseUrl;
 
@@ -3277,6 +3279,103 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
  * Spec 059, Historia 2 (FR-005/FR-006/FR-008): filtra `orders()` por tipo,
  * excluyendo lo ya cobrado/cancelado — sin ningún endpoint nuevo.
  */
+/**
+ * Spec 141 (FR-011/FR-014, research H1): la Terminal de mesas pide las promociones activas en todos los
+ * negocios. Con el aviso global de «módulo perdido» eso expulsaría a cualquier negocio sin Promociones al
+ * abrir la terminal; ahora `init()` solo las pide si el plan incluye Promociones, y la terminal carga y
+ * cobra igual sin ellas (sin descuentos de promoción, como hoy).
+ */
+describe('PosTerminalStore.init — promociones activas según el plan (spec 141)', () => {
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+  let loadActive: ReturnType<typeof vi.fn>;
+
+  function planConPromociones(promociones: boolean): PlanSummary {
+    return {
+      plan_name: 'Plan de prueba',
+      ciclo_facturacion: null,
+      plan_vence_en: null,
+      vencido: false,
+      resources: {},
+      modules: { inventario: false, promociones },
+    };
+  }
+
+  function montar(summary: PlanSummary | null): void {
+    loadActive = vi.fn();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+        { provide: TableService, useValue: { loadTables: () => Promise.resolve(), tables: () => [] } },
+        { provide: MenuService, useValue: { loadMenu: () => Promise.resolve(), categories: () => [] } },
+        { provide: RealtimeService, useValue: { status: () => 'closed', on: () => () => {}, connectStaff: () => {}, disconnect: () => {} } },
+      ],
+    });
+    TestBed.inject(PlanSummaryService).summary.set(summary);
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+  }
+
+  afterEach(() => http.verify());
+
+  async function iniciar(): Promise<void> {
+    const initPromise = store.init();
+    http.expectOne((r) => r.url === `${API}/orders`).flush([]);
+    await initPromise;
+  }
+
+  it('sin Promociones: init() NO pide las promociones activas y la terminal carga sin error', async () => {
+    montar(planConPromociones(false));
+
+    await iniciar();
+
+    expect(loadActive).not.toHaveBeenCalled();
+    expect(store.error()).toBeNull();
+    expect(store.loading()).toBe(false);
+    // Sin promociones cargadas el cálculo local de descuentos usa la lista vacía, exactamente como hoy.
+  });
+
+  it('con Promociones: init() las pide una sola vez', async () => {
+    montar(planConPromociones(true));
+
+    await iniciar();
+    TestBed.tick();
+
+    expect(loadActive).toHaveBeenCalledTimes(1);
+  });
+
+  it('con el plan desconocido no las pide; si el resumen llega después de init(), las pide una vez al llegar', async () => {
+    montar(null);
+
+    await iniciar();
+    TestBed.tick();
+    expect(loadActive).not.toHaveBeenCalled();
+    expect(store.error()).toBeNull();
+
+    TestBed.inject(PlanSummaryService).summary.set(planConPromociones(true));
+    TestBed.tick();
+
+    expect(loadActive).toHaveBeenCalledTimes(1);
+
+    // un cambio posterior del resumen no repite la petición
+    TestBed.inject(PlanSummaryService).summary.set({ ...planConPromociones(true), plan_name: 'Otro' });
+    TestBed.tick();
+    expect(loadActive).toHaveBeenCalledTimes(1);
+  });
+
+  it('antes de init() el efecto no pide nada aunque el plan ya incluya Promociones', () => {
+    montar(planConPromociones(true));
+    TestBed.tick();
+
+    expect(loadActive).not.toHaveBeenCalled();
+  });
+});
+
 describe('PosTerminalStore.ordersByType (spec 059, Historia 2)', () => {
   let store: PosTerminalStore;
 

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { HttpHeaders, HttpResponse, provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, HttpHeaders, HttpResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { of, throwError } from 'rxjs';
@@ -12,6 +12,8 @@ import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { SearchableSelectComponent } from '../../../shared/searchable-select/searchable-select.component';
 import { Purchase } from '../interfaces/inventory.interface';
+import { PlanSummaryService } from '../../plan/services/plan-summary.service';
+import { PlanSummary } from '../../plan/interfaces/plan-summary.interface';
 import { environment } from '../../../../environments/environment';
 
 describe('InventoryPageComponent — íconos estandarizados (spec 082)', () => {
@@ -145,6 +147,41 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
     expect(createObjectURL).toHaveBeenCalledWith(blob);
     expect(clicks()).toEqual([{ download: 'inventario_2026-09-22.xlsx' }]);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:fake');
+  });
+
+  it('si el export falla por un error cualquiera, muestra su aviso fijo «No se pudo exportar el inventario»', () => {
+    const fixture = crear();
+    const service = TestBed.inject(InventoryService);
+    const toast = TestBed.inject(ToastService);
+    vi.spyOn(service, 'exportItems').mockReturnValue(
+      throwError(() => new HttpErrorResponse({ status: 500, error: { detail: 'boom' } })),
+    );
+    const errorSpy = vi.spyOn(toast, 'error');
+
+    clickExport(fixture);
+
+    expect(errorSpy).toHaveBeenCalledWith('No se pudo exportar el inventario');
+  });
+
+  it('spec 141: si el export falla porque el módulo se perdió, NO repite su aviso fijo (el interceptor ya avisó)', () => {
+    const fixture = crear();
+    const service = TestBed.inject(InventoryService);
+    const toast = TestBed.inject(ToastService);
+    vi.spyOn(service, 'exportItems').mockReturnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 403,
+            // Forma que entrega `moduleAccessInterceptor`: `error` ya como objeto, nunca un Blob.
+            error: { code: 'MODULE_NOT_IN_PLAN', module: 'inventario', detail: 'Esta funcionalidad no está incluida en tu plan' },
+          }),
+      ),
+    );
+    const errorSpy = vi.spyOn(toast, 'error');
+
+    clickExport(fixture);
+
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   describe('sin encabezado Content-Disposition: nombre de respaldo con el día LOCAL del negocio (spec 138, A-147)', () => {
@@ -368,5 +405,67 @@ describe('InventoryPageComponent — eliminar orden/borrador pendiente (spec 140
     expect(errorSpy).toHaveBeenCalledWith(
       'Solo se puede eliminar mientras no se haya recibido nada',
     );
+  });
+});
+
+describe('InventoryPageComponent — pestaña «Compras» sin indicador propio (spec 141, US3.5, FR-013)', () => {
+  function crear(summary: PlanSummary | null) {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [InventoryPageComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+      ],
+    });
+    TestBed.inject(PlanSummaryService).summary.set(summary);
+    const fixture = TestBed.createComponent(InventoryPageComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const SOLO_INVENTARIO: PlanSummary = {
+    plan_name: 'Solo inventario',
+    ciclo_facturacion: null,
+    plan_vence_en: null,
+    vencido: false,
+    resources: {},
+    // Ningún indicador de Compras: ya no existe en el contrato (spec 141).
+    modules: { inventario: true, promociones: false },
+  };
+
+  function pestanas(fixture: ReturnType<typeof crear>): string[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('div.border-b > button'),
+    ).map((b) => b.textContent?.trim() ?? '');
+  }
+
+  it('con un plan que solo incluye Inventario, la pestaña «Compras» aparece', () => {
+    const fixture = crear(SOLO_INVENTARIO);
+
+    expect(pestanas(fixture)).toContain('Compras');
+  });
+
+  it('con el plan aún desconocido también aparece: a esta pantalla solo se entra con el módulo (guardia de la ruta)', () => {
+    const fixture = crear(null);
+
+    expect(pestanas(fixture)).toContain('Compras');
+  });
+
+  it('al abrirla se pinta su contenido', () => {
+    const fixture = crear(SOLO_INVENTARIO);
+    const el = fixture.nativeElement as HTMLElement;
+    const compras = Array.from(el.querySelectorAll('div.border-b > button')).find(
+      (b) => b.textContent?.trim() === 'Compras',
+    ) as HTMLButtonElement;
+
+    compras.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.tab()).toBe('purchases');
+    expect(el.textContent).toMatch(/Cargando compras|Aún no hay compras registradas/);
   });
 });

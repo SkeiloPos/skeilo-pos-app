@@ -25,7 +25,7 @@ function makeSummary(partial: Partial<PlanSummary>): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: true, compras: true, promociones: true },
+    modules: { inventario: true, promociones: true },
     ...partial,
   };
 }
@@ -232,7 +232,7 @@ describe('ReportsService — gating de inventario/profitability (spec 062)', () 
   }
 
   it('no pide /reports/inventory ni /reports/profitability cuando el plan no incluye Inventario', () => {
-    crearServicio(makeSummary({ modules: { inventario: false, compras: true, promociones: true } }));
+    crearServicio(makeSummary({ modules: { inventario: false, promociones: true } }));
 
     const recursos = recursosPedidos();
     expect(recursos).not.toContain('inventory');
@@ -251,7 +251,7 @@ describe('ReportsService — gating de inventario/profitability (spec 062)', () 
 
   it('no pide inventory/profitability cuando el tenant está vencido, aunque el plan los incluya', () => {
     crearServicio(
-      makeSummary({ vencido: true, modules: { inventario: true, compras: true, promociones: true } }),
+      makeSummary({ vencido: true, modules: { inventario: true, promociones: true } }),
     );
 
     const recursos = recursosPedidos();
@@ -261,7 +261,7 @@ describe('ReportsService — gating de inventario/profitability (spec 062)', () 
 
   it('isLoading() e error() no dependen de inventory/profitability cuando están excluidas', async () => {
     const service = crearServicio(
-      makeSummary({ modules: { inventario: false, compras: true, promociones: true } }),
+      makeSummary({ modules: { inventario: false, promociones: true } }),
     );
 
     // Sin resolver la promesa de ninguna query real, isLoading() debe poder
