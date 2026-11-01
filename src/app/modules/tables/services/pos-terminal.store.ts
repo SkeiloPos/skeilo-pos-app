@@ -1,4 +1,4 @@
-import { DestroyRef, Injectable, computed, effect, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import {
   MenuCategory,
   MenuOption,
@@ -10,6 +10,7 @@ import { PaymentMethod, Sale } from '../../sales/interfaces/sales.interface';
 import { MenuService } from '../../../core/services/menu.service';
 import { Promotion } from '../../promotions/interfaces/promotion.interface';
 import { PromotionService } from '../../promotions/services/promotion.service';
+import { PlanSummaryService } from '../../plan/services/plan-summary.service';
 import { effectivePrice, hasPromotion, packagePrice } from '../../promotions/services/promotion-pricing.util';
 import { PaymentMethodService } from '../../sales/services/payment-method.service';
 import { CashService } from '../../cash-register/services/cash.service';
@@ -335,6 +336,7 @@ export class PosTerminalStore {
   private readonly api = inject(DiningSessionService);
   private readonly menuService = inject(MenuService);
   private readonly promotionService = inject(PromotionService);
+  private readonly planSummary = inject(PlanSummaryService);
   private readonly tableSessions = inject(TableSessionService);
   private readonly paymentMethodService = inject(PaymentMethodService);
   private readonly cash = inject(CashService);
@@ -347,7 +349,20 @@ export class PosTerminalStore {
   readonly sound = inject(SoundService);
   private readonly updateGate = inject(UpdateGateService);
 
+  /** `true` desde que `init()` arrancó; hasta entonces el efecto de promociones no hace nada. */
+  private readonly initStarted = signal(false);
+  private promotionsRequested = false;
+
   constructor() {
+    // Spec 141 (FR-011/FR-014, research H1): las promociones activas son del módulo Promociones. Un negocio
+    // sin él abre y cobra en la terminal sin esa petición (y sin descuentos de promoción, como hoy). Si el
+    // resumen del plan llega después de `init()` (recarga directa), la carga sale al llegar — una sola vez.
+    effect(() => {
+      if (this.initStarted() && this.planSummary.includes('promociones')) {
+        untracked(() => this.ensurePromotionsLoaded());
+      }
+    });
+
     // El sondeo se relaja con el stream sano y vuelve al ritmo de antes al caerse.
     effect(() => {
       const abierto = this.realtime.status() === 'open';
@@ -1455,6 +1470,7 @@ export class PosTerminalStore {
    * petición HTTP que, en este punto, el cajero todavía no va a usar.
    */
   async init(): Promise<void> {
+    this.initStarted.set(true);
     this.timer ??= startVisibleInterval(() => this.nowTick.set(Date.now()), 30000);
     this.loading.set(true);
     this.error.set(null);
@@ -1463,7 +1479,7 @@ export class PosTerminalStore {
         this.tableService.loadTables(),
         this.reloadOrders(),
         this.menuService.categories().length === 0 ? this.menuService.loadMenu() : null,
-        this.promotionService.loadActive(),
+        this.ensurePromotionsLoaded(),
       ]);
       const cats = this.menuService.categories();
       if (cats.length && !this.catalogCategoryId()) this.catalogCategoryId.set(cats[0].id);
@@ -1476,6 +1492,13 @@ export class PosTerminalStore {
     // Después de la carga REST a propósito: `pendingSeeded` ya es `true`, así
     // que la primera ráfaga de eventos no hace sonar la campana.
     this.connectRealtime();
+  }
+
+  /** Pide las promociones activas solo si el plan incluye Promociones, y solo una vez (spec 141). */
+  private ensurePromotionsLoaded(): void {
+    if (this.promotionsRequested || !this.planSummary.includes('promociones')) return;
+    this.promotionsRequested = true;
+    this.promotionService.loadActive();
   }
 
   /**

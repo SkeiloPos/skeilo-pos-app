@@ -47,6 +47,18 @@ function makeSummary(partial: Partial<PlanSummary>): PlanSummary {
  */
 const planSummary = signal<PlanSummary | null>(makeSummary({}));
 
+/**
+ * Doble de `PlanSummaryService` con el mismo `includes()` fail-closed de la real (spec 141): lee el signal,
+ * así que dentro de un `effect` del componente es reactivo igual que en producción.
+ */
+const fakePlanSummaryService = {
+  summary: planSummary,
+  includes: (key: keyof PlanSummary['modules']): boolean => {
+    const s = planSummary();
+    return s !== null && !s.vencido && s.modules[key] === true;
+  },
+};
+
 /** Drain pending microtasks so the next request in a chained flow gets dispatched. */
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -123,7 +135,7 @@ describe('ProductFormComponent', () => {
         { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
         { provide: OptionGroupService, useClass: FakeOptionGroupService },
         { provide: PresentationService, useClass: FakePresentationService },
-        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        { provide: PlanSummaryService, useValue: fakePlanSummaryService },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap({}) } },
@@ -417,7 +429,7 @@ describe('ProductFormComponent', () => {
         { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
         { provide: OptionGroupService, useClass: FakeOptionGroupService },
         { provide: PresentationService, useClass: FakePresentationService },
-        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        { provide: PlanSummaryService, useValue: fakePlanSummaryService },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
@@ -520,7 +532,7 @@ describe('ProductFormComponent', () => {
         { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
         { provide: OptionGroupService, useClass: FakeOptionGroupService },
         { provide: PresentationService, useClass: FakePresentationService },
-        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        { provide: PlanSummaryService, useValue: fakePlanSummaryService },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap({ id }) } },
@@ -1080,7 +1092,7 @@ describe('ProductFormComponent', () => {
         { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
         { provide: OptionGroupService, useClass: FakeOptionGroupService },
         { provide: PresentationService, useClass: FakePresentationService },
-        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        { provide: PlanSummaryService, useValue: fakePlanSummaryService },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
@@ -1187,7 +1199,7 @@ describe('ProductFormComponent', () => {
         { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
         { provide: OptionGroupService, useClass: FakeOptionGroupServiceConInsumo },
         { provide: PresentationService, useClass: FakePresentationService },
-        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        { provide: PlanSummaryService, useValue: fakePlanSummaryService },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
@@ -1271,7 +1283,7 @@ describe('ProductFormComponent', () => {
         { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
         { provide: OptionGroupService, useClass: FakeOptionGroupService },
         { provide: PresentationService, useClass: FakePresentationService },
-        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        { provide: PlanSummaryService, useValue: fakePlanSummaryService },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
@@ -1296,6 +1308,79 @@ describe('ProductFormComponent', () => {
     http.expectNone(`${PRODUCTS}/p9/variants`);
   });
 
+  // ── Spec 141 (FR-014): /unit-measures es del módulo Inventario; el formulario carga sin él ──
+
+  describe('carga de unidades de medida según el plan (spec 141)', () => {
+    let loadUnitMeasures: ReturnType<typeof vi.spyOn>;
+
+    async function montar(summary: PlanSummary | null): Promise<void> {
+      navigate = vi.fn().mockResolvedValue(true);
+      planSummary.set(summary);
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        imports: [ProductFormComponent],
+        providers: [
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideTanStackQuery(
+            new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+          ),
+          { provide: CategoryService, useClass: FakeCategoryService },
+          { provide: InventoryService, useClass: FakeInventoryService },
+          { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
+          { provide: OptionGroupService, useClass: FakeOptionGroupService },
+          { provide: PresentationService, useClass: FakePresentationService },
+          { provide: PlanSummaryService, useValue: fakePlanSummaryService },
+          { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({}) } } },
+          { provide: Router, useValue: { navigate } },
+        ],
+      });
+      fixture = TestBed.createComponent(ProductFormComponent);
+      component = fixture.componentInstance;
+      http = TestBed.inject(HttpTestingController);
+      loadUnitMeasures = vi.spyOn(
+        TestBed.inject(UnitMeasureService) as unknown as FakeUnitMeasureService,
+        'loadUnitMeasures',
+      );
+      fixture.detectChanges(); // dispara ngOnInit
+      await tick();
+      await tick();
+      fixture.detectChanges();
+    }
+
+    it('sin el módulo: 0 llamadas a loadUnitMeasures y el formulario carga completo', async () => {
+      await montar(makeSummary({ modules: { inventario: false, promociones: true } }));
+
+      expect(loadUnitMeasures).not.toHaveBeenCalled();
+      expect(component.loading()).toBe(false);
+      expect(text()).toContain('Sabores a elegir'); // el formulario se pintó entero
+    });
+
+    it('con el módulo: se piden una sola vez', async () => {
+      await montar(makeSummary({}));
+
+      expect(loadUnitMeasures).toHaveBeenCalledTimes(1);
+    });
+
+    it('con el plan desconocido no se piden; si el resumen llega después de ngOnInit, se piden una vez al llegar', async () => {
+      await montar(null);
+      expect(loadUnitMeasures).not.toHaveBeenCalled();
+      expect(component.loading()).toBe(false);
+
+      planSummary.set(makeSummary({}));
+      fixture.detectChanges();
+      await tick();
+
+      expect(loadUnitMeasures).toHaveBeenCalledTimes(1);
+
+      // un cambio posterior del resumen no repite la petición
+      planSummary.set(makeSummary({ plan_name: 'Otro' }));
+      fixture.detectChanges();
+      await tick();
+      expect(loadUnitMeasures).toHaveBeenCalledTimes(1);
+    });
+  });
+
   // ── Historia 1 (spec 105): ngOnInit ya no precarga los tres catálogos completos ──
 
   it('ngOnInit (crear) no invoca loadAllCategories/loadAllItems/loadAllPresentations, pero sí loadUnitMeasures/loadGroups (FR-001/FR-002)', async () => {
@@ -1314,7 +1399,7 @@ describe('ProductFormComponent', () => {
         { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
         { provide: OptionGroupService, useClass: FakeOptionGroupService },
         { provide: PresentationService, useClass: FakePresentationService },
-        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        { provide: PlanSummaryService, useValue: fakePlanSummaryService },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({}) } } },
         { provide: Router, useValue: { navigate } },
       ],
@@ -1362,7 +1447,7 @@ describe('ProductFormComponent', () => {
         { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
         { provide: OptionGroupService, useClass: FakeOptionGroupService },
         { provide: PresentationService, useClass: FakePresentationService },
-        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        { provide: PlanSummaryService, useValue: fakePlanSummaryService },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
@@ -1457,7 +1542,7 @@ describe('ProductFormComponent', () => {
         { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
         { provide: OptionGroupService, useClass: FakeOptionGroupService },
         { provide: PresentationService, useClass: FakePresentationService },
-        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        { provide: PlanSummaryService, useValue: fakePlanSummaryService },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap({ id: 'p9' }) } },
@@ -1759,7 +1844,7 @@ describe('ProductFormComponent', () => {
         { provide: UnitMeasureService, useClass: FakeUnitMeasureService },
         { provide: OptionGroupService, useClass: FakeOptionGroupService },
         { provide: PresentationService, useClass: FakePresentationService },
-        { provide: PlanSummaryService, useValue: { summary: planSummary } },
+        { provide: PlanSummaryService, useValue: fakePlanSummaryService },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap({ id }) } },
