@@ -332,7 +332,7 @@ describe('CashSessionStore — cierre bloqueado por pedidos activos (spec 119, F
   const ORDEN_LLEVAR: ActiveOrderSummary = {
     id: 'o2',
     order_type: 'TAKEAWAY',
-    status: 'recibida',
+    status: 'pendiente',
     dining_table_id: null,
     table_number: null,
     customer_name: 'Ana',

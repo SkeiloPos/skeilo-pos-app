@@ -4,7 +4,6 @@ import { DiningOrder } from '../../tables/interfaces/dining.interface';
 import { TableService } from '../../tables/services/table.service';
 import { OrdersListService, OrdersStatusFilter, OrdersTypeFilter } from '../services/orders-list.service';
 import {
-  displayOrderStatus,
   orderDisplayCode,
   orderLocationLabel,
   orderStatusClass,
@@ -21,7 +20,7 @@ import { MoneyPipe } from '../../../shared/money.pipe';
 /** Opciones del selector de estado (spec 120, FR-002) — mismos 5 valores reales ya existentes. */
 const ESTADOS: { value: OrdersStatusFilter; label: string }[] = [
   { value: '', label: 'Todos' },
-  { value: 'recibida', label: 'Por confirmar' },
+  { value: 'pendiente', label: 'Por confirmar' },
   { value: 'abierta', label: 'Abierta' },
   { value: 'bloqueada', label: 'Bloqueada' },
   { value: 'pagada', label: 'Pagada' },
@@ -179,8 +178,8 @@ const TYPE_ICON: Record<string, string> = {
                 </div>
 
                 <div class="mt-auto pt-2 border-t border-gray-50 flex items-center justify-between gap-2">
-                  <span class="text-xs px-2.5 py-1 rounded-[9999px] font-semibold" [class]="statusClass(displayStatus(order))">
-                    {{ statusLabel(displayStatus(order)) }}
+                  <span class="text-xs px-2.5 py-1 rounded-[9999px] font-semibold" [class]="statusClass(order.status)">
+                    {{ statusLabel(order.status) }}
                   </span>
                   @if (order.total != null) {
                     <span class="text-sm font-bold text-gray-900 shrink-0">{{ order.total | money }}</span>
@@ -290,5 +289,4 @@ export class OrdersPageComponent implements OnInit {
 
   statusLabel = orderStatusLabel;
   statusClass = orderStatusClass;
-  displayStatus = displayOrderStatus;
 }

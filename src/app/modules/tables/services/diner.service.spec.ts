@@ -219,11 +219,11 @@ describe('DinerService', () => {
       transfer_method_id: null,
     });
 
-    req.flush({ id: 'o1', status: 'recibida', channel: 'QR_MENU', created_at: '2026-07-28T10:00:00' });
+    req.flush({ id: 'o1', status: 'pendiente', channel: 'QR_MENU', created_at: '2026-07-28T10:00:00' });
 
     const order = await promise;
     // Queda pendiente de que el personal lo acepte: aún no descontó inventario.
-    expect(order.status).toBe('recibida');
+    expect(order.status).toBe('pendiente');
   });
 
   it('envía el receipt_file_url cuando el método no es efectivo (spec 025)', async () => {
@@ -236,7 +236,7 @@ describe('DinerService', () => {
       transfer_method_id: null,
     });
 
-    req.flush({ id: 'o1', status: 'recibida', channel: 'QR_MENU', created_at: '2026-07-28T10:00:00' });
+    req.flush({ id: 'o1', status: 'pendiente', channel: 'QR_MENU', created_at: '2026-07-28T10:00:00' });
     await promise;
   });
 
@@ -252,7 +252,7 @@ describe('DinerService', () => {
       transfer_method_id: 'pm-nequi',
     });
 
-    req.flush({ id: 'o1', status: 'recibida', channel: 'QR_MENU', created_at: '2026-07-28T10:00:00' });
+    req.flush({ id: 'o1', status: 'pendiente', channel: 'QR_MENU', created_at: '2026-07-28T10:00:00' });
     await promise;
   });
 

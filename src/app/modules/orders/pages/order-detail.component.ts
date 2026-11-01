@@ -10,7 +10,6 @@ import { TableService } from '../../tables/services/table.service';
 import { MenuService } from '../../../core/services/menu.service';
 import { buildMenuLookup } from '../../tables/services/menu-lookup';
 import {
-  displayOrderStatus,
   kitchenStatusClass,
   kitchenStatusLabel,
   orderDisplayCode,
@@ -84,8 +83,8 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
               <p class="text-base font-bold text-gray-900 truncate">Orden {{ code() }}</p>
               <p class="text-xs text-gray-400 mt-0.5">Canal: {{ order()!.channel }}</p>
             </div>
-            <span class="text-sm px-3 py-1.5 rounded-full font-semibold shrink-0" [class]="statusClass(displayStatus(order()!))">
-              {{ statusLabel(displayStatus(order()!)) }}
+            <span class="text-sm px-3 py-1.5 rounded-full font-semibold shrink-0" [class]="statusClass(order()!.status)">
+              {{ statusLabel(order()!.status) }}
             </span>
           </div>
 
@@ -563,7 +562,6 @@ export class OrderDetailComponent implements OnInit {
 
   statusLabel = orderStatusLabel;
   statusClass = orderStatusClass;
-  displayStatus = displayOrderStatus;
   // spec 094 (D9): el distintivo del ítem anulado reusa la etiqueta y el color
   // que ya usan el KDS y la terminal de mesas, en vez de inventar una nueva.
   kitchenLabel = kitchenStatusLabel;

@@ -48,7 +48,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
  * la transferencia (spec 130 dejó la UI de la pata en efectivo
  * explícitamente fuera de alcance, remitida a una "spec 112" que terminó
  * siendo otra cosa y nunca cubrió este flujo) — un pedido mixto con la
- * transferencia ya aprobada se quedaba atascado en `status='recibida'` para
+ * transferencia ya aprobada se quedaba atascado en `status='pendiente'` para
  * siempre, sin ningún control visible para confirmar el efectivo. Ver
  * `isMixed()`/`cashLegPending()`/`confirmMixedCash()`.
  */
@@ -148,7 +148,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
             (cash_confirmed_at). Antes este panel solo sabía resolver la
             transferencia (is_cash es false para el método "Pago mixto"),
             así que la pata de efectivo quedaba huérfana para siempre y el
-            pedido nunca salía de 'recibida'.
+            pedido nunca salía de 'pendiente'.
           -->
           @if (attempt.status === 'pendiente') {
             <!-- spec 132 (A-144, FR-012): el comprobante ya no es obligatorio
@@ -663,7 +663,7 @@ export class PaymentAttemptReviewPanelComponent implements OnChanges {
    * el panel caía en `lastResolved()`, mostrando "Pago confirmado" sin que
    * existiera ningún control para confirmar la pata en efectivo
    * (`cash_confirmed_at` se quedaba `null` para siempre, y con él el pedido
-   * entero atascado en `status='recibida'`). Ahora sigue "vigente" mientras
+   * entero atascado en `status='pendiente'`). Ahora sigue "vigente" mientras
    * falte cualquiera de las dos señales.
    */
   current(): PaymentAttempt | null {

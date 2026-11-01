@@ -7,7 +7,7 @@ import { CheckoutProgressStore } from './checkout-progress.store';
 
 /** Pedidos que todavía no llegaron a un estado final (mismo criterio que
  *  `_NON_TERMINAL_ORDER_STATUSES` en `cart/service.py:63`). */
-const NON_TERMINAL_STATUSES = new Set(['recibida', 'abierta', 'bloqueada']);
+const NON_TERMINAL_STATUSES = new Set(['pendiente', 'abierta', 'bloqueada']);
 
 /**
  * Se ejecuta una sola vez por entrada a `menu/t/:token/checkout/**` (Angular

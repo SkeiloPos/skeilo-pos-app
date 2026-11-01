@@ -186,9 +186,9 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
         } @else if (store.selectedOrder() && showSessionCharge()) {
           <!--
             Pedido de mesero ya enviado a cocina (status distinto de
-            'recibida'): se cobra cerrando la sesión de mesa completa — el
+            'pendiente'): se cobra cerrando la sesión de mesa completa — el
             mismo mecanismo que el modo resumen usa en solo lectura arriba —,
-            no con checkout-and-send (que exige 'recibida' y por eso
+            no con checkout-and-send (que exige 'pendiente' y por eso
             rechazaba siempre con 409 sobre un pedido así, dejándolo abierto
             para siempre sin factura). Hotfix spec 029 #3: esta vía ya
             existía en el backend y en session-bill-panel, solo nunca se
@@ -528,14 +528,14 @@ export class PosCheckoutPanelComponent {
 
   /**
    * Spec 029, hotfix #3: dentro de `terminal-pos`, un pedido que ya se envió
-   * a cocina (`status !== 'recibida'`) no se puede cobrar con
+   * a cocina (`status !== 'pendiente'`) no se puede cobrar con
    * `checkout-and-send` (el backend lo rechaza con 409) — necesita el cierre
    * de sesión de mesa (`app-session-bill-panel`, mismo componente que
    * `resumen` usa en solo lectura arriba).
    */
   readonly showSessionCharge = computed(() => {
     const order = this.store.selectedOrder();
-    return !!order && order.status !== 'recibida';
+    return !!order && order.status !== 'pendiente';
   });
 
   /** Spec 058, FR-007: mismo estado que decide la rama "Cobrar pedido"/"Pedido de

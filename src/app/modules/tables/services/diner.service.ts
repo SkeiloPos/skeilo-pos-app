@@ -232,7 +232,7 @@ export class DinerService {
   /**
    * Envía el carrito como pedido, junto con su método de pago (spec 025): el
    * pedido nace con su primer intento de pago adjunto — `receiptFileUrl` es
-   * obligatorio salvo que el método sea efectivo. Queda en `recibida`: **no
+   * obligatorio salvo que el método sea efectivo. Queda en `pendiente`: **no
    * descuenta inventario** hasta que el personal lo confirme.
    */
   submitCart(

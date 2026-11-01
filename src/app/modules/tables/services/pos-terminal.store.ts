@@ -33,7 +33,15 @@ import {
   PaymentLine,
   SessionBill,
 } from '../interfaces/dining.interface';
-import { KITCHEN_NOT_READY, hasPendingKitchenWork } from '../../orders/order-status.util';
+import {
+  KITCHEN_NOT_READY,
+  hasPendingKitchenWork,
+  orderStatusClass,
+  orderStatusLabel,
+  paymentStatusClass,
+  paymentStatusLabel,
+  pedidoAceptadoSinCobrar,
+} from '../../orders/order-status.util';
 import { ChosenMenuOption, ChosenMenuTopping, ProductSelection } from '../components/product-select.component';
 import { buildMenuLookup, formatQuantifiedLabel, MenuLookup } from './menu-lookup';
 import { TableService } from './table.service';
@@ -152,6 +160,10 @@ export interface OrderSummaryCardView {
   title: string;
   statusLabel: string;
   statusClass: string;
+  /** spec 146 (FR-002, A-150): presentes solo cuando la tarjeta representa
+   *  una orden única — ver `order-summary-card.component.ts`. */
+  paymentStatusLabel?: string;
+  paymentStatusClass?: string;
   secondaryLabel: string;
   elapsedLabel: string;
   totalLabel: string;
@@ -236,13 +248,13 @@ const DEFAULT_CUSTOMER_NAME = 'Consumidor final';
  * pero el aviso sí debe haber sonado.
  */
 export function newPendingIds(seen: ReadonlySet<string>, orders: DiningOrder[]): string[] {
-  return orders.filter((o) => o.status === 'recibida' && !seen.has(o.id)).map((o) => o.id);
+  return orders.filter((o) => o.status === 'pendiente' && !seen.has(o.id)).map((o) => o.id);
 }
 
 /**
  * Estado que se pinta en la tarjeta de la mesa, por orden de urgencia.
  *
- * `orders` son los pedidos vivos de la mesa **incluidos los `recibida`**: un
+ * `orders` son los pedidos vivos de la mesa **incluidos los `pendiente`**: un
  * pedido esperando confirmación ocupa la mesa igual que cualquier otro, y
  * dejarlo fuera era lo que hacía que toda mesa con pedido del QR se viera libre.
  *
@@ -254,19 +266,34 @@ export function deriveTableStatus(
   tableStatus: TableStatus,
 ): TableDisplayStatus {
   // Solo el canal QR pasa por revisión de pago del cajero (feature 028): un
-  // pedido de mostrador `hold_for_payment` también vive en `recibida` mientras
+  // pedido de mostrador `hold_for_payment` también vive en `pendiente` mientras
   // se arma, y ese no es un pago por confirmar — es el cajero armando su
   // propio pedido, y mostrarlo como "Por confirmar" sería una falsa alarma.
-  if (orders.some((o) => o.status === 'recibida' && o.channel === 'QR_MENU')) return 'por_confirmar';
+  if (orders.some((o) => o.status === 'pendiente' && o.channel === 'QR_MENU')) return 'por_confirmar';
   if (orders.some((o) => o.status === 'bloqueada')) return 'pago_pendiente';
 
-  const items = orders.flatMap((o) => (o.items ?? []).filter((i) => i.estado_cocina !== 'anulado'));
+  // A-150 (spec 146): toda orden nueva, de cualquier canal, nace 'pendiente'
+  // con sus ítems ya en estado_cocina='pendiente' por defecto (FR-003) -- ese
+  // default NO significa "cocina lo tiene en cola", significa "todavía ni se
+  // confirmó la orden". Antes de A-150 un pedido de mostrador nacía 'abierta'
+  // (ya confirmado) o, con hold_for_payment, se trataba igual que un QR en
+  // camino de pago (el chequeo de arriba). Ahora que TODO canal pausa en
+  // 'pendiente', solo cuentan para "en preparación"/"listo" los ítems de
+  // órdenes ya confirmadas (`status !== 'pendiente'`) o de una orden
+  // 'pendiente' ya aceptada explícitamente para cocina
+  // (`pedidoAceptadoSinCobrar` -- `POST /orders/{id}/start-preparation`); si
+  // no, una mesa con un pedido recién creado y sin confirmar se ve 'ocupada',
+  // no "En preparación".
+  const ordenesEnCocina = orders.filter(
+    (o) => o.status !== 'pendiente' || pedidoAceptadoSinCobrar(o),
+  );
+  const items = ordenesEnCocina.flatMap((o) => (o.items ?? []).filter((i) => i.estado_cocina !== 'anulado'));
   if (items.some((i) => KITCHEN_NOT_READY.includes(i.estado_cocina))) {
     // Ya pagado pero cocina todavía en curso (p. ej. "Aceptar pedido" sin
     // cobrar seguido de "Confirmar efectivo"/"Aprobar comprobante", o
     // cualquier pedido cobrado antes de que cocina termine, spec 028): sin
     // este chequeo se veía igual que uno sin pagar todavía.
-    const conConsumo = orders.filter((o) =>
+    const conConsumo = ordenesEnCocina.filter((o) =>
       (o.items ?? []).some((i) => i.estado_cocina !== 'anulado'),
     );
     if (conConsumo.length > 0 && conConsumo.every((o) => o.paid === true)) return 'pagado';
@@ -286,7 +313,7 @@ export function deriveTableStatus(
     // muestra "Pago pendiente" — el mismo estado que ya usa la rama
     // 'bloqueada' de arriba, para no inventar una insignia nueva casi
     // idéntica.
-    const conConsumo = orders.filter((o) =>
+    const conConsumo = ordenesEnCocina.filter((o) =>
       (o.items ?? []).some((i) => i.estado_cocina !== 'anulado'),
     );
     return conConsumo.every((o) => o.paid === true) ? 'listo' : 'pago_pendiente';
@@ -681,17 +708,17 @@ export class PosTerminalStore {
    * hasta confirmarlos.
    *
    * **Solo canal `qr`** (feature 028, T010): un pedido de mostrador creado con
-   * `hold_for_payment` también vive en `recibida` mientras el cajero lo arma,
+   * `hold_for_payment` también vive en `pendiente` mientras el cajero lo arma,
    * pero no tiene ningún intento de pago que revisar — no debe aparecer en el
    * bloque de validación de pagos.
    */
   readonly pendingOrders = computed(() =>
-    this.orders().filter((o) => o.status === 'recibida' && o.channel === 'QR_MENU'),
+    this.orders().filter((o) => o.status === 'pendiente' && o.channel === 'QR_MENU'),
   );
 
   /**
    * Órdenes activas por mesa: ni terminales ni QR sin confirmar. Un pedido de
-   * mostrador `hold_for_payment` también vive en `'recibida'` mientras se arma
+   * mostrador `hold_for_payment` también vive en `'pendiente'` mientras se arma
    * (ver `pendingOrders` arriba) pero SÍ es editable/seleccionable — solo el
    * canal `QR_MENU` necesita `confirmOrder()` antes de entrar aquí. Sin esto,
    * `selectTable()` no auto-seleccionaba un pedido de mostrador recién creado
@@ -711,11 +738,11 @@ export class PosTerminalStore {
    */
   private readonly activeOrders = computed(() =>
     this.orders().filter(
-      (o) => o.status !== 'cancelada' && (o.status !== 'recibida' || o.channel !== 'QR_MENU'),
+      (o) => o.status !== 'cancelada' && (o.status !== 'pendiente' || o.channel !== 'QR_MENU'),
     ),
   );
 
-  /** Pedidos editables/cobrables de la mesa: los `recibida` aún no lo son. */
+  /** Pedidos editables/cobrables de la mesa: los `pendiente` aún no lo son. */
   private ordersOfTable(tableId: string): DiningOrder[] {
     return this.activeOrders().filter((o) => o.dining_table_id === tableId);
   }
@@ -803,7 +830,7 @@ export class PosTerminalStore {
    * ¿La mesa seleccionada tiene A LA VEZ algún pago pendiente de confirmar y
    * algún pedido pagado/activo? (spec 048, FR-001). `ordersOfTable` ya
    * excluye exactamente lo que hay en `pendingOfSelectedTable` (misma
-   * frontera `recibida`+`qr`), así que basta con combinar ambos.
+   * frontera `pendiente`+`qr`), así que basta con combinar ambos.
    */
   readonly hasPendingAndActiveOrders = computed(() => {
     const tableId = this.selectedTableId();
@@ -831,7 +858,7 @@ export class PosTerminalStore {
 
   /**
    * A pedido del usuario: el pedido seleccionado es uno de los pagos QR por
-   * confirmar (mismo criterio que `pendingOrders` -- `recibida` + canal
+   * confirmar (mismo criterio que `pendingOrders` -- `pendiente` + canal
    * `QR_MENU`) -- todavía no se envió a cocina ni tiene un pago resuelto, así
    * que `app-pos-order-panel` lo muestra de sólo lectura (sin "+ Agregar
    * producto" ni "Marcar pedido listo") y `app-pos-checkout-panel` no ofrece
@@ -842,7 +869,7 @@ export class PosTerminalStore {
    */
   readonly selectedOrderPending = computed(() => {
     const o = this.selectedOrder();
-    return !!o && o.status === 'recibida' && o.channel === 'QR_MENU';
+    return !!o && o.status === 'pendiente' && o.channel === 'QR_MENU';
   });
 
   /**
@@ -898,7 +925,7 @@ export class PosTerminalStore {
       ? list.map((o) => ({
           id: o.id,
           label: o.table_order_number != null ? `Pedido ${o.table_order_number}` : 'Pedido',
-          pending: o.status === 'recibida' && o.channel === 'QR_MENU',
+          pending: o.status === 'pendiente' && o.channel === 'QR_MENU',
         }))
       : [];
   });
@@ -973,6 +1000,21 @@ export class PosTerminalStore {
     return STATUS_META[deriveTableStatus([order], 'ocupada')];
   });
 
+  /**
+   * La única orden de la mesa/selección actual, o `null` si hay cero o más
+   * de una (spec 146, A-150: con exactamente una orden, el header deja de
+   * mostrar el badge sintético de ocupación de `selectedTableStatusMeta` y
+   * muestra el `status`/`payment_status` crudos de esa orden específica,
+   * sin inferencia — con varias órdenes, el badge de ocupación se conserva
+   * tal cual, el estado de cada una ya se ve en sus pestañas "Pedido N").
+   */
+  readonly selectedSingleOrder = computed(() => {
+    const table = this.selectedTable();
+    const list = table ? this.tableOrders(table.id) : null;
+    if (list) return list.length === 1 ? list[0] : null;
+    return this.selectedOrder();
+  });
+
   readonly tablesView = computed(() => {
     this.nowTick();
     const term = this.search().trim();
@@ -1002,13 +1044,22 @@ export class PosTerminalStore {
         const oldest = list.length
           ? Math.min(...list.map((o) => new Date(o.created_at).getTime()))
           : null;
+        // spec 146 (FR-002/FR-008, A-150): con exactamente una orden, la
+        // tarjeta muestra el status/payment_status crudos de esa orden en
+        // vez del badge sintético de ocupación -- mismo criterio que
+        // `selectedSingleOrder()`. Con cero o varias, se conserva tal cual
+        // `statusLabel`/`chipClass` (también usados por
+        // `manual-order-page.component.ts` para "Libre"/deshabilitar mesas).
+        const single = list.length === 1 ? list[0] : null;
         return {
           id: t.id,
           number: t.number,
           name: t.name,
           statusLabel: meta.label,
-          statusLabelShort: SHORT_STATUS_LABEL[status],
-          chipClass: meta.chip,
+          statusLabelShort: single ? orderStatusLabel(single.status) : SHORT_STATUS_LABEL[status],
+          chipClass: single ? orderStatusClass(single.status) : meta.chip,
+          paymentStatusLabel: single?.payment_status ? paymentStatusLabel(single.payment_status) : undefined,
+          paymentStatusClass: single?.payment_status ? paymentStatusClass(single.payment_status) : undefined,
           itemsLabel: `${items} ${items === 1 ? 'producto' : 'productos'}`,
           elapsedLabel: this.sinceLabel(oldest),
           // Mockup de referencia (terminal-de-mesas/code.html): una mesa sin
@@ -1074,19 +1125,22 @@ export class PosTerminalStore {
   }
 
   /**
-   * Reutiliza `deriveTableStatus`/`STATUS_META` con un arreglo de un solo
-   * pedido — el fallback de mesa vacía (`tableStatus`, tercer argumento) no
-   * se alcanza nunca aquí porque un pedido sin mesa por definición ya tiene
-   * al menos un elemento en el arreglo (research.md §5).
+   * spec 146 (FR-008, A-150): a diferencia de la tarjeta de **mesa** (agregado
+   * de varias órdenes, que sí sigue usando `deriveTableStatus`/`STATUS_META`
+   * como heurística de ocupación), esta es la tarjeta de una orden
+   * **individual** (domicilio/para llevar) — muestra siempre el `status`
+   * crudo de esa orden específica, sin pasar por `deriveTableStatus`.
    */
   private toOrderCardView(o: DiningOrder): OrderSummaryCardView {
-    const status = deriveTableStatus([o], 'ocupada');
-    const meta = STATUS_META[status];
     return {
       id: o.id,
       title: o.order_type === 'DELIVERY' ? 'Domicilio' : 'Para llevar',
-      statusLabel: meta.label,
-      statusClass: meta.chip,
+      statusLabel: orderStatusLabel(o.status),
+      statusClass: orderStatusClass(o.status),
+      // spec 146 (FR-002, A-150): siempre una orden única aquí -- mismo
+      // criterio que `tablesView()` con una sola orden.
+      paymentStatusLabel: o.payment_status ? paymentStatusLabel(o.payment_status) : undefined,
+      paymentStatusClass: o.payment_status ? paymentStatusClass(o.payment_status) : undefined,
       secondaryLabel: o.customer_name || 'Consumidor final',
       elapsedLabel: this.sinceLabel(new Date(o.created_at).getTime()),
       // spec 078 (US1, FR-001/FR-002; research.md D1; A-71 punto 2): la tarjeta
@@ -1672,7 +1726,7 @@ export class PosTerminalStore {
    */
   private announcePending(orders: DiningOrder[]): void {
     const nuevos = newPendingIds(this.seenPending, orders);
-    this.seenPending = new Set(orders.filter((o) => o.status === 'recibida').map((o) => o.id));
+    this.seenPending = new Set(orders.filter((o) => o.status === 'pendiente').map((o) => o.id));
     if (nuevos.length > 0 && this.pendingSeeded) this.sound.bell();
     this.pendingSeeded = true;
   }

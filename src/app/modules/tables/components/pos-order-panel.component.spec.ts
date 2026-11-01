@@ -648,7 +648,7 @@ function pendingOrder(id: string, tableId: string): DiningOrder {
   return {
     id,
     channel: 'QR_MENU',
-    status: 'recibida',
+    status: 'pendiente',
     dining_table_id: tableId,
     customer_name: null,
     created_at: '2026-08-21T10:00:00',
@@ -789,10 +789,10 @@ describe('PosOrderPanelComponent — cabecera y pestañas (spec 049)', () => {
 
     const el = fixture.nativeElement as HTMLElement;
     expect(el.textContent).toContain('Mesa 2');
-    // Con un ítem 'pendiente', el chip refleja el estado derivado real
-    // ("En preparación", `deriveTableStatus`), no el estado crudo de la mesa
-    // ("Ocupada") — mismo criterio ya usado por la grilla (`tablesView()`).
-    expect(el.textContent).toContain('En preparación');
+    // spec 146 (FR-002/FR-008, A-150): con una sola orden en contexto, el
+    // chip muestra el status crudo de esa orden ('abierta'), no el badge
+    // sintético de ocupación de mesa ("En preparación"/"Ocupada").
+    expect(el.textContent).toContain('abierta');
     expect(el.textContent).toContain('Deimer Hernandez');
     expect(el.querySelector('input[type="text"]')).toBeNull();
   });

@@ -52,10 +52,10 @@ describe('OrderDetailComponent', () => {
 
   afterEach(() => http.verify());
 
-  it('un pedido abierta ya pagado (paid) se muestra con badge "Pagada"', () => {
+  it('un pedido abierta ya pagado (paid) muestra el status crudo, sin sustituirlo por "pagada" (spec 146, FR-008)', () => {
     fixture.detectChanges();
-    expect((fixture.nativeElement.textContent as string)).toContain('Pagada');
-    expect((fixture.nativeElement.textContent as string)).not.toContain('Abierta');
+    expect((fixture.nativeElement.textContent as string)).toContain('abierta');
+    expect((fixture.nativeElement.textContent as string)).not.toContain('pagada');
   });
 
   it('el botón de volver ya no es la flecha "←" (spec 082)', () => {
@@ -268,7 +268,7 @@ describe('OrderDetailComponent — importes por línea (spec 094, US1)', () => {
       }),
     );
 
-    expect(el.textContent).toContain('Anulado');
+    expect(el.textContent).toContain('anulado'); // estado_cocina crudo (spec 146, FR-008)
     // La línea anulada sigue en la lista (no se oculta, Q7)...
     expect(el.querySelectorAll('[data-testid="item-row"]').length).toBe(2);
     // ...pero su importe no se pinta.
@@ -410,7 +410,7 @@ describe('OrderDetailComponent — los tres avisos (spec 094, US1)', () => {
 
     expect(el.textContent).not.toContain(AVISO_SIN_COBRAR);
     expect(el.textContent).not.toContain(AVISO_AGRUPADA);
-    expect(el.textContent).toContain('Cancelada');
+    expect(el.textContent).toContain('cancelada'); // status crudo (spec 146, FR-008)
     expect(el.querySelector('[data-testid="totales"]')).toBeTruthy();
   });
 
@@ -717,7 +717,7 @@ describe('OrderDetailComponent — huecos de datos (spec 094, US3)', () => {
     );
 
     expect(filas(el).length).toBe(2);
-    expect(textoDeLasFilas(el)).toContain('Anulado');
+    expect(textoDeLasFilas(el)).toContain('anulado'); // estado_cocina crudo (spec 146, FR-008)
     expect(el.textContent).not.toContain(AVISO_SIN_DETALLE);
     expect(el.querySelector('[data-testid="totales"]')!.textContent).toContain('$ 0');
     expect(el.textContent).not.toContain('Sin ítems');

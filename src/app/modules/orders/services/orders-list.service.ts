@@ -7,7 +7,7 @@ import { injectPagedQuery } from '../../../core/query/paged-query';
 import { DiningOrder } from '../../tables/interfaces/dining.interface';
 
 /** Los 6 valores del filtro de estado de "Órdenes" (spec 079, FR-008). `''` = Todos. */
-export type OrdersStatusFilter = '' | 'recibida' | 'abierta' | 'bloqueada' | 'pagada' | 'cancelada';
+export type OrdersStatusFilter = '' | 'pendiente' | 'abierta' | 'bloqueada' | 'pagada' | 'cancelada';
 /** Los 4 valores del filtro de tipo de orden (spec 079, FR-009). `''` = Todos. */
 export type OrdersTypeFilter = '' | 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
 
