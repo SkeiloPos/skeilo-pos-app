@@ -6,9 +6,10 @@ export interface ResourceUsage {
   limit: number | null;
 }
 
+/** Módulos que un plan puede incluir (spec 141): «Inventario» cubre también Proveedores y
+ * Compras, que ya no son un módulo aparte. */
 export interface ModuleAccess {
   inventario: boolean;
-  compras: boolean;
   promociones: boolean;
 }
 

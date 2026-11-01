@@ -12,6 +12,8 @@ import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { SearchableSelectComponent } from '../../../shared/searchable-select/searchable-select.component';
 import { Purchase } from '../interfaces/inventory.interface';
+import { PlanSummaryService } from '../../plan/services/plan-summary.service';
+import { PlanSummary } from '../../plan/interfaces/plan-summary.interface';
 import { environment } from '../../../../environments/environment';
 
 describe('InventoryPageComponent — íconos estandarizados (spec 082)', () => {
@@ -368,5 +370,67 @@ describe('InventoryPageComponent — eliminar orden/borrador pendiente (spec 140
     expect(errorSpy).toHaveBeenCalledWith(
       'Solo se puede eliminar mientras no se haya recibido nada',
     );
+  });
+});
+
+describe('InventoryPageComponent — pestaña «Compras» sin indicador propio (spec 141, US3.5, FR-013)', () => {
+  function crear(summary: PlanSummary | null) {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [InventoryPageComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+      ],
+    });
+    TestBed.inject(PlanSummaryService).summary.set(summary);
+    const fixture = TestBed.createComponent(InventoryPageComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const SOLO_INVENTARIO: PlanSummary = {
+    plan_name: 'Solo inventario',
+    ciclo_facturacion: null,
+    plan_vence_en: null,
+    vencido: false,
+    resources: {},
+    // Ningún indicador de Compras: ya no existe en el contrato (spec 141).
+    modules: { inventario: true, promociones: false },
+  };
+
+  function pestanas(fixture: ReturnType<typeof crear>): string[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('div.border-b > button'),
+    ).map((b) => b.textContent?.trim() ?? '');
+  }
+
+  it('con un plan que solo incluye Inventario, la pestaña «Compras» aparece', () => {
+    const fixture = crear(SOLO_INVENTARIO);
+
+    expect(pestanas(fixture)).toContain('Compras');
+  });
+
+  it('con el plan aún desconocido también aparece: a esta pantalla solo se entra con el módulo (guardia de la ruta)', () => {
+    const fixture = crear(null);
+
+    expect(pestanas(fixture)).toContain('Compras');
+  });
+
+  it('al abrirla se pinta su contenido', () => {
+    const fixture = crear(SOLO_INVENTARIO);
+    const el = fixture.nativeElement as HTMLElement;
+    const compras = Array.from(el.querySelectorAll('div.border-b > button')).find(
+      (b) => b.textContent?.trim() === 'Compras',
+    ) as HTMLButtonElement;
+
+    compras.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.tab()).toBe('purchases');
+    expect(el.textContent).toMatch(/Cargando compras|Aún no hay compras registradas/);
   });
 });

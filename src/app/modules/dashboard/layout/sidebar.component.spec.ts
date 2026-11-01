@@ -30,7 +30,7 @@ function makeSummary(partial: Partial<PlanSummary>): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: true, compras: true, promociones: true },
+    modules: { inventario: true, promociones: true },
     ...partial,
   };
 }
@@ -90,29 +90,33 @@ describe('SidebarComponent.visibleItems', () => {
   // que ya bloquea el acceso directo por URL a esas mismas rutas.
   it('hides module-gated items the plan does not include', () => {
     currentUser.set(makeUser({ isSuperAdmin: false, role: UserRole.ADMIN }));
-    planSummary.set(makeSummary({ modules: { inventario: false, compras: true, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true } }));
     const sidebar = createComponent();
 
     const routes = sidebar.visibleItems().map((i) => i.route);
     expect(routes).not.toContain('/dashboard/inventario');
+    expect(routes).not.toContain('/dashboard/proveedores'); // spec 141: Proveedores es parte del módulo Inventario
     expect(routes).toContain('/dashboard/promotions');
   });
 
   it('shows module-gated items the plan does include', () => {
     currentUser.set(makeUser({ isSuperAdmin: false, role: UserRole.ADMIN }));
-    planSummary.set(makeSummary({ modules: { inventario: true, compras: true, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: true, promociones: true } }));
     const sidebar = createComponent();
 
-    expect(sidebar.visibleItems().map((i) => i.route)).toContain('/dashboard/inventario');
+    const routes = sidebar.visibleItems().map((i) => i.route);
+    expect(routes).toContain('/dashboard/inventario');
+    expect(routes).toContain('/dashboard/proveedores');
   });
 
   it('hides all module-gated items when the tenant is vencido, regardless of module flags', () => {
     currentUser.set(makeUser({ isSuperAdmin: false, role: UserRole.ADMIN }));
-    planSummary.set(makeSummary({ vencido: true, modules: { inventario: true, compras: true, promociones: true } }));
+    planSummary.set(makeSummary({ vencido: true, modules: { inventario: true, promociones: true } }));
     const sidebar = createComponent();
 
     const routes = sidebar.visibleItems().map((i) => i.route);
     expect(routes).not.toContain('/dashboard/inventario');
+    expect(routes).not.toContain('/dashboard/proveedores');
     expect(routes).not.toContain('/dashboard/promotions');
   });
 
@@ -121,12 +125,14 @@ describe('SidebarComponent.visibleItems', () => {
     planSummary.set(null);
     const sidebar = createComponent();
 
-    expect(sidebar.visibleItems().map((i) => i.route)).toContain('/dashboard/inventario');
+    const routes = sidebar.visibleItems().map((i) => i.route);
+    expect(routes).toContain('/dashboard/inventario');
+    expect(routes).toContain('/dashboard/proveedores');
   });
 
   it('does not apply plan gating to super admin navigation', () => {
     currentUser.set(makeUser({ isSuperAdmin: true, role: UserRole.SUPER_ADMIN, tenantId: null }));
-    planSummary.set(makeSummary({ modules: { inventario: false, compras: false, promociones: false } }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: false } }));
     const sidebar = createComponent();
 
     expect(sidebar.visibleItems().map((i) => i.route)).toEqual([

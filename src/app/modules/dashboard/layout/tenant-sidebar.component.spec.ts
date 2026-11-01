@@ -32,7 +32,7 @@ function makeSummary(partial: Partial<PlanSummary>): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: true, compras: true, promociones: true },
+    modules: { inventario: true, promociones: true },
     ...partial,
   };
 }
@@ -161,17 +161,56 @@ describe('TenantSidebarComponent (spec 116)', () => {
     expect(groups.every((g) => g.items.length > 0)).toBe(true);
   });
 
-  it('un plan sin "inventario" oculta solo el ítem gobernado por ese módulo (FR-016, ADMIN)', () => {
-    // "Proveedores" comparte el frame "Inventario" con "Inventario" pero no
-    // tiene `moduleKey` (navigation-grouping-contract.md) -- el grupo sigue
-    // visible por ese ítem, solo el gobernado por el plan desaparece.
+  it('un plan sin "inventario" oculta Inventario y también Proveedores (spec 141, FR-012, US3.1)', () => {
+    // Antes de la spec 141 "Proveedores" no tenía `moduleKey` y quedaba visible sin el módulo
+    // (navigation-grouping-contract.md de la spec 116). Ahora «Inventario» es un solo módulo.
     currentUser.set(makeUser({ role: UserRole.ADMIN }));
-    planSummary.set(makeSummary({ modules: { inventario: false, compras: true, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true } }));
     createComponent();
 
     const routes = fixture.componentInstance.visibleItems().map((i) => i.route);
     expect(routes).not.toContain('/dashboard/inventario');
+    expect(routes).not.toContain('/dashboard/proveedores');
+  });
+
+  it('sin el módulo desaparece también el encabezado de sección «Inventario», sin bloque vacío (spec 141, SC-004)', () => {
+    currentUser.set(makeUser({ role: UserRole.ADMIN }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true } }));
+    createComponent();
+
+    const titulos = fixture.componentInstance.groupedItems().map((g) => g.title);
+    expect(titulos).not.toContain('Inventario');
+    expect(fixture.componentInstance.groupedItems().every((g) => g.items.length > 0)).toBe(true);
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Proveedores');
+  });
+
+  it('con el módulo aparecen «Inventario» y «Proveedores» bajo el encabezado «Inventario» (spec 141, US3.2)', () => {
+    currentUser.set(makeUser({ role: UserRole.ADMIN }));
+    planSummary.set(makeSummary({ modules: { inventario: true, promociones: true } }));
+    createComponent();
+
+    const grupo = fixture.componentInstance.groupedItems().find((g) => g.title === 'Inventario');
+    expect(grupo?.items.map((i) => i.route)).toEqual(['/dashboard/inventario', '/dashboard/proveedores']);
+  });
+
+  it('con el plan desconocido (summary = null) el menú muestra ambos: fail-open (spec 141, edge case)', () => {
+    currentUser.set(makeUser({ role: UserRole.ADMIN }));
+    planSummary.set(null);
+    createComponent();
+
+    const routes = fixture.componentInstance.visibleItems().map((i) => i.route);
+    expect(routes).toContain('/dashboard/inventario');
     expect(routes).toContain('/dashboard/proveedores');
+  });
+
+  it('con el plan vencido tampoco aparecen (el menú oculta lo gobernado por un módulo)', () => {
+    currentUser.set(makeUser({ role: UserRole.ADMIN }));
+    planSummary.set(makeSummary({ vencido: true }));
+    createComponent();
+
+    const routes = fixture.componentInstance.visibleItems().map((i) => i.route);
+    expect(routes).not.toContain('/dashboard/inventario');
+    expect(routes).not.toContain('/dashboard/proveedores');
   });
 
   it('el ítem de la ruta activa se resalta (FR-004)', async () => {

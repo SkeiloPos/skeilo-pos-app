@@ -18,7 +18,7 @@ function planSummary(partial: Partial<PlanSummary> = {}): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: false, compras: false, promociones: false },
+    modules: { inventario: false, promociones: false },
     ...partial,
   };
 }

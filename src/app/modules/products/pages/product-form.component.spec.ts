@@ -35,7 +35,7 @@ function makeSummary(partial: Partial<PlanSummary>): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: true, compras: true, promociones: true },
+    modules: { inventario: true, promociones: true },
     ...partial,
   };
 }
@@ -711,14 +711,14 @@ describe('ProductFormComponent', () => {
   // ── Gating por plan del switch de inventario (spec 064, US5) ─────────────
 
   it('sin el módulo Inventario en el plan, el switch aparece deshabilitado', async () => {
-    planSummary.set(makeSummary({ modules: { inventario: false, compras: true, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true } }));
     await createNew();
 
     expect(switchButton().disabled).toBe(true);
   });
 
   it('sin el módulo Inventario, hacer click en el switch deshabilitado no cambia nada', async () => {
-    planSummary.set(makeSummary({ modules: { inventario: false, compras: true, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true } }));
     await createNew();
 
     switchButton().click(); // no-op: el navegador nunca dispara (click) sobre [disabled]
@@ -728,7 +728,7 @@ describe('ProductFormComponent', () => {
   });
 
   it('un producto existente con tracks_inventory=true conserva ese valor visible aunque el switch esté deshabilitado sin el módulo', async () => {
-    planSummary.set(makeSummary({ modules: { inventario: false, compras: true, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true } }));
     await createEdit('p9', true);
 
     expect(component.draft().tracks_inventory).toBe(true);
@@ -741,7 +741,7 @@ describe('ProductFormComponent', () => {
   });
 
   it('con el módulo Inventario incluido, el switch funciona con normalidad (sin regresión)', async () => {
-    planSummary.set(makeSummary({ modules: { inventario: true, compras: true, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: true, promociones: true } }));
     await createNew();
 
     expect(switchButton().disabled).toBe(false);
