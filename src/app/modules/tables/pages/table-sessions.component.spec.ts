@@ -292,7 +292,7 @@ describe('TableSessionsComponent — pago pendiente y pedido pagado a la vez, si
   const pendienteOrder: DiningOrder = {
     id: 'o2',
     channel: 'QR_MENU',
-    status: 'recibida',
+    status: 'pendiente',
     version: 1,
     dining_table_id: 't1',
     customer_name: null,
@@ -397,7 +397,7 @@ describe('TableSessionsComponent — colapso móvil de la grilla de mesas y el p
         {
           id: 'o1',
           channel: 'POS',
-          status: 'recibida',
+          status: 'pendiente',
           version: 1,
           dining_table_id: 't1',
           customer_name: null,
@@ -422,7 +422,7 @@ describe('TableSessionsComponent — colapso móvil de la grilla de mesas y el p
       {
         id: 'o1',
         channel: 'POS',
-        status: 'recibida',
+        status: 'pendiente',
         version: 1,
         dining_table_id: 't1',
         customer_name: null,
@@ -449,7 +449,7 @@ describe('TableSessionsComponent — colapso móvil de la grilla de mesas y el p
         {
           id: 'o1',
           channel: 'POS',
-          status: 'recibida',
+          status: 'pendiente',
           version: 1,
           dining_table_id: 't1',
           customer_name: null,
@@ -480,7 +480,7 @@ describe('TableSessionsComponent — colapso móvil de la grilla de mesas y el p
       {
         id: 'o1',
         channel: 'POS',
-        status: 'recibida',
+        status: 'pendiente',
         version: 1,
         dining_table_id: 't1',
         customer_name: null,
@@ -523,7 +523,7 @@ describe('TableSessionsComponent — columna de detalle: una sola columna flex a
     ({
       id: 'o1',
       channel: 'POS',
-      status: 'recibida',
+      status: 'pendiente',
       version: 1,
       dining_table_id: 't1',
       customer_name: null,
@@ -632,8 +632,7 @@ describe('TableSessionsComponent — columna de detalle: una sola columna flex a
         ...conPedido(),
         id: 'oq',
         channel: 'QR_MENU',
-        status: 'recibida',
-        payment_status: 'pendiente_validacion',
+        status: 'pendiente',
       } as DiningOrder,
     ]);
     store.selectedTableId.set('t1');
@@ -933,7 +932,7 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
         {
           id: 'o1',
           channel: 'POS',
-          status: 'recibida',
+          status: 'pendiente',
           version: 1,
           dining_table_id: 't1',
           customer_name: null,
@@ -946,13 +945,13 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
       fixture.detectChanges();
 
       expect(cta()).toBeUndefined(); // sub-barra oculta dentro del detalle de mesa
-      expect(nuevaCuentaButton()?.disabled).toBe(false); // pedido 'recibida' sin pagar — A-138
+      expect(nuevaCuentaButton()?.disabled).toBe(false); // pedido 'pendiente' sin pagar — A-138
 
       store.orders.set([
         {
           id: 'o1',
           channel: 'POS',
-          status: 'recibida',
+          status: 'pendiente',
           version: 1,
           dining_table_id: 't1',
           customer_name: null,
@@ -1206,7 +1205,7 @@ describe('TableSessionsComponent — buscador y filtro de ocupación en la sub-b
       {
         id: 'o1',
         channel: 'POS',
-        status: 'recibida',
+        status: 'pendiente',
         version: 1,
         dining_table_id: 't1',
         customer_name: null,

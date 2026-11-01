@@ -127,10 +127,10 @@ export class DiningSessionService {
   }
 
   /**
-   * Acepta un pedido `recibida` → `abierta`.
+   * Acepta un pedido `pendiente` → `abierta`.
    *
    * **Es el único punto que descuenta inventario** en el flujo de mesa. Un
-   * `400` significa que falta stock; el pedido se queda en `recibida` y se
+   * `400` significa que falta stock; el pedido se queda en `pendiente` y se
    * puede reintentar tras reponer.
    */
   async confirmOrder(orderId: string): Promise<DiningOrder> {

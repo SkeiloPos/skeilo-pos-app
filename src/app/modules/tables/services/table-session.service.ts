@@ -47,7 +47,7 @@ export class TableSessionService {
    * Cobra y cierra la sesión.
    *
    * `unified` genera una venta; `split`, una por comensal. Requiere que ningún
-   * pedido siga en `recibida` y que cocina haya terminado todo.
+   * pedido siga en `pendiente` y que cocina haya terminado todo.
    */
   close(id: string, payload: CloseSessionPayload): Promise<CloseSessionResponse> {
     return firstValueFrom(

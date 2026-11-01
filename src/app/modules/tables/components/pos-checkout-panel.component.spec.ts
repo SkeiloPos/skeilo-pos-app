@@ -27,7 +27,7 @@ function manualOrder(): DiningOrder {
   return {
     id: 'o1',
     channel: 'POS',
-    status: 'recibida',
+    status: 'pendiente',
     version: 1,
     dining_table_id: 't1',
     customer_name: null,
@@ -257,7 +257,7 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
     });
     fixture.detectChanges();
 
-    // El pedido sigue 'recibida' (cobro aún no efectuado): "Imprimir Factura" es una
+    // El pedido sigue 'pendiente' (cobro aún no efectuado): "Imprimir Factura" es una
     // acción post-cobro y no debe verse todavía, aunque ya exista `sessionBill`
     // (spec 058, FR-007 — endurece lo que probaba T033/spec 029 antes de este ajuste).
     expect(reprintButton()).toBeUndefined();
@@ -291,13 +291,13 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
       order_ids: ['o1'],
       split: [],
     });
-    // Pedido QR 'recibida' en la misma mesa: pone a centralState() en 'validar-pago'.
+    // Pedido QR 'pendiente' en la misma mesa: pone a centralState() en 'validar-pago'.
     // 'o1' (el pedido propio de este panel, ya seleccionado en el beforeEach)
     // sigue siendo el seleccionado -- 'o2' no lo está, así que su tarjeta de
     // revisión no se renderiza aquí (solo se ve al entrar puntualmente a su
     // pestaña), pero "Liberar Mesa" igual se oculta por el mismo
     // `centralState() === 'validar-pago'`.
-    store.orders.set([manualOrder(), { ...manualOrder(), id: 'o2', channel: 'QR_MENU', status: 'recibida' }]);
+    store.orders.set([manualOrder(), { ...manualOrder(), id: 'o2', channel: 'QR_MENU', status: 'pendiente' }]);
     fixture.detectChanges();
 
     const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
@@ -314,7 +314,7 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
       order_ids: ['o1'],
       split: [],
     });
-    store.orders.set([manualOrder(), { ...manualOrder(), id: 'o2', channel: 'QR_MENU', status: 'recibida' }]);
+    store.orders.set([manualOrder(), { ...manualOrder(), id: 'o2', channel: 'QR_MENU', status: 'pendiente' }]);
     fixture.detectChanges();
     expect(
       Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
@@ -322,11 +322,11 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
       ),
     ).toBeUndefined();
 
-    // Confirmar el pago pendiente: la orden QR ya no queda 'recibida' para esa mesa.
+    // Confirmar el pago pendiente: la orden QR ya no queda 'pendiente' para esa mesa.
     store.orders.set([manualOrder()]);
     fixture.detectChanges();
 
-    // 'o1' (el pedido propio de este panel) sigue 'recibida' -- el cobro sigue
+    // 'o1' (el pedido propio de este panel) sigue 'pendiente' -- el cobro sigue
     // pendiente, así que "Liberar Mesa" no reaparece todavía: la regla nueva de
     // spec 058 (FR-007) es más estricta que la de spec 046, que solo miraba si
     // había OTRO pago QR pendiente de confirmar en la mesa.
@@ -361,7 +361,7 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
       ...manualOrder(),
       id: 'o2',
       channel: 'QR_MENU',
-      status: 'recibida',
+      status: 'pendiente',
     } as DiningOrder;
     store.orders.set([qrPending]);
     store.selectedOrderId.set('o2');
@@ -379,7 +379,7 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
       );
     expect(findButton()).toBeDefined();
 
-    // Ya aceptado para cocina (ítem en 'en_preparacion', status sigue 'recibida').
+    // Ya aceptado para cocina (ítem en 'en_preparacion', status sigue 'pendiente').
     store.orders.set([
       { ...qrPending, items: [{ ...qrPending.items![0], estado_cocina: 'en_preparacion' }] } as DiningOrder,
     ]);
@@ -759,9 +759,9 @@ describe('PosCheckoutPanelComponent — mesa ocupada sin pedido (spec 110)', () 
 
 /**
  * Spec 029, hotfix #3: un pedido de mesero que ya se envió a cocina
- * (`status !== 'recibida'`) no se puede cobrar con checkout-and-send — el
+ * (`status !== 'pendiente'`) no se puede cobrar con checkout-and-send — el
  * backend lo rechaza con 409 ("Solo se cobra y envía pedidos en
- * 'recibida'"), dejándolo `abierta` para siempre sin factura. Debe cobrarse
+ * 'pendiente'"), dejándolo `abierta` para siempre sin factura. Debe cobrarse
  * cerrando la sesión de mesa (`app-session-bill-panel`, `readOnly=false`),
  * el mismo mecanismo que el modo `resumen` ya usa en solo lectura.
  */
@@ -987,7 +987,7 @@ describe('PosCheckoutPanelComponent — pedido sin mesa (spec 059, Historia 3)',
       id: 'o1',
       channel: 'POS',
       order_type: 'TAKEAWAY',
-      status: 'recibida',
+      status: 'pendiente',
       version: 1,
       dining_table_id: null,
       customer_name: 'María G.',

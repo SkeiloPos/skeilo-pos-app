@@ -98,7 +98,7 @@ describe('CashArqueoModalComponent', () => {
       {
         id: 'o2',
         order_type: 'TAKEAWAY',
-        status: 'recibida',
+        status: 'pendiente',
         dining_table_id: null,
         table_number: null,
         customer_name: 'Ana',

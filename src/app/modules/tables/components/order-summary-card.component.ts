@@ -32,12 +32,33 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
           style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;color:var(--terminal-color-text-primary)"
           >{{ title }}</b
         >
-        <span
-          class="px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-medium rounded-[6px] shrink-0"
-          [class]="statusClass"
-          >{{ statusLabel }}</span
-        >
+        @if (!paymentStatusLabel) {
+          <!-- Sin una orden única en contexto (agregado de varias, o
+               ninguna): se conserva el único badge de ocupación de mesa de
+               siempre. -->
+          <span
+            class="px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-medium rounded-[6px] shrink-0"
+            [class]="statusClass"
+            >{{ statusLabel }}</span
+          >
+        }
       </div>
+      @if (paymentStatusLabel) {
+        <!-- spec 146 (FR-002/FR-008, A-150): con exactamente una orden, se
+             muestran sus dos ejes reales por separado y explícitos, en vez
+             de un único badge sintético -- consistente con la cabecera de
+             pos-order-panel.component.ts. -->
+        <div class="flex flex-col gap-1 text-[11px] sm:text-[13px]">
+          <div class="flex items-center gap-1.5">
+            <span style="color:var(--terminal-color-text-muted)">Estado de orden:</span>
+            <span class="px-1.5 py-0.5 rounded-[6px] font-medium" [class]="statusClass">{{ statusLabel }}</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span style="color:var(--terminal-color-text-muted)">Estado de pago:</span>
+            <span class="px-1.5 py-0.5 rounded-[6px] font-medium" [class]="paymentStatusClass">{{ paymentStatusLabel }}</span>
+          </div>
+        </div>
+      }
       <div
         class="flex items-center justify-between gap-2 text-[11px] sm:text-[14px]"
         style="color:var(--terminal-color-text-secondary)"
@@ -78,6 +99,10 @@ export class OrderSummaryCardComponent {
   @Input({ required: true }) totalLabel!: string;
   @Input() ordersCount?: number;
   @Input() selected = false;
+  /** spec 146 (FR-002, A-150): presentes solo cuando la tarjeta representa
+   *  una orden única (no un agregado de varias) — ver nota en el template. */
+  @Input() paymentStatusLabel?: string;
+  @Input() paymentStatusClass?: string;
 
   @Output() select = new EventEmitter<void>();
 }

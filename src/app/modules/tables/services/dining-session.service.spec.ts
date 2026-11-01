@@ -29,10 +29,10 @@ describe('DiningSessionService', () => {
   afterEach(() => http.verify());
 
   it('lista comandas y filtra por estado', async () => {
-    const promise = service.listOrders('recibida');
+    const promise = service.listOrders('pendiente');
     const req = http.expectOne((r) => r.url === `${API}/orders`);
 
-    expect(req.request.params.get('status')).toBe('recibida');
+    expect(req.request.params.get('status')).toBe('pendiente');
     req.flush([]);
     await promise;
   });
@@ -80,17 +80,17 @@ describe('DiningSessionService', () => {
   /**
    * "Aceptar pedido" sin cobrar: deja que cocina empiece mientras el pago
    * sigue pendiente de revisión. A diferencia de `confirmOrder`, NO descuenta
-   * inventario ni cambia `status` -- el pedido sigue `recibida`.
+   * inventario ni cambia `status` -- el pedido sigue `pendiente`.
    */
   it('acepta un pedido para cocina sin cobrar', async () => {
     const promise = service.acceptOrderForKitchen('o1');
     const req = http.expectOne(`${API}/orders/o1/start-preparation`);
 
     expect(req.request.method).toBe('POST');
-    req.flush({ id: 'o1', status: 'recibida', channel: 'QR_MENU', created_at: '2026-07-28' });
+    req.flush({ id: 'o1', status: 'pendiente', channel: 'QR_MENU', created_at: '2026-07-28' });
 
     const order = await promise;
-    expect(order.status).toBe('recibida');
+    expect(order.status).toBe('pendiente');
   });
 
   it('cancela un pedido con motivo', async () => {
@@ -158,7 +158,7 @@ describe('DiningSessionService', () => {
     expect(req.request.method).toBe('POST');
     expect(req.request.body.hold_for_payment).toBe(true);
     expect(req.request.body.channel).toBe('POS');
-    req.flush({ id: 'o1', channel: 'POS', status: 'recibida', created_at: '2026-08-20' });
+    req.flush({ id: 'o1', channel: 'POS', status: 'pendiente', created_at: '2026-08-20' });
 
     const order = await promise;
     expect(order.id).toBe('o1');

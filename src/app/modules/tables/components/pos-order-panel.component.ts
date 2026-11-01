@@ -2,7 +2,13 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { KitchenStatus, getSidebarMode } from '../interfaces/dining.interface';
-import { kitchenStatusLabel } from '../../orders/order-status.util';
+import {
+  kitchenStatusLabel,
+  orderStatusClass,
+  orderStatusLabel,
+  paymentStatusClass,
+  paymentStatusLabel,
+} from '../../orders/order-status.util';
 import { PosCatalogDrawerComponent } from './pos-catalog-drawer.component';
 import { CartItemOptionsComponent } from './cart-item-options.component';
 import { splitVariantLabel } from '../services/menu-lookup';
@@ -81,7 +87,25 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                     class="truncate"
                     style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-size:16px;font-weight:700;color:var(--terminal-color-text-primary)"
                   >{{ headerTitle() }}</h3>
-                  @if (store.selectedTableStatusMeta(); as meta) {
+                  @if (store.selectedSingleOrder(); as o) {
+                    <!-- spec 146 (FR-002/FR-008, A-150): con una sola orden en
+                         contexto, el header muestra sus dos ejes reales y
+                         crudos -- status y payment_status -- en vez del badge
+                         sintético de ocupación de mesa, que mezcla señales de
+                         varias órdenes y no es "el estado de la orden". -->
+                    <span
+                      class="px-2 py-0.5 rounded-[6px] text-[11px] font-medium"
+                      [class]="orderStatusClass(o.status)"
+                      >{{ orderStatusLabel(o.status) }}</span
+                    >
+                    @if (o.payment_status) {
+                      <span
+                        class="px-2 py-0.5 rounded-[6px] text-[11px] font-medium"
+                        [class]="paymentStatusClass(o.payment_status)"
+                        >{{ paymentStatusLabel(o.payment_status) }}</span
+                      >
+                    }
+                  } @else if (store.selectedTableStatusMeta(); as meta) {
                     <span
                       class="px-2 py-0.5 rounded-[6px] text-[11px] font-medium"
                       [class]="meta.chip"
@@ -503,6 +527,13 @@ export class PosOrderPanelComponent {
   statusLabel(status: KitchenStatus): string {
     return kitchenStatusLabel(status);
   }
+
+  /** spec 146 (FR-002/FR-008, A-150): status/payment_status crudos de la
+   *  orden única seleccionada, sin traducir — ver `selectedSingleOrder()`. */
+  readonly orderStatusLabel = orderStatusLabel;
+  readonly orderStatusClass = orderStatusClass;
+  readonly paymentStatusLabel = paymentStatusLabel;
+  readonly paymentStatusClass = paymentStatusClass;
 
   /** spec 131: color del badge de preparación con los tokens del rediseño
    *  (research.md, "modelo de caja") en vez de `kitchenStatusClass()`

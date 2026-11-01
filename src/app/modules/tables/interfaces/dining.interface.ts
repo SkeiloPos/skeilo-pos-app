@@ -16,12 +16,13 @@ export type OrderType = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
 /**
  * Ciclo de vida del **pedido** (facturación), independiente del de cocina.
  *
- * `recibida` es el pedido que el comensal ya envió pero que el personal aún no
- * ha aceptado: **no ha descontado inventario**. El stock se compromete al
- * confirmar (`recibida` → `abierta`).
+ * `pendiente` es el estado inicial de toda orden nueva, de cualquier canal
+ * (spec 146, A-150): el personal aún no la ha confirmado y **no ha
+ * descontado inventario**. El stock se compromete al confirmar
+ * (`pendiente` → `abierta`).
  */
 export type DiningOrderStatus =
-  | 'recibida'
+  | 'pendiente'
   | 'abierta'
   | 'bloqueada'
   | 'pagada'
@@ -406,12 +407,20 @@ export interface OrderBilling {
   sin_detalle_de_precios: boolean;
 }
 
+/** Estado de pago de la orden (spec 146, A-150), independiente de `status`. */
+export type OrderPaymentStatus = 'UNPAID' | 'PAID' | 'PARTIAL';
+
 /** Response of `POST /orders` and `GET /orders` (`OrderResponse`). */
 export interface DiningOrder {
   id: string;
   channel: string;
   order_type?: string | null;
   status: DiningOrderStatus;
+  /** spec 146 (FR-002): independiente de `status` -- una orden puede estar
+   *  `status='pendiente'` con `payment_status='PAID'` si el pago se confirmó
+   *  en el mismo acto de creación. Opcional por compatibilidad con un
+   *  backend anterior a esta spec, que no lo enviaba. */
+  payment_status?: OrderPaymentStatus;
   version?: number;
   /** Sesión de mesa a la que pertenece (agrupa los pedidos de todos los comensales). */
   table_session_id?: string | null;

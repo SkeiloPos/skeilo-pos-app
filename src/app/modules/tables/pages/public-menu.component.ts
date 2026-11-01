@@ -445,12 +445,12 @@ const REFRESH_DEBOUNCE_MS = 250;
                     </div>
 
                     <!-- Pago (spec 024/025): solo aplica mientras la orden sigue
-                         'recibida'. Todo pedido nace ya con su intento de pago
+                         'pendiente'. Todo pedido nace ya con su intento de pago
                          adjunto (spec 025) — el único caso sin
                          current_payment_attempt es un pedido creado antes de
                          este cambio (research.md spec 025, Decisión 7), que no
                          tiene ningún camino de UI para resolverlo aquí. -->
-                    @if (order.status === 'recibida' && order.current_payment_attempt) {
+                    @if (order.status === 'pendiente' && order.current_payment_attempt) {
                       <div class="pt-3 border-t border-gray-200">
                         @if (order.current_payment_attempt.cash_amount != null) {
                           <!-- spec 130 (FR-008): desglose de pago mixto — cada
@@ -1458,7 +1458,7 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
   }
 
   /** El personal ya aceptó el pedido para cocina sin cobrarlo todavía --
-   *  `status` sigue en 'recibida' a propósito (ver util). */
+   *  `status` sigue en 'pendiente' a propósito (ver util). */
   aceptadoSinCobrar(order: DiningOrder): boolean {
     return pedidoAceptadoSinCobrar(order);
   }
