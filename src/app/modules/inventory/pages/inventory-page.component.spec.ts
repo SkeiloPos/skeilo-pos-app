@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { HttpHeaders, HttpResponse, provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, HttpHeaders, HttpResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { of, throwError } from 'rxjs';
@@ -147,6 +147,41 @@ describe('InventoryPageComponent — exportar inventario (spec 086)', () => {
     expect(createObjectURL).toHaveBeenCalledWith(blob);
     expect(clicks()).toEqual([{ download: 'inventario_2026-09-22.xlsx' }]);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:fake');
+  });
+
+  it('si el export falla por un error cualquiera, muestra su aviso fijo «No se pudo exportar el inventario»', () => {
+    const fixture = crear();
+    const service = TestBed.inject(InventoryService);
+    const toast = TestBed.inject(ToastService);
+    vi.spyOn(service, 'exportItems').mockReturnValue(
+      throwError(() => new HttpErrorResponse({ status: 500, error: { detail: 'boom' } })),
+    );
+    const errorSpy = vi.spyOn(toast, 'error');
+
+    clickExport(fixture);
+
+    expect(errorSpy).toHaveBeenCalledWith('No se pudo exportar el inventario');
+  });
+
+  it('spec 141: si el export falla porque el módulo se perdió, NO repite su aviso fijo (el interceptor ya avisó)', () => {
+    const fixture = crear();
+    const service = TestBed.inject(InventoryService);
+    const toast = TestBed.inject(ToastService);
+    vi.spyOn(service, 'exportItems').mockReturnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 403,
+            // Forma que entrega `moduleAccessInterceptor`: `error` ya como objeto, nunca un Blob.
+            error: { code: 'MODULE_NOT_IN_PLAN', module: 'inventario', detail: 'Esta funcionalidad no está incluida en tu plan' },
+          }),
+      ),
+    );
+    const errorSpy = vi.spyOn(toast, 'error');
+
+    clickExport(fixture);
+
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   describe('sin encabezado Content-Disposition: nombre de respaldo con el día LOCAL del negocio (spec 138, A-147)', () => {

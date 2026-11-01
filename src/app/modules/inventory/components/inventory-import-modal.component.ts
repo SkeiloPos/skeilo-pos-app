@@ -4,6 +4,7 @@ import { ApiErrorBody } from '../../../core/auth/auth.models';
 import { InventoryImportJob } from '../interfaces/inventory.interface';
 import { InventoryService } from '../services/inventory.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
+import { isModuleNotInPlan } from '../../../core/module-access/module-access.messages';
 import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { startVisibleInterval, VisibleInterval } from '../../../core/realtime/visible-interval';
@@ -180,8 +181,9 @@ export class InventoryImportModalComponent implements OnInit, OnDestroy {
       a.download = `errores_${job.file_name}`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      this.toast.error('No se pudo descargar el reporte de errores');
+    } catch (err) {
+      // Spec 141: si el módulo se perdió, el interceptor ya avisó y llevó al inicio; no se duplica el aviso.
+      if (!isModuleNotInPlan(err)) this.toast.error('No se pudo descargar el reporte de errores');
     }
   }
 
@@ -201,8 +203,8 @@ export class InventoryImportModalComponent implements OnInit, OnDestroy {
       this.polling?.stop();
       this.job.set(updated);
       this.imported.emit();
-    } catch {
-      this.toast.error('No se pudo cancelar la importación');
+    } catch (err) {
+      if (!isModuleNotInPlan(err)) this.toast.error('No se pudo cancelar la importación');
     } finally {
       this.cancelling.set(false);
     }

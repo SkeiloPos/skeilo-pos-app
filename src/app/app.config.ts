@@ -19,6 +19,7 @@ import { pageIntegrityInterceptor } from './core/integrity/page-integrity.interc
 import { PageIntegrityService } from './core/integrity/page-integrity.service';
 import { AppUpdateService } from './core/update/app-update.service';
 import { inflightRequestsInterceptor } from './core/update/inflight-requests.interceptor';
+import { moduleAccessInterceptor } from './core/module-access/module-access.interceptor';
 import { provideServiceWorker } from '@angular/service-worker';
 
 export const appConfig: ApplicationConfig = {
@@ -35,8 +36,16 @@ export const appConfig: ApplicationConfig = {
     // `pageIntegrityInterceptor` va ANTES que `authTokenInterceptor`: rechazar una
     // acción protegida no debe tocar tokens ni consumir un refresh. El conteo de
     // escrituras en vuelo va después del rechazo: lo rechazado nunca llega a contarse.
+    // `moduleAccessInterceptor` (spec 141) va ÚLTIMO, es decir, el más cercano al servidor: así ve el 403
+    // `MODULE_NOT_IN_PLAN` real de cada petición, también el de un reintento tras refrescar el token
+    // (`authTokenInterceptor` reintenta pasando de nuevo por él).
     provideHttpClient(
-      withInterceptors([pageIntegrityInterceptor, inflightRequestsInterceptor, authTokenInterceptor]),
+      withInterceptors([
+        pageIntegrityInterceptor,
+        inflightRequestsInterceptor,
+        authTokenInterceptor,
+        moduleAccessInterceptor,
+      ]),
     ),
     provideRouter(routes, withComponentInputBinding()),
     // Registra los controladores de Chart.js una sola vez para toda la app; las

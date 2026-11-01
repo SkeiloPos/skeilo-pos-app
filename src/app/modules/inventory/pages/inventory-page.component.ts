@@ -27,6 +27,7 @@ import {
 } from '../interfaces/inventory.interface';
 import { InventoryService } from '../services/inventory.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
+import { isModuleNotInPlan } from '../../../core/module-access/module-access.messages';
 import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { InventoryItemFormComponent } from '../components/inventory-item-form.component';
 import { StockAdjustModalComponent } from '../components/stock-adjust-modal.component';
@@ -1043,7 +1044,10 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
         a.click();
         URL.revokeObjectURL(url);
       },
-      error: () => this.toast.error('No se pudo exportar el inventario'),
+      // Spec 141: si el módulo se perdió, el interceptor ya avisó y llevó al inicio; no se duplica el aviso.
+      error: (err: unknown) => {
+        if (!isModuleNotInPlan(err)) this.toast.error('No se pudo exportar el inventario');
+      },
     });
   }
 
