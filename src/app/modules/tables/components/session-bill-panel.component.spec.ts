@@ -414,5 +414,49 @@ describe('SessionBillPanelComponent', () => {
     expect(selects()[0].value).toBe('pm1');
     expect(amounts()[0].value).toBe('12.000');
   });
+
+  // ── prefillPayment (spec 147 ciclo 2, a pedido del usuario) ──────────────
+  describe('prefillPayment: lo que el comensal ya eligió desde el QR', () => {
+    it('sin tocar nada todavía, arranca con el borrador precargado en vez de vacío', async () => {
+      fixture.componentRef.setInput('prefillPayment', [
+        { methodId: 'pm2', amount: 12000, reference: null },
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(selects()[0].value).toBe('pm2');
+      expect(amounts()[0].value).toBe('12.000');
+      expect(panel.ready()).toBe(true);
+    });
+
+    it('si ya eligió método a mano antes de que el precargado resuelva, no se lo pisa', async () => {
+      await chooseMethod('pm1');
+      await fill(amounts()[0], '7000');
+
+      fixture.componentRef.setInput('prefillPayment', [
+        { methodId: 'pm2', amount: 12000, reference: null },
+      ]);
+      fixture.detectChanges();
+
+      expect(selects()[0].value).toBe('pm1');
+      expect(amounts()[0].value).toBe('7.000');
+    });
+
+    it('una cuenta nueva (bill cambia) vuelve a precargar, no a vaciar, mientras no se haya tocado', async () => {
+      // El llamador (pos-checkout-panel.component.ts) recalcula `prefillPayment`
+      // contra el total vigente cada vez (es un `computed()` sobre `sessionBill()`)
+      // -- aquí se simula ya recalculado para la cuenta nueva.
+      fixture.componentRef.setInput('prefillPayment', [
+        { methodId: 'pm2', amount: 9000, reference: null },
+      ]);
+      setBill({ ...bill, table_session_id: 'ts2', total: '9000' });
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(selects()[0].value).toBe('pm2');
+      expect(amounts()[0].value).toBe('9.000');
+    });
+  });
 });
 

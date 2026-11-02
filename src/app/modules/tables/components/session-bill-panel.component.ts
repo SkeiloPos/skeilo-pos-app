@@ -121,16 +121,26 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
             Feature 028, T004/T009: pedido de canal qr — el comensal ya pagó a
             distancia y el cajero solo valida el comprobante (en el bloque de
             validación de pagos, no aquí). Mostrar el selector de método y el
-            botón "Cobrar y cerrar mesa" en este modo era justo el bug de
-            origen: cobrar de nuevo una mesa ya pagada por QR fallaba con un
+            botón "Cobrar"/"Cobrar y cerrar mesa" en este modo era justo el bug
+            de origen: cobrar de nuevo una mesa ya pagada por QR fallaba con un
             error que el cajero no sabía interpretar.
           -->
+        } @else if (+bill.total === 0) {
+          <!-- A pedido del usuario (spec 147 ciclo 2): con keepTableOpen, cobrar ya
+               no libera la mesa -- este pedido sigue seleccionado después, con nada
+               más que cobrar (bill.total en 0). Sin este aviso se repetía el
+               formulario de pago vacío para un $0; "Liberar Mesa" (fuera de este
+               panel) es la acción que falta. -->
+          <p class="text-[13px] py-2" style="color:var(--terminal-color-text-muted,#9ca3af)">
+            Ya está cobrado. Usa "Liberar Mesa" cuando el cliente se vaya.
+          </p>
         } @else {
         <!-- Pago -->
         <div class="flex-1 overflow-y-auto space-y-2 mb-3">
           <app-payment-input
             [total]="total()"
             [methods]="methods"
+            [initialDraft]="prefillPayment"
             (changed)="unifiedPayment.set($event)"
           />
         </div>
@@ -146,7 +156,7 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
           [disabled]="submitting() || !ready()"
           class="w-full min-h-11 py-2.5 bg-[#15803d] hover:bg-[#166534] text-white text-[14px] font-semibold rounded-[8px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          {{ submitting() ? 'Cobrando...' : 'Cobrar y cerrar mesa' }}
+          {{ submitting() ? 'Cobrando...' : keepTableOpen ? 'Cobrar' : 'Cobrar y cerrar mesa' }}
         </button>
         }
       }
@@ -189,6 +199,27 @@ export class SessionBillPanelComponent implements OnChanges {
    * callback para no acoplar este panel al store de la terminal.
    */
   @Input() beforeCharge: (() => Promise<boolean>) | null = null;
+  /**
+   * A pedido del usuario (spec 147 ciclo 2): cobrar un pedido entregado no
+   * debe liberar la mesa de inmediato -- el cliente puede seguir sentado.
+   * `true` usa `TableSessionService.charge()` (cobra, deja la sesión activa
+   * y la mesa ocupada) en vez de `close()` (cobra y libera en el mismo
+   * paso); cambia también el texto del botón ("Cobrar" vs "Cobrar y cerrar
+   * mesa"). La mesa se libera después con el botón "Liberar Mesa" aparte.
+   */
+  @Input() keepTableOpen = false;
+  /**
+   * A pedido del usuario (spec 147 ciclo 2): si el pedido es de un comensal
+   * que ya eligió cómo pagar desde el Menú QR (`OrderPaymentAttempt` sin
+   * resolver), el llamador arma este borrador con ese método -- o los dos,
+   * si fue mixto, con sus montos reales -- para no arrancar el selector
+   * vacío. Se reenvía tal cual como `initialDraft` a `app-payment-input`
+   * (ver su template abajo), que es quien de verdad arranca el selector y
+   * decide si aplicarlo -- solo mientras el cajero no haya tocado nada
+   * todavía, porque llega de forma asíncrona y puede resolver después de
+   * que ya se vea el panel.
+   */
+  @Input() prefillPayment: PaymentDraft | null = null;
   /** Cierre completo: sus `sale_ids` son la fuente de la factura impresa. */
   @Output() charged = new EventEmitter<CloseSessionResponse>();
 
@@ -253,7 +284,10 @@ export class SessionBillPanelComponent implements OnChanges {
    * Cuando la cuenta **sí** cambia, el pago se reinicia a propósito: los importes
    * anteriores son de un total que ya no existe, y cobrarlos descuadraría el
    * turno. (`PaymentInputComponent` lo reinicia por su cuenta de todos modos al
-   * recibir otro `total`.)
+   * recibir otro `total` -- con `prefillPayment` si lo hay, spec 147 ciclo 2 --
+   * y su `(changed)` deja a `unifiedPayment` con el valor correcto justo
+   * después, así que este reset aquí es solo un estado intermedio, nunca el
+   * final.)
    */
   ngOnChanges(changes: SimpleChanges): void {
     if (!changes['bill']) return;
@@ -274,11 +308,11 @@ export class SessionBillPanelComponent implements OnChanges {
       // Antes del cierre, no después: el 409 por ítems sin terminar dejaría al
       // cajero con un error que solo puede resolver en otra pantalla.
       if (this.beforeCharge && !(await this.beforeCharge())) return;
-      const closed = await this.api.close(
-        this.bill.table_session_id,
-        this.buildPayload(this.cashShiftId),
-      );
-      this.toast.success('Mesa cobrada y liberada');
+      const payload = this.buildPayload(this.cashShiftId);
+      const closed = this.keepTableOpen
+        ? await this.api.charge(this.bill.table_session_id, payload)
+        : await this.api.close(this.bill.table_session_id, payload);
+      this.toast.success(this.keepTableOpen ? 'Cobrado' : 'Mesa cobrada y liberada');
       this.charged.emit(closed);
     } catch (err) {
       this.showChargeError(err);

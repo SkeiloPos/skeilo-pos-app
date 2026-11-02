@@ -10,7 +10,6 @@ import { TableService } from '../../tables/services/table.service';
 import { MenuService } from '../../../core/services/menu.service';
 import { buildMenuLookup } from '../../tables/services/menu-lookup';
 import {
-  displayOrderStatus,
   kitchenStatusClass,
   kitchenStatusLabel,
   orderDisplayCode,
@@ -84,8 +83,8 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
               <p class="text-base font-bold text-gray-900 truncate">Orden {{ code() }}</p>
               <p class="text-xs text-gray-400 mt-0.5">Canal: {{ order()!.channel }}</p>
             </div>
-            <span class="text-sm px-3 py-1.5 rounded-full font-semibold shrink-0" [class]="statusClass(displayStatus(order()!))">
-              {{ statusLabel(displayStatus(order()!)) }}
+            <span class="text-sm px-3 py-1.5 rounded-full font-semibold shrink-0" [class]="statusClass(order()!.status)">
+              {{ statusLabel(order()!.status) }}
             </span>
           </div>
 
@@ -200,7 +199,7 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
                             }
                             <!-- FR-004: con adicionales por línea, el monto se muestra para que
                                  "unitario × cantidad" no parezca contradecir el importe. -->
-                            @if (muestraImportes() && item.estado_cocina !== 'anulado' && tieneAdicionales(item)) {
+                            @if (muestraImportes() && item.estado_cocina !== 'cancelado' && tieneAdicionales(item)) {
                               <p class="text-xs text-gray-400">Adicionales: {{ item.addons_total | money }}</p>
                             }
                           </div>
@@ -211,12 +210,12 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
                            lleva el distintivo EN LUGAR del importe. No se pinta un importe
                            tachado: un número tachado sigue leyéndose como dinero al ojear la
                            columna, y ensucia la suma a mano que SC-007 pide verificar. -->
-                      @if (item.estado_cocina === 'anulado') {
+                      @if (item.estado_cocina === 'cancelado') {
                         <td class="px-4 py-3 text-right" colspan="2">
                           <span
                             class="text-[11px] px-2 py-0.5 rounded-full font-semibold"
-                            [class]="kitchenClass('anulado')"
-                          >{{ kitchenLabel('anulado') }}</span>
+                            [class]="kitchenClass('cancelado')"
+                          >{{ kitchenLabel('cancelado') }}</span>
                         </td>
                       } @else if (muestraImportes()) {
                         <td class="px-4 py-3 text-right tabular-nums text-sm text-gray-600">{{ item.unit_price | money }}</td>
@@ -563,7 +562,6 @@ export class OrderDetailComponent implements OnInit {
 
   statusLabel = orderStatusLabel;
   statusClass = orderStatusClass;
-  displayStatus = displayOrderStatus;
   // spec 094 (D9): el distintivo del ítem anulado reusa la etiqueta y el color
   // que ya usan el KDS y la terminal de mesas, en vez de inventar una nueva.
   kitchenLabel = kitchenStatusLabel;

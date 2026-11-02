@@ -41,7 +41,7 @@ describe('OrderDetailComponent', () => {
     http.expectOne(`${API}/orders/o1`).flush({
       id: 'o1',
       channel: 'QR_MENU',
-      status: 'abierta',
+      status: 'pendiente',
       paid: true,
       created_at: '2026-08-21T23:27:00+00:00', // 18:27 en Bogotá (spec 138: con offset, sin depender de la zona del navegador)
       dining_table_id: null,
@@ -52,10 +52,10 @@ describe('OrderDetailComponent', () => {
 
   afterEach(() => http.verify());
 
-  it('un pedido abierta ya pagado (paid) se muestra con badge "Pagada"', () => {
+  it('un pedido abierta ya pagado (paid) muestra el status crudo, sin sustituirlo por "pagada" (spec 146, FR-008)', () => {
     fixture.detectChanges();
-    expect((fixture.nativeElement.textContent as string)).toContain('Pagada');
-    expect((fixture.nativeElement.textContent as string)).not.toContain('Abierta');
+    expect((fixture.nativeElement.textContent as string)).toContain('pendiente');
+    expect((fixture.nativeElement.textContent as string)).not.toContain('pagada');
   });
 
   it('el botón de volver ya no es la flecha "←" (spec 082)', () => {
@@ -96,7 +96,7 @@ function pedido(over: Partial<DiningOrder> = {}): DiningOrder {
   return {
     id: 'o1',
     channel: 'POS',
-    status: 'abierta',
+    status: 'pendiente',
     created_at: '2026-08-21T23:27:00+00:00', // 18:27 en Bogotá (spec 138: con offset, sin depender de la zona del navegador)
     dining_table_id: null,
     customer_name: null,
@@ -262,13 +262,13 @@ describe('OrderDetailComponent — importes por línea (spec 094, US1)', () => {
             quantity: 1,
             unit_price: '5000',
             line_total: '5000',
-            estado_cocina: 'anulado',
+            estado_cocina: 'cancelado',
           }),
         ] as never,
       }),
     );
 
-    expect(el.textContent).toContain('Anulado');
+    expect(el.textContent).toContain('cancelado'); // estado_cocina crudo (spec 146, FR-008)
     // La línea anulada sigue en la lista (no se oculta, Q7)...
     expect(el.querySelectorAll('[data-testid="item-row"]').length).toBe(2);
     // ...pero su importe no se pinta.
@@ -384,7 +384,7 @@ describe('OrderDetailComponent — los tres avisos (spec 094, US1)', () => {
 
   it('factura_agrupada muestra el aviso literal de cuenta unificada', async () => {
     const { el } = await montar(
-      pedido({ billing: { ...base, state: 'factura_agrupada' }, status: 'pagada' }),
+      pedido({ billing: { ...base, state: 'factura_agrupada' }, status: 'entregada' }),
     );
 
     expect(el.textContent).toContain(AVISO_AGRUPADA);
@@ -393,7 +393,7 @@ describe('OrderDetailComponent — los tres avisos (spec 094, US1)', () => {
 
   it('sin_factura y pedido abierto muestra el aviso literal de pedido sin cobrar', async () => {
     const { el } = await montar(
-      pedido({ billing: { ...base, state: 'sin_factura' }, status: 'abierta' }),
+      pedido({ billing: { ...base, state: 'sin_factura' }, status: 'pendiente' }),
     );
 
     expect(el.textContent).toContain(AVISO_SIN_COBRAR);
@@ -410,7 +410,7 @@ describe('OrderDetailComponent — los tres avisos (spec 094, US1)', () => {
 
     expect(el.textContent).not.toContain(AVISO_SIN_COBRAR);
     expect(el.textContent).not.toContain(AVISO_AGRUPADA);
-    expect(el.textContent).toContain('Cancelada');
+    expect(el.textContent).toContain('cancelada'); // status crudo (spec 146, FR-008)
     expect(el.querySelector('[data-testid="totales"]')).toBeTruthy();
   });
 
@@ -433,7 +433,7 @@ describe('OrderDetailComponent — los tres avisos (spec 094, US1)', () => {
     const { el } = await montar(
       pedido({
         billing: { ...base, state: 'factura_propia', source: 'factura' },
-        status: 'pagada',
+        status: 'entregada',
       }),
     );
 
@@ -710,14 +710,14 @@ describe('OrderDetailComponent — huecos de datos (spec 094, US3)', () => {
         status: 'cancelada',
         billing: { ...base, sin_detalle_de_precios: false },
         items: [
-          item({ id: 'i1', unit_price: '8000', line_total: '8000', estado_cocina: 'anulado' }),
-          item({ id: 'i2', unit_price: '5000', line_total: '5000', estado_cocina: 'anulado' }),
+          item({ id: 'i1', unit_price: '8000', line_total: '8000', estado_cocina: 'cancelado' }),
+          item({ id: 'i2', unit_price: '5000', line_total: '5000', estado_cocina: 'cancelado' }),
         ] as never,
       }),
     );
 
     expect(filas(el).length).toBe(2);
-    expect(textoDeLasFilas(el)).toContain('Anulado');
+    expect(textoDeLasFilas(el)).toContain('cancelado'); // estado_cocina crudo (spec 146, FR-008)
     expect(el.textContent).not.toContain(AVISO_SIN_DETALLE);
     expect(el.querySelector('[data-testid="totales"]')!.textContent).toContain('$ 0');
     expect(el.textContent).not.toContain('Sin ítems');
@@ -894,7 +894,7 @@ describe('OrderDetailComponent — bloques agrupados del nuevo diseño (spec 120
           useValue: {
             snapshot: {
               paramMap: convertToParamMap({ id: 'o1' }),
-              queryParams: { status: 'pagada', search: 'Deimer' },
+              queryParams: { status: 'entregada', search: 'Deimer' },
             },
           },
         },
@@ -910,7 +910,7 @@ describe('OrderDetailComponent — bloques agrupados del nuevo diseño (spec 120
     fixture.detectChanges();
 
     const back = fixture.nativeElement.querySelector('a[aria-label="Volver a la lista"]') as HTMLAnchorElement;
-    expect(back.getAttribute('href')).toContain('status=pagada');
+    expect(back.getAttribute('href')).toContain('status=entregada');
     expect(back.getAttribute('href')).toContain('search=Deimer');
     http.verify();
   });

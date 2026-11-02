@@ -30,6 +30,15 @@ export interface OrderConfirmedEvent extends RealtimeBase {
   readonly status: string;
 }
 
+/** Spec 147 (FR-020, R8): el pedido completo (y todos sus ítems `pendiente`)
+ *  pasó a `entregada` con la acción única "Entregar". */
+export interface OrderDeliveredEvent extends RealtimeBase {
+  readonly type: 'order.delivered';
+  readonly order_id: string;
+  readonly table_session_id: string | null;
+  readonly status: string;
+}
+
 export interface ItemKitchenChangedEvent extends RealtimeBase {
   readonly type: 'order.item_kitchen_changed';
   readonly order_id: string;
@@ -134,6 +143,7 @@ export interface MenuUpdatedEvent extends RealtimeBase {
 export type RealtimeEvent =
   | OrderCreatedEvent
   | OrderConfirmedEvent
+  | OrderDeliveredEvent
   | ItemKitchenChangedEvent
   | ItemAddonAddedEvent
   | ItemVoidedEvent

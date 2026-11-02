@@ -32,12 +32,10 @@ import { DinerPaymentAttempt, DinerPaymentMethod } from '../interfaces/diner.int
 import { VisibleInterval, startVisibleInterval } from '../../../core/realtime/visible-interval';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import {
-  esperaConfirmacion,
   kitchenStatusClass,
   kitchenStatusLabel,
   orderStatusClass,
   orderStatusLabel,
-  pedidoAceptadoSinCobrar,
   puedeCancelarComensal,
 } from '../../orders/order-status.util';
 import { CartComponent } from '../components/cart.component';
@@ -358,13 +356,13 @@ const REFRESH_DEBOUNCE_MS = 250;
                       <span class="text-sm text-gray-400 tabular-nums">{{ orderTime(order) }}</span>
                     </div>
 
-                    @if (aceptadoSinCobrar(order)) {
-                      <p class="text-sm text-blue-600">
-                        Tu pedido está en preparación.
-                      </p>
-                    } @else if (esperaConfirmacion(order)) {
+                    @if (order.status === 'pendiente') {
                       <p class="text-sm text-violet-600">
-                        Esperando a que el personal lo acepte.
+                        Esperando a que el personal lo reciba.
+                      </p>
+                    } @else if (order.status === 'confirmado') {
+                      <p class="text-sm text-sky-600">
+                        El personal ya recibió tu pedido y pronto empieza a prepararlo.
                       </p>
                     }
 
@@ -429,7 +427,7 @@ const REFRESH_DEBOUNCE_MS = 250;
                               </div>
                             }
                             <app-cart-item-options [options]="itemOptionLines(item)" [notes]="item.notes ?? null" />
-                            @if ((!esperaConfirmacion(order) || aceptadoSinCobrar(order)) && item.estado_cocina !== 'anulado') {
+                            @if (item.estado_cocina !== 'cancelado') {
                               <span class="inline-block px-2 py-0.5 rounded-full text-xs" [class]="kitchenClass(item)">
                                 {{ kitchenLabel(item) }}
                               </span>
@@ -445,12 +443,12 @@ const REFRESH_DEBOUNCE_MS = 250;
                     </div>
 
                     <!-- Pago (spec 024/025): solo aplica mientras la orden sigue
-                         'recibida'. Todo pedido nace ya con su intento de pago
+                         'pendiente'. Todo pedido nace ya con su intento de pago
                          adjunto (spec 025) — el único caso sin
                          current_payment_attempt es un pedido creado antes de
                          este cambio (research.md spec 025, Decisión 7), que no
                          tiene ningún camino de UI para resolverlo aquí. -->
-                    @if (order.status === 'recibida' && order.current_payment_attempt) {
+                    @if (order.status === 'pendiente' && order.current_payment_attempt) {
                       <div class="pt-3 border-t border-gray-200">
                         @if (order.current_payment_attempt.cash_amount != null) {
                           <!-- spec 130 (FR-008): desglose de pago mixto — cada
@@ -1453,23 +1451,17 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     return puedeCancelarComensal(order);
   }
 
-  esperaConfirmacion(order: DiningOrder): boolean {
-    return esperaConfirmacion(order);
-  }
-
-  /** El personal ya aceptó el pedido para cocina sin cobrarlo todavía --
-   *  `status` sigue en 'recibida' a propósito (ver util). */
-  aceptadoSinCobrar(order: DiningOrder): boolean {
-    return pedidoAceptadoSinCobrar(order);
-  }
+  // Spec 147: ya no existe el paso intermedio "aceptado para cocina sin
+  // cobrar" del modelo viejo. A pedido del usuario se reintrodujo
+  // `'confirmado'` como paso de recepción explícito, sin tocar cocina ni
+  // pago -- `status` ('pendiente'/'confirmado'/'entregada') sigue siendo la
+  // única señal mostrada aquí.
 
   statusLabel(order: DiningOrder): string {
-    if (this.aceptadoSinCobrar(order)) return kitchenStatusLabel('en_preparacion');
     return orderStatusLabel(order.status);
   }
 
   statusClass(order: DiningOrder): string {
-    if (this.aceptadoSinCobrar(order)) return kitchenStatusClass('en_preparacion');
     return orderStatusClass(order.status);
   }
 
@@ -1743,6 +1735,8 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     this.rtOff.push(
       this.realtime.on('order.created', refrescar),
       this.realtime.on('order.confirmed', refrescar),
+      // Spec 147 (FR-020): el comensal ve "Entregado" sin recargar.
+      this.realtime.on('order.delivered', refrescar),
       this.realtime.on('order.item_kitchen_changed', refrescar),
       this.realtime.on('order.item_voided', refrescar),
       this.realtime.on('order.cancelled', refrescar),

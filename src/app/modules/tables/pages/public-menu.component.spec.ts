@@ -303,7 +303,7 @@ describe('PublicMenuComponent', () => {
     const order: DiningOrder = {
       id: 'o1',
       channel: 'QR_MENU',
-      status: 'recibida',
+      status: 'pendiente',
       created_at: new Date().toISOString(),
       items: [
         {
@@ -334,13 +334,17 @@ describe('PublicMenuComponent', () => {
     expect(texto.split('sin banana').length - 1).toBe(1);
   });
 
-  // ── "Aceptar pedido" sin cobrar (POST /orders/{id}/start-preparation) ────
+  // ── Spec 147 (FR-001/FR-002): ya no hay "Aceptar pedido" sin cobrar ni paso
+  // intermedio "en preparación" -- la única acción es "Entregar", de una vez,
+  // así que mientras `status === 'pendiente'` el mensaje es siempre el mismo,
+  // sin importar el `estado_cocina` de los ítems (el caso "aceptado para
+  // cocina sin cobrar" que distinguía un mensaje aparte ya no existe).
 
-  it('"recibida" sin aceptar: badge "Por confirmar" y "Esperando a que el personal lo acepte."', async () => {
+  it('"pendiente": badge crudo "pendiente" y "Esperando a que el personal lo reciba." (spec 146/147, FR-008)', async () => {
     const order: DiningOrder = {
       id: 'o1',
       channel: 'QR_MENU',
-      status: 'recibida',
+      status: 'pendiente',
       created_at: new Date().toISOString(),
       items: [{ id: 'it1', product_variant_id: 'v1', quantity: 1, unit_price: '5000', estado_cocina: 'pendiente' }],
     };
@@ -350,28 +354,8 @@ describe('PublicMenuComponent', () => {
     fixture.detectChanges();
 
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(texto).toContain('Por confirmar');
-    expect(texto).toContain('Esperando a que el personal lo acepte.');
-    expect(texto).not.toContain('Tu pedido está en preparación.');
-  });
-
-  it('aceptado para cocina sin cobrar: badge "En preparación" y "Tu pedido está en preparación." (status sigue recibida)', async () => {
-    const order: DiningOrder = {
-      id: 'o1',
-      channel: 'QR_MENU',
-      status: 'recibida',
-      created_at: new Date().toISOString(),
-      items: [{ id: 'it1', product_variant_id: 'v1', quantity: 1, unit_price: '5000', estado_cocina: 'en_preparacion' }],
-    };
-    const { fixture, component } = await createComponent('tok-1', [], { withSession: true });
-    component.myOrders.set([order]);
-    component.section.set('pedidos');
-    fixture.detectChanges();
-
-    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(texto).toContain('En preparación');
-    expect(texto).toContain('Tu pedido está en preparación.');
-    expect(texto).not.toContain('Esperando a que el personal lo acepte.');
+    expect(texto).toContain('pendiente');
+    expect(texto).toContain('Esperando a que el personal lo reciba.');
   });
 
   // ── Precio, promoción y total del pedido en "Mis pedidos" ─────────────────
@@ -380,7 +364,7 @@ describe('PublicMenuComponent', () => {
     const order: DiningOrder = {
       id: 'o1',
       channel: 'QR_MENU',
-      status: 'recibida',
+      status: 'pendiente',
       created_at: new Date().toISOString(),
       items: [
         { id: 'it1', product_variant_id: 'v1', quantity: 2, unit_price: '5000', estado_cocina: 'pendiente' },
@@ -404,7 +388,7 @@ describe('PublicMenuComponent', () => {
     return {
       id: 'o1',
       channel: 'QR_MENU',
-      status: 'recibida',
+      status: 'pendiente',
       created_at: new Date().toISOString(),
       items: [{ id: 'it1', product_variant_id: 'v1', quantity: 1, unit_price: '8000', estado_cocina: 'pendiente' }],
       current_payment_attempt: {
@@ -456,7 +440,7 @@ describe('PublicMenuComponent', () => {
     const order: DiningOrder = {
       id: 'o1',
       channel: 'QR_MENU',
-      status: 'recibida',
+      status: 'pendiente',
       created_at: new Date().toISOString(),
       items: [
         {
@@ -488,7 +472,7 @@ describe('PublicMenuComponent', () => {
     const order: DiningOrder = {
       id: 'o1',
       channel: 'QR_MENU',
-      status: 'recibida',
+      status: 'pendiente',
       created_at: new Date().toISOString(),
       items: [
         {
@@ -1078,7 +1062,7 @@ describe('PublicMenuComponent', () => {
     it('la pantalla de gracias no ofrece botones, enlaces, historial ni recibo', async () => {
       const { fixture, rt, component } = await conSesion();
       component.myOrders.set([
-        { id: 'o1', channel: 'QR_MENU', status: 'recibida', created_at: new Date().toISOString(), items: [] } as DiningOrder,
+        { id: 'o1', channel: 'QR_MENU', status: 'pendiente', created_at: new Date().toISOString(), items: [] } as DiningOrder,
       ]);
 
       rt.emit('session.closed', { reason: 'paid' });
@@ -1274,7 +1258,7 @@ describe('PublicMenuComponent', () => {
 
     it('un pago por transferencia en curso no bloquea la pantalla de gracias (FR-019): el modal de pago se cierra', async () => {
       const { component, fixture, rt } = await conSesion();
-      component.payingOrder.set({ id: 'o1', channel: 'QR_MENU', status: 'recibida', created_at: new Date().toISOString(), items: [] } as DiningOrder);
+      component.payingOrder.set({ id: 'o1', channel: 'QR_MENU', status: 'pendiente', created_at: new Date().toISOString(), items: [] } as DiningOrder);
       component.cartDrawerOpen.set(true);
       fixture.detectChanges();
 
@@ -1338,7 +1322,7 @@ describe('PublicMenuComponent', () => {
   describe('confirmExit()/exit() — bloqueo con pago pendiente', () => {
     function buildOrder(attempt: Partial<NonNullable<DiningOrder['current_payment_attempt']>> | null): DiningOrder {
       return {
-        id: 'o1', channel: 'QR_MENU', status: 'recibida', created_at: new Date().toISOString(),
+        id: 'o1', channel: 'QR_MENU', status: 'pendiente', created_at: new Date().toISOString(),
         items: [],
         current_payment_attempt: attempt
           ? {

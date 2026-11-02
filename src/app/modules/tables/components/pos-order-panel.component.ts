@@ -1,8 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
-import { KitchenStatus, getSidebarMode } from '../interfaces/dining.interface';
-import { kitchenStatusLabel } from '../../orders/order-status.util';
+import { DiningOrder, KitchenStatus, getSidebarMode } from '../interfaces/dining.interface';
+import {
+  kitchenStatusLabel,
+  orderStatusClass,
+  orderStatusLabel,
+  paymentStatusClass,
+  paymentStatusLabel,
+} from '../../orders/order-status.util';
 import { PosCatalogDrawerComponent } from './pos-catalog-drawer.component';
 import { CartItemOptionsComponent } from './cart-item-options.component';
 import { splitVariantLabel } from '../services/menu-lookup';
@@ -81,7 +87,31 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                     class="truncate"
                     style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-size:16px;font-weight:700;color:var(--terminal-color-text-primary)"
                   >{{ headerTitle() }}</h3>
-                  @if (store.selectedTableStatusMeta(); as meta) {
+                  @if (store.selectedOrder(); as o) {
+                    <!-- spec 146 (FR-002/FR-008, A-150): el header muestra los
+                         dos ejes reales y crudos del pedido de la pestaña
+                         activa -- status y payment_status -- en vez del badge
+                         sintético de ocupación de mesa, que mezcla señales de
+                         varias órdenes y no es "el estado de la orden". Antes
+                         usaba selectedSingleOrder() (solo con exactamente 1
+                         orden en la mesa): con 2+ pestañas "Pedido N" caía
+                         siempre al badge de ocupación y el botón "Entregar" de
+                         abajo desaparecía para cualquiera de los pedidos --
+                         bug reportado, sin forma de entregar/cobrar un
+                         segundo pedido en la misma mesa. -->
+                    <span
+                      class="px-2 py-0.5 rounded-[6px] text-[11px] font-medium"
+                      [class]="orderStatusClass(o.status)"
+                      >{{ orderStatusLabel(o.status) }}</span
+                    >
+                    @if (o.payment_status) {
+                      <span
+                        class="px-2 py-0.5 rounded-[6px] text-[11px] font-medium"
+                        [class]="paymentStatusClass(o.payment_status)"
+                        >{{ paymentStatusLabel(o.payment_status) }}</span
+                      >
+                    }
+                  } @else if (store.selectedTableStatusMeta(); as meta) {
                     <span
                       class="px-2 py-0.5 rounded-[6px] text-[11px] font-medium"
                       [class]="meta.chip"
@@ -95,6 +125,38 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                 </span>
               </div>
             </div>
+            <!-- A pedido del usuario: "Recibir" es el primer paso para un
+                 pedido recién llegado (pendiente -> confirmado) --
+                 informativo, no toca cocina ni pago. "Entregar" (spec 147,
+                 FR-001/FR-002a/FR-011, única acción de entrega para todo el
+                 pedido, idempotente -- también sirve como "re-entregar" con
+                 ítems nuevos tras una primera entrega) solo se habilita
+                 después de recibir, nunca directo desde pendiente. A su
+                 propia columna a la derecha (no junto a los chips de
+                 estado): ahí se confundía visualmente con ellos. -->
+            @if (store.selectedOrder(); as o) {
+              @if (o.status === 'pendiente' && o.channel === 'QR_MENU') {
+                <button
+                  type="button"
+                  (click)="store.receiveOrder(o.id)"
+                  [disabled]="store.submitting()"
+                  class="shrink-0 px-4 py-2 rounded-[8px] text-white text-[13px] font-semibold transition-colors disabled:opacity-40"
+                  style="background:var(--terminal-color-primary,#7c3aed)"
+                >
+                  Recibir
+                </button>
+              } @else if (o.status !== 'cancelada' && canDeliver(o)) {
+                <button
+                  type="button"
+                  (click)="store.deliverOrder(o.id)"
+                  [disabled]="store.submitting()"
+                  class="shrink-0 px-4 py-2 rounded-[8px] text-white text-[13px] font-semibold transition-colors disabled:opacity-40"
+                  style="background:var(--terminal-color-success,#16a34a)"
+                >
+                  Entregar
+                </button>
+              }
+            }
           </div>
 
           <!-- Spec 059, Historia 3 (FR-012): datos propios de un pedido de
@@ -320,27 +382,12 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                         }
                       </div>
                       <div class="flex items-center gap-2">
-                        <!-- Marcar listo desde aquí es lo que sustituye al tablero de
-                           cocina: quien toma el pedido lo prepara y lo marca sin
-                           cambiar de pantalla. Botón outline (borde, sin
-                           relleno), 44px de alto -- mismo tratamiento/tamaño que
-                           "Anular" (mockup de referencia, tDetOn): antes eran
-                           dos botones de distinto peso/tamaño. -->
-                        @if (!it.ready) {
-                          <button
-                            (click)="store.avanzarItem(it.key)"
-                            [disabled]="store.submitting()"
-                            class="min-h-11 px-3.5 rounded-[8px] border text-[13px] font-semibold disabled:opacity-50 transition-colors"
-                            style="border-color:var(--terminal-color-success);color:var(--terminal-color-success);background:var(--terminal-color-surface)"
-                          >
-                            Marcar listo
-                          </button>
-                        }
+                        <!-- Spec 147 (FR-002): ya no hay "Marcar listo" por
+                           línea/ítem -- la entrega es una sola acción para
+                           todo el pedido (botón "Entregar" del header). -->
                         @if (it.ready) {
-                          <!-- FR-003: texto de ayuda cuando la acción no está
-                             disponible por el estado de la línea. -->
-                          <span class="text-[11px]" style="color:var(--terminal-color-text-muted)" title="Producto ya preparado: agrega un producto nuevo">
-                            Producto ya preparado
+                          <span class="text-[11px]" style="color:var(--terminal-color-text-muted)" title="Producto ya entregado: agrega un producto nuevo">
+                            Producto ya entregado
                           </span>
                         }
                         <!-- Un pedido ya pagado se asume entregado: no se anula
@@ -446,6 +493,17 @@ export class PosOrderPanelComponent {
     this.router.navigate(['/dashboard/mesas-sesiones', tableId, 'orden-manual']);
   }
 
+  /** Spec 147 (FR-001/FR-002a): ¿tiene este pedido algún ítem sin entregar?
+   *  Muestra el botón "Entregar" tanto para la primera entrega como para una
+   *  re-entrega (ítems agregados después de la primera). Solo aplica a
+   *  pedidos de mesa (`dining_table_id`, manual o QR) -- a pedido del
+   *  usuario: mostrador, Domicilio y Para llevar quedan `entregada`+`PAID`
+   *  de una vez al cobrar (`checkout_and_send`, `orders/checkout.py`
+   *  backend), no tienen un paso de entrega propio que mostrar aquí. */
+  canDeliver(order: DiningOrder): boolean {
+    return !!order.dining_table_id && (order.items ?? []).some((it) => it.estado_cocina === 'pendiente');
+  }
+
   /**
    * Ítems del pedido seleccionado -- incluido un pago QR por confirmar,
    * ahora que `selectTable()`/`orderTabs()` ya lo seleccionan como cualquier
@@ -504,6 +562,13 @@ export class PosOrderPanelComponent {
     return kitchenStatusLabel(status);
   }
 
+  /** spec 146 (FR-002/FR-008, A-150): status/payment_status crudos de la
+   *  orden de la pestaña activa, sin traducir — ver `store.selectedOrder()`. */
+  readonly orderStatusLabel = orderStatusLabel;
+  readonly orderStatusClass = orderStatusClass;
+  readonly paymentStatusLabel = paymentStatusLabel;
+  readonly paymentStatusClass = paymentStatusClass;
+
   /** spec 131: color del badge de preparación con los tokens del rediseño
    *  (research.md, "modelo de caja") en vez de `kitchenStatusClass()`
    *  (`order-status.util.ts`) -- esa función es compartida con el tablero de
@@ -513,11 +578,9 @@ export class PosOrderPanelComponent {
     switch (status) {
       case 'pendiente':
         return 'background:var(--terminal-color-warning-soft);color:var(--terminal-color-warning)';
-      case 'en_preparacion':
-        return 'background:var(--terminal-color-info-soft);color:var(--terminal-color-info)';
-      case 'listo':
+      case 'entregado':
         return 'background:var(--terminal-color-success-soft);color:var(--terminal-color-success)';
-      case 'anulado':
+      case 'cancelado':
         return 'background:var(--terminal-color-surface-elevated);color:var(--terminal-color-text-muted)';
     }
   }

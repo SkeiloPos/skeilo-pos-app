@@ -29,10 +29,10 @@ describe('DiningSessionService', () => {
   afterEach(() => http.verify());
 
   it('lista comandas y filtra por estado', async () => {
-    const promise = service.listOrders('recibida');
+    const promise = service.listOrders('pendiente');
     const req = http.expectOne((r) => r.url === `${API}/orders`);
 
-    expect(req.request.params.get('status')).toBe('recibida');
+    expect(req.request.params.get('status')).toBe('pendiente');
     req.flush([]);
     await promise;
   });
@@ -71,26 +71,29 @@ describe('DiningSessionService', () => {
     const req = http.expectOne(`${API}/orders/o1/confirm`);
 
     expect(req.request.method).toBe('POST');
-    req.flush({ id: 'o1', status: 'abierta', channel: 'QR_MENU', created_at: '2026-07-28' });
+    // Spec 147: confirmar ya no mueve `status` a 'abierta' (no existe) --
+    // sigue 'pendiente' hasta la entrega.
+    req.flush({ id: 'o1', status: 'pendiente', channel: 'QR_MENU', created_at: '2026-07-28' });
 
     const order = await promise;
-    expect(order.status).toBe('abierta');
+    expect(order.status).toBe('pendiente');
   });
 
   /**
-   * "Aceptar pedido" sin cobrar: deja que cocina empiece mientras el pago
-   * sigue pendiente de revisión. A diferencia de `confirmOrder`, NO descuenta
-   * inventario ni cambia `status` -- el pedido sigue `recibida`.
+   * Spec 147 (FR-001/FR-002/FR-002a/FR-011): entrega el pedido completo con
+   * una sola acción, idempotente. Reemplaza `updateItemKitchen`,
+   * `markOrderReady` y `acceptOrderForKitchen` -- ya no hay paso intermedio
+   * por ítem ni "aceptar para cocina sin cobrar".
    */
-  it('acepta un pedido para cocina sin cobrar', async () => {
-    const promise = service.acceptOrderForKitchen('o1');
-    const req = http.expectOne(`${API}/orders/o1/start-preparation`);
+  it('entrega el pedido completo con una sola acción', async () => {
+    const promise = service.deliverOrder('o1');
+    const req = http.expectOne(`${API}/orders/o1/deliver`);
 
     expect(req.request.method).toBe('POST');
-    req.flush({ id: 'o1', status: 'recibida', channel: 'QR_MENU', created_at: '2026-07-28' });
+    req.flush({ id: 'o1', status: 'entregada', channel: 'QR_MENU', created_at: '2026-07-28' });
 
     const order = await promise;
-    expect(order.status).toBe('recibida');
+    expect(order.status).toBe('entregada');
   });
 
   it('cancela un pedido con motivo', async () => {
@@ -99,16 +102,6 @@ describe('DiningSessionService', () => {
 
     expect(req.request.body).toEqual({ motivo: 'Rechazado por el personal' });
     req.flush({ id: 'o1', status: 'cancelada', channel: 'QR_MENU', created_at: '2026-07-28' });
-    await promise;
-  });
-
-  it('avanza el estado de cocina de un ítem', async () => {
-    const promise = service.updateItemKitchen('i1', 'listo');
-    const req = http.expectOne(`${API}/orders/items/i1/kitchen`);
-
-    expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual({ estado_cocina: 'listo' });
-    req.flush({ id: 'i1', estado_cocina: 'listo' });
     await promise;
   });
 
@@ -158,7 +151,7 @@ describe('DiningSessionService', () => {
     expect(req.request.method).toBe('POST');
     expect(req.request.body.hold_for_payment).toBe(true);
     expect(req.request.body.channel).toBe('POS');
-    req.flush({ id: 'o1', channel: 'POS', status: 'recibida', created_at: '2026-08-20' });
+    req.flush({ id: 'o1', channel: 'POS', status: 'pendiente', created_at: '2026-08-20' });
 
     const order = await promise;
     expect(order.id).toBe('o1');

@@ -4,7 +4,6 @@ import { DiningOrder } from '../../tables/interfaces/dining.interface';
 import { TableService } from '../../tables/services/table.service';
 import { OrdersListService, OrdersStatusFilter, OrdersTypeFilter } from '../services/orders-list.service';
 import {
-  displayOrderStatus,
   orderDisplayCode,
   orderLocationLabel,
   orderStatusClass,
@@ -18,13 +17,11 @@ import { OrderDateFilterComponent } from '../components/order-date-filter.compon
 import { To12HourTimePipe } from '../pipes/to-12-hour-time.pipe';
 import { MoneyPipe } from '../../../shared/money.pipe';
 
-/** Opciones del selector de estado (spec 120, FR-002) — mismos 5 valores reales ya existentes. */
+/** Opciones del selector de estado (spec 120, FR-002; spec 147: colapsado a 3 valores reales). */
 const ESTADOS: { value: OrdersStatusFilter; label: string }[] = [
   { value: '', label: 'Todos' },
-  { value: 'recibida', label: 'Por confirmar' },
-  { value: 'abierta', label: 'Abierta' },
-  { value: 'bloqueada', label: 'Bloqueada' },
-  { value: 'pagada', label: 'Pagada' },
+  { value: 'pendiente', label: 'Pendiente' },
+  { value: 'entregada', label: 'Entregada' },
   { value: 'cancelada', label: 'Cancelada' },
 ];
 
@@ -124,6 +121,18 @@ const TYPE_ICON: Record<string, string> = {
         </div>
       </div>
 
+      <!-- Spec 147 (FR-014/SC-003): independiente del selector ESTADO -- acota a
+           entregada + sin cobrar, el mismo criterio que bloquea liberar la mesa (FR-016). -->
+      <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
+        <input
+          type="checkbox"
+          [checked]="svc.entregadasSinCobrar()"
+          (change)="svc.setEntregadasSinCobrar($any($event.target).checked)"
+          class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
+        >
+        Entregadas sin cobrar
+      </label>
+
       <div aria-live="polite" class="text-sm text-gray-500">{{ ordCount() }}</div>
 
       @if (svc.loading() && svc.orders().length === 0) {
@@ -179,8 +188,8 @@ const TYPE_ICON: Record<string, string> = {
                 </div>
 
                 <div class="mt-auto pt-2 border-t border-gray-50 flex items-center justify-between gap-2">
-                  <span class="text-xs px-2.5 py-1 rounded-[9999px] font-semibold" [class]="statusClass(displayStatus(order))">
-                    {{ statusLabel(displayStatus(order)) }}
+                  <span class="text-xs px-2.5 py-1 rounded-[9999px] font-semibold" [class]="statusClass(order.status)">
+                    {{ statusLabel(order.status) }}
                   </span>
                   @if (order.total != null) {
                     <span class="text-sm font-bold text-gray-900 shrink-0">{{ order.total | money }}</span>
@@ -290,5 +299,4 @@ export class OrdersPageComponent implements OnInit {
 
   statusLabel = orderStatusLabel;
   statusClass = orderStatusClass;
-  displayStatus = displayOrderStatus;
 }

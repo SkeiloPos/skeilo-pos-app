@@ -9,18 +9,18 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
-import { DiningOrder, getSidebarMode } from '../interfaces/dining.interface';
-import { pedidoAceptadoSinCobrar } from '../../orders/order-status.util';
+import { PaymentAttempt, getSidebarMode } from '../interfaces/dining.interface';
 import { SessionBillPanelComponent } from './session-bill-panel.component';
 import { PaymentInputComponent } from './payment-input.component';
 import { BillSummaryComponent } from './bill-summary.component';
-import { PaymentAttemptReviewPanelComponent } from './payment-attempt-review-panel.component';
 import {
   PaymentDraft,
   emptyPaymentDraft,
+  paymentDraftFromAttempt,
   paymentIssue,
   paymentLines,
 } from '../services/payment-draft.util';
+import { DiningSessionService } from '../services/dining-session.service';
 import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.component';
 
 /**
@@ -41,16 +41,24 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
  * siempre el mismo panel de cobro — se decide por el **origen** del pedido
  * activo (`getSidebarMode`, `dining.interface.ts`, T002/T004):
  *
- * - `'resumen'` (canal `qr`): el comensal ya pagó a distancia. Panel de solo
- *   lectura — `app-session-bill-panel` en modo `readOnly` (T009): desglose,
- *   sin selector de método ni botón de cobro. Ahí vivía el bug de origen de
- *   esta pantalla (cobrar de nuevo una mesa ya pagada por QR reventaba con un
- *   error que el cajero no sabía interpretar).
- * - `'terminal-pos'` (canal `counter`/`waiter`, o mesa libre sin pedido
- *   todavía): panel editable — carrito + método de pago + nombre de
- *   facturación + un único botón "Cobrar" (`POST /orders/{id}/checkout-and-
- *   send`, T024/T025). Es un pedido, no una sesión: no pasa por
- *   `TableSessionService.close()`.
+ * - `'resumen'` (pedido ya `paid`): solo lectura — `app-session-bill-panel`
+ *   en modo `readOnly` (T009): desglose, sin selector de método ni botón de
+ *   cobro. Ahí vivía el bug de origen de esta pantalla (cobrar de nuevo una
+ *   mesa ya pagada reventaba con un error que el cajero no sabía
+ *   interpretar).
+ * - `'terminal-pos'` (cualquier pedido sin pagar, o mesa libre sin pedido
+ *   todavía): un pedido de mesa (`showSessionCharge()`, QR en cualquier
+ *   status o cualquier canal ya no `'pendiente'`) usa el mismo panel de
+ *   cobro de sesión que `'resumen'` pero editable (`readOnly=false`) --
+ *   segunda vuelta a pedido del usuario: la pantalla de cobro de un pedido
+ *   QR ya no espera a "Entregar" para verse, aparece desde que el pedido
+ *   llega (`'pendiente'`); cobrar de verdad sigue dependiendo de que el
+ *   backend lo deje (`_assert_closable` exige el pedido ya entregado, igual
+ *   que antes). Un pedido de mostrador todavía `'pendiente'` (sin mesa
+ *   detrás, o recién creado) usa en cambio el carrito editable — método de
+ *   pago + nombre de facturación + un único botón "Cobrar" (`POST
+ *   /orders/{id}/checkout-and-send`, T024/T025). Es un pedido, no una
+ *   sesión: no pasa por `TableSessionService.close()`.
  *
  * "Imprimir Pre-cuenta" (T032) se ve en ambos modos. "Imprimir Factura" y
  * "Liberar Mesa" (T035) también, salvo mientras el pedido de `terminal-pos`
@@ -65,7 +73,6 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
     SessionBillPanelComponent,
     PaymentInputComponent,
     BillSummaryComponent,
-    PaymentAttemptReviewPanelComponent,
     IconLucideComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -126,53 +133,24 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
         @if (store.billLoading()) {
           <p class="text-[12px] py-8 text-center" style="color:var(--terminal-color-text-muted,#9ca3af)">Cargando cuenta…</p>
         } @else {
-          @if (store.selectedOrderPending()) {
-            <!-- A pedido del usuario: el comprobante/confirmación de un pago
-                 QR pendiente (app-payment-attempt-review-panel) solo se
-                 muestra cuando el cajero entra puntualmente a esa pestaña
-                 "Pedido N" (a la izquierda) -- antes se veía siempre que la
-                 mesa tuviera algún pago pendiente, sin importar cuál pestaña
-                 estuviera activa, lo que lo hacía aparecer aunque el cajero
-                 estuviera mirando otro pedido de la misma mesa. -->
-            @if (store.selectedOrder(); as pending) {
-              <div class="mb-4">
-                <div class="flex items-center justify-between gap-3 mb-3">
-                  <p class="text-[12px]" style="color:var(--terminal-color-text-secondary,#6b7280)">
-                    Aprobar el comprobante o confirmar el pago registra el pedido como una venta en
-                    el sistema.
-                  </p>
-                  <button
-                    (click)="store.reload()"
-                    class="text-[12px] font-medium transition-colors shrink-0"
-                    style="color:var(--terminal-color-primary-text,#9ca3af)"
-                  >
-                    Actualizar
-                  </button>
-                </div>
-                @if (!alreadyAcceptedForKitchen(pending)) {
-                  <button
-                    (click)="store.acceptOrderForKitchen()"
-                    [disabled]="store.submitting()"
-                    class="w-full h-10 mb-3 text-[13px] font-semibold text-white rounded-xl transition-colors disabled:opacity-40"
-                    style="background:var(--terminal-color-info,#2563eb)"
-                  >
-                    Aceptar pedido (cocina ya puede empezar, sin cobrar)
-                  </button>
-                }
-                <app-payment-attempt-review-panel
-                  [order]="pending"
-                  [cashShiftId]="store.cashShiftId()"
-                  (resolved)="store.reload()"
-                />
-              </div>
-            }
-          } @else {
           <!--
-            El pedido seleccionado no es un pago QR pendiente: cobro normal
-            según el origen (T004/T009).
+            A pedido del usuario (spec 147 ciclo 2, y segunda vuelta): ya no
+            hay una pantalla propia de "revisión de pago" (aprobar
+            comprobante/confirmar efectivo, app-payment-attempt-review-panel)
+            para un pedido QR -- cae directo en showSessionCharge() de abajo
+            desde que llega ('pendiente'), ya precargado con lo que el
+            comensal eligió desde el QR si corresponde
+            (ensure_inventory_deducted en el backend descuenta el inventario
+            ahí mismo si nunca se confirmó por la revisión de pago retirada
+            -- table_sessions/service.py::_charge_session). El botón "Cobrar"
+            puede verse antes de "Entregar"; si el cajero lo intenta
+            demasiado pronto, el backend lo rechaza con su propio mensaje
+            (_assert_closable sigue exigiendo el pedido entregado) y
+            app-session-bill-panel lo muestra inline, sin romper la
+            pantalla.
           -->
           @if (store.selectedOrder() && sidebarMode() === 'resumen') {
-          <!-- Origen QR: solo lectura (T004/T009). -->
+          <!-- Pedido ya cobrado (paid): solo lectura (T004/T009). -->
           <app-session-bill-panel
             [bill]="store.sessionBill()"
             [methods]="store.paymentMethodsAvailable()"
@@ -186,14 +164,23 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
         } @else if (store.selectedOrder() && showSessionCharge()) {
           <!--
             Pedido de mesero ya enviado a cocina (status distinto de
-            'recibida'): se cobra cerrando la sesión de mesa completa — el
-            mismo mecanismo que el modo resumen usa en solo lectura arriba —,
-            no con checkout-and-send (que exige 'recibida' y por eso
-            rechazaba siempre con 409 sobre un pedido así, dejándolo abierto
-            para siempre sin factura). Hotfix spec 029 #3: esta vía ya
-            existía en el backend y en session-bill-panel, solo nunca se
-            conectaba aquí. ensureReadyToCharge resuelve de una vez los
-            productos que sigan sin marcar como listos antes de cobrar.
+            'pendiente'): se cobra con el mismo mecanismo que el modo resumen
+            usa en solo lectura arriba — no con checkout-and-send (que exige
+            'pendiente' y por eso rechazaba siempre con 409 sobre un pedido
+            así, dejándolo abierto para siempre sin factura). Hotfix spec 029
+            #3: esta vía ya existía en el backend y en session-bill-panel,
+            solo nunca se conectaba aquí. ensureReadyToCharge resuelve de una
+            vez los productos que sigan sin marcar como listos antes de
+            cobrar.
+
+            keepTableOpen=true (spec 147 ciclo 2, a pedido del usuario): un
+            pedido entregado se cobra SIN liberar la mesa de inmediato -- el
+            cliente puede seguir sentado. "Liberar Mesa" (footer de abajo)
+            es la acción separada para cuando se va.
+
+            prefillPayment (spec 147 ciclo 2, a pedido del usuario): si el
+            comensal ya eligió cómo pagar desde el Menú QR, se precarga
+            aquí -- ver qrAttempt/prefillPayment arriba.
           -->
           <div class="flex flex-col h-full">
             <app-session-bill-panel
@@ -205,6 +192,8 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
               [paidSummary]="store.selectedTablePaidSummary()"
               [selectedOrderTotal]="store.selectedOrderTotal()"
               [beforeCharge]="store.ensureReadyToCharge"
+              [keepTableOpen]="true"
+              [prefillPayment]="prefillPayment()"
               (charged)="store.onCharged($event)"
             />
             <!--
@@ -400,7 +389,6 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
             }
           </div>
           }
-          }
         }
       </div>
 
@@ -410,8 +398,16 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
           post-cobro -- no se muestran mientras este mismo pedido sigue en la
           rama de cobro pendiente (pendingCheckout()). Reaparecen en los demás
           modos del panel (resumen QR, showSessionCharge) sin cambios (FR-008).
+
+          A pedido del usuario (spec 147 ciclo 2): con keepTableOpen, cobrar
+          ya no saca al pedido de showSessionCharge() (sigue 'entregada', solo
+          cambia payment_status) -- sin +bill.total===0 este footer aparecía
+          apenas se entregaba el pedido, ANTES de cobrarlo. bill.total ya
+          excluye todo lo facturado (_billable_orders en el backend), así que
+          en 0 es exactamente "cobrada y entregada" para ambos modos (en
+          resumen QR también llega a 0 en cuanto se confirma el pago).
         -->
-        @if (!pendingCheckout()) {
+        @if (!pendingCheckout() && +bill.total === 0) {
           <div class="p-3 border-t space-y-2 shrink-0" style="border-color:var(--terminal-color-border,#e5e7eb)">
             <!-- spec 123 (FR-006/FR-016): saldo generado por adiciones agregadas
                después de facturar -- visible mientras exista, con su propia
@@ -496,6 +492,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
 export class PosCheckoutPanelComponent {
   readonly store = inject(PosTerminalStore);
   private readonly router = inject(Router);
+  private readonly dining = inject(DiningSessionService);
 
   /**
    * Spec 045: mesa destino del botón fijo "+ Crear pedido nuevo" -- la mesa
@@ -519,23 +516,45 @@ export class PosCheckoutPanelComponent {
   /** T004: qué panel de cobro va según el origen del pedido activo. */
   readonly sidebarMode = computed(() => getSidebarMode(this.store.selectedOrder()));
 
-  /** ¿Ya se aceptó este pedido para cocina sin cobrar? Oculta el botón para
-   *  no ofrecer una acción que ya no tiene efecto (`accept_order_for_kitchen`
-   *  es idempotente en el backend, pero no tiene sentido mostrarla dos veces). */
-  alreadyAcceptedForKitchen(order: DiningOrder): boolean {
-    return pedidoAceptadoSinCobrar(order);
-  }
-
   /**
    * Spec 029, hotfix #3: dentro de `terminal-pos`, un pedido que ya se envió
-   * a cocina (`status !== 'recibida'`) no se puede cobrar con
+   * a cocina (`status !== 'pendiente'`) no se puede cobrar con
    * `checkout-and-send` (el backend lo rechaza con 409) — necesita el cierre
    * de sesión de mesa (`app-session-bill-panel`, mismo componente que
    * `resumen` usa en solo lectura arriba).
+   *
+   * A pedido del usuario (segunda vuelta): un pedido QR usa SIEMPRE este
+   * camino, sin importar su `status` -- ya no espera a "Entregar" para
+   * mostrar el panel de cobro. Sus ítems los eligió el comensal por el QR,
+   * no hay nada que "armar" en un carrito editable como sí lo hay en un
+   * pedido de mostrador todavía `'pendiente'` (ese sigue cayendo en la rama
+   * de `checkout-and-send` de abajo).
    */
   readonly showSessionCharge = computed(() => {
     const order = this.store.selectedOrder();
-    return !!order && order.status !== 'recibida';
+    if (!order) return false;
+    return order.status !== 'pendiente' || order.channel === 'QR_MENU';
+  });
+
+  /**
+   * Spec 147 ciclo 2 (a pedido del usuario): intento de pago QR sin resolver
+   * del pedido que se está cobrando en `showSessionCharge()` -- lo que el
+   * comensal ya eligió al pedir, para precargar el selector de
+   * `app-session-bill-panel` en vez de arrancarlo vacío (`prefillPayment`
+   * abajo). `null` para cualquier pedido que no sea canal `QR_MENU`, o si no
+   * tiene ningún intento todavía. Se busca con el mismo criterio que
+   * `PaymentAttemptReviewPanelComponent.current()`: el `'pendiente'`, o si
+   * no hay ninguno así, el más reciente de la lista.
+   */
+  private readonly qrAttempt = signal<PaymentAttempt | null>(null);
+
+  /** Ver `qrAttempt`: el mismo borrador que arma `paymentDraftFromAttempt`,
+   *  listo para pasarle a `app-session-bill-panel`. */
+  readonly prefillPayment = computed<PaymentDraft | null>(() => {
+    const attempt = this.qrAttempt();
+    if (!attempt) return null;
+    const total = Number(this.store.sessionBill()?.total ?? 0);
+    return paymentDraftFromAttempt(attempt, this.store.paymentMethodsAvailable(), total);
   });
 
   /** Spec 058, FR-007: mismo estado que decide la rama "Cobrar pedido"/"Pedido de
@@ -643,6 +662,40 @@ export class PosCheckoutPanelComponent {
         this.lastShownTotal = Number(total);
       }
     });
+
+    // Spec 147 ciclo 2: busca el intento de pago QR del pedido que se está
+    // cobrando en `showSessionCharge()` (ver `qrAttempt`/`prefillPayment`).
+    // Depende de `selectedOrderId()` + `showSessionCharge()` (no del objeto
+    // `selectedOrder()` completo, que cambia de referencia en cada
+    // `reload()`) para no repetir esta llamada en cada sondeo mientras se
+    // sigue viendo el mismo pedido.
+    effect(() => {
+      const orderId = this.store.selectedOrderId();
+      const chargeable = this.showSessionCharge();
+      const isQr = untracked(() => this.store.selectedOrder()?.channel === 'QR_MENU');
+      if (!orderId || !chargeable || !isQr) {
+        this.qrAttempt.set(null);
+        return;
+      }
+      untracked(() => void this.loadQrAttempt(orderId));
+    });
+  }
+
+  /** Ver `qrAttempt`: mismo criterio que
+   *  `PaymentAttemptReviewPanelComponent.current()` para elegir CUÁL intento
+   *  importa -- el `'pendiente'`, o si ya no hay ninguno así, el más
+   *  reciente (p. ej. uno mixto con la transferencia ya aprobada, pero cuyo
+   *  método/montos declarados siguen sirviendo para precargar). Silencioso
+   *  ante un error: sin intento, el panel simplemente arranca vacío, como
+   *  hasta ahora. */
+  private async loadQrAttempt(orderId: string): Promise<void> {
+    try {
+      const attempts = await this.dining.listPaymentAttempts(orderId);
+      const current = attempts.find((a) => a.status === 'pendiente') ?? attempts.at(-1) ?? null;
+      this.qrAttempt.set(current);
+    } catch {
+      this.qrAttempt.set(null);
+    }
   }
 
   async checkout(): Promise<void> {

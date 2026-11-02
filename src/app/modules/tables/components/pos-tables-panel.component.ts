@@ -33,17 +33,22 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
         <div class="flex-1 min-w-0 overflow-y-auto p-3 sm:p-4">
           <div
             data-testid="mesas-grid"
-            class="grid gap-2.5 sm:gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,150px),1fr))] sm:grid-cols-[repeat(auto-fill,minmax(min(100%,200px),1fr))]"
+            class="grid gap-2.5 sm:gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,190px),1fr))] sm:grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))]"
           >
             @for (t of store.tablesView(); track t.id) {
               <app-order-summary-card
                 [title]="'Mesa ' + t.number"
                 [statusLabel]="t.statusLabelShort"
                 [statusClass]="t.chipClass"
+                [paymentStatusLabel]="t.paymentStatusLabel"
+                [paymentStatusClass]="t.paymentStatusClass"
                 [secondaryLabel]="t.itemsLabel"
                 [elapsedLabel]="t.elapsedLabel"
                 [totalLabel]="t.totalLabel"
                 [ordersCount]="t.ordersCount"
+                [attendedByLabel]="t.attendedByLabel"
+                [attendedByValue]="t.attendedByValue"
+                [channelLabel]="t.channelLabel"
                 [selected]="t.selected"
                 (select)="store.selectTable(t.id)"
               />
@@ -59,16 +64,21 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
              seleccionar una abre su detalle y su cobro (Historia 3). -->
         <div class="flex-1 min-w-0 overflow-y-auto p-3 sm:p-4">
           <div
-            class="grid gap-2.5 sm:gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,150px),1fr))] sm:grid-cols-[repeat(auto-fill,minmax(min(100%,200px),1fr))]"
+            class="grid gap-2.5 sm:gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,190px),1fr))] sm:grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))]"
           >
             @for (o of store.ordersByType(store.orderTypeTab()); track o.id) {
               <app-order-summary-card
                 [title]="o.title"
                 [statusLabel]="o.statusLabel"
                 [statusClass]="o.statusClass"
+                [paymentStatusLabel]="o.paymentStatusLabel"
+                [paymentStatusClass]="o.paymentStatusClass"
                 [secondaryLabel]="o.secondaryLabel"
                 [elapsedLabel]="o.elapsedLabel"
                 [totalLabel]="o.totalLabel"
+                [attendedByLabel]="o.attendedByLabel"
+                [attendedByValue]="o.attendedByValue"
+                [channelLabel]="o.channelLabel"
                 [selected]="o.id === store.selectedOrderId() && !store.selectedTableId()"
                 (select)="store.selectStandaloneOrder(o.id)"
               />

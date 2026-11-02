@@ -6,8 +6,9 @@ import { DiningCartService } from '../../services/dining-cart.service';
 import { CheckoutProgressStore } from './checkout-progress.store';
 
 /** Pedidos que todavía no llegaron a un estado final (mismo criterio que
- *  `_NON_TERMINAL_ORDER_STATUSES` en `cart/service.py:63`). */
-const NON_TERMINAL_STATUSES = new Set(['recibida', 'abierta', 'bloqueada']);
+ *  `_NON_TERMINAL_ORDER_STATUSES` en `cart/service.py`, spec 147: colapsado a
+ *  2 valores; `confirmado` agregado después, a pedido del usuario). */
+const NON_TERMINAL_STATUSES = new Set(['pendiente', 'confirmado', 'entregada']);
 
 /**
  * Se ejecuta una sola vez por entrada a `menu/t/:token/checkout/**` (Angular
@@ -59,7 +60,13 @@ export const checkoutHydrationGuard: CanActivateFn = async (route, state) => {
   }
 
   const orders = await api.myOrders().catch(() => []);
-  const activeOrder = orders.find((o) => NON_TERMINAL_STATUSES.has(o.status));
+  // spec 147/FR-012: un pedido `'entregada'` ya pagado está "cerrado" en la
+  // práctica (comment en `order-status.util.ts`) -- no cuenta como la orden
+  // activa que bloquea un pedido nuevo, aunque `status` por sí solo siga sin
+  // ser terminal.
+  const activeOrder = orders.find(
+    (o) => NON_TERMINAL_STATUSES.has(o.status) && o.payment_status !== 'PAID',
+  );
   if (activeOrder) {
     progress.activeOrder.set(activeOrder);
     progress.clear();

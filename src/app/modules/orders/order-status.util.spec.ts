@@ -1,34 +1,74 @@
+import { afterEach, vi } from 'vitest';
 import {
-  displayOrderStatus,
+  kitchenStatusLabel,
   orderDisplayCode,
   orderLocationLabel,
+  orderStatusLabel,
   orderTypeLabel,
-  pedidoAceptadoSinCobrar,
+  paymentStatusLabel,
   puedeCancelarComensal,
 } from './order-status.util';
 
 /**
- * Panel de Control → Órdenes reportó "Abierta" para un pedido QR ya cobrado
- * (badge y pestaña "Pagadas" usaban `status` crudo, que nunca llega a
- * `'pagada'` en los caminos QR/mostrador — spec 029, research.md D2). Mismo
- * criterio que `PosTerminalStore.deriveTableStatus` en la Terminal de Mesas.
+ * spec 146 (FR-008/FR-009/FR-010, A-150), spec 147 (colapso de 5 a 3 estados
+ * de pedido / 4 a 3 de ítem / 3 a 2 de pago): se eliminó `displayOrderStatus()`
+ * (que sustituía `order.status` por `'pagada'` basándose en `order.paid`).
+ * `orderStatusLabel`/`kitchenStatusLabel` ahora solo devuelven el valor crudo
+ * recibido, y loguean un error en consola si no está en la lista estática de
+ * valores conocidos — nunca lo sustituyen por un estado "por defecto".
  */
-describe('displayOrderStatus', () => {
-  it('un pedido abierta con Sale ya registrada (paid) se ve como pagada', () => {
-    expect(displayOrderStatus({ status: 'abierta', paid: true })).toBe('pagada');
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('orderStatusLabel', () => {
+  it('devuelve el status crudo tal cual, sin traducir', () => {
+    expect(orderStatusLabel('pendiente')).toBe('pendiente');
+    expect(orderStatusLabel('entregada')).toBe('entregada');
+    expect(orderStatusLabel('cancelada')).toBe('cancelada');
   });
 
-  it('sin paid, se muestra el status real', () => {
-    expect(displayOrderStatus({ status: 'abierta', paid: false })).toBe('abierta');
-    expect(displayOrderStatus({ status: 'abierta' })).toBe('abierta');
+  it('un valor no reconocido se muestra crudo y loguea un error en consola', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(orderStatusLabel('en_revision')).toBe('en_revision');
+    expect(spy).toHaveBeenCalled();
   });
 
-  it('una orden cancelada se muestra cancelada aunque paid fuera true', () => {
-    expect(displayOrderStatus({ status: 'cancelada', paid: true })).toBe('cancelada');
+  it('un valor conocido no loguea ningún error', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    orderStatusLabel('pendiente');
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('kitchenStatusLabel', () => {
+  it('devuelve el estado_cocina crudo tal cual, sin traducir', () => {
+    expect(kitchenStatusLabel('pendiente')).toBe('pendiente');
+    expect(kitchenStatusLabel('entregado')).toBe('entregado');
   });
 
-  it('el camino legado bloqueada→pagada (pay_order) sigue viéndose pagada', () => {
-    expect(displayOrderStatus({ status: 'pagada', paid: true })).toBe('pagada');
+  it('un valor no reconocido se muestra crudo y loguea un error en consola', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(kitchenStatusLabel('horneando')).toBe('horneando');
+    expect(spy).toHaveBeenCalled();
+  });
+});
+
+/**
+ * `payment_status` no es uno de los dos ejes que FR-008/FR-009 protege (esos
+ * son `status` y `estado_cocina`) -- a pedido del usuario, se traduce a una
+ * etiqueta corta en español, en mayúsculas.
+ */
+describe('paymentStatusLabel', () => {
+  it('traduce los 2 valores conocidos (spec 147: PARTIAL ya no existe)', () => {
+    expect(paymentStatusLabel('UNPAID')).toBe('NO PAGADO');
+    expect(paymentStatusLabel('PAID')).toBe('PAGADO');
+  });
+
+  it('un valor no reconocido se muestra crudo y loguea un error en consola', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(paymentStatusLabel('REFUNDED')).toBe('REFUNDED');
+    expect(spy).toHaveBeenCalled();
   });
 });
 
@@ -61,84 +101,45 @@ describe('orderDisplayCode', () => {
   });
 });
 
-/**
- * "Aceptar pedido" sin cobrar (`POST /orders/{id}/start-preparation`): deja
- * que cocina empiece mientras `status` sigue en `recibida`, sin esperar a que
- * el pago se confirme.
- */
-describe('pedidoAceptadoSinCobrar', () => {
-  it('false mientras todos los ítems siguen pendiente', () => {
-    expect(
-      pedidoAceptadoSinCobrar({
-        status: 'recibida',
-        items: [{ estado_cocina: 'pendiente' } as any],
-      }),
-    ).toBe(false);
-  });
-
-  it('true en recibida con al menos un ítem ya en_preparacion', () => {
-    expect(
-      pedidoAceptadoSinCobrar({
-        status: 'recibida',
-        items: [
-          { estado_cocina: 'pendiente' } as any,
-          { estado_cocina: 'en_preparacion' } as any,
-        ],
-      }),
-    ).toBe(true);
-  });
-
-  it('false fuera de recibida (abierta ya pasó por el camino normal de confirmar)', () => {
-    expect(
-      pedidoAceptadoSinCobrar({
-        status: 'abierta',
-        items: [{ estado_cocina: 'en_preparacion' } as any],
-      }),
-    ).toBe(false);
-  });
-});
+// `pedidoAceptadoSinCobrar` se retira (spec 147, FR-002/research.md R4):
+// `kitchen.accept_order_for_kitchen`/`POST /orders/{id}/start-preparation` y
+// el paso intermedio "aceptado para cocina sin cobrar" que describía ya no
+// existen -- la única acción de entrega es `POST /orders/{id}/deliver`, que
+// mueve pedido e ítems juntos, de una vez.
 
 /**
  * ¿Puede el comensal cancelar? Misma regla que aplica el backend
- * (`cart/service.py::cancel_my_order`) -- incluido el fix del bug real: antes
- * solo miraba `estado_cocina` cuando `status !== 'recibida'`, así que un
- * pedido aceptado para cocina sin cobrar (status aún `recibida`, ítems ya
- * `en_preparacion`) seguía mostrando el botón.
+ * (`cart/service.py::cancel_my_order`, reescrita spec 147): solo si el
+ * pedido sigue `'pendiente'` y ningún ítem salió de `'pendiente'` todavía
+ * (nada se entregó ni se canceló). Con solo 3 estados de pedido y 3 de ítem
+ * ya no hay un paso intermedio "aceptado para cocina sin cobrar" que
+ * distinguir -- en cuanto algo avanza, es porque ya se entregó.
  */
 describe('puedeCancelarComensal', () => {
-  it('recibida sin ítems en curso: se puede cancelar', () => {
+  it('pendiente sin ítems en curso: se puede cancelar', () => {
     expect(
-      puedeCancelarComensal({ status: 'recibida', items: [{ estado_cocina: 'pendiente' } as any] }),
+      puedeCancelarComensal({ status: 'pendiente', items: [{ estado_cocina: 'pendiente' } as any] }),
     ).toBe(true);
   });
 
-  it('recibida pero ya aceptado para cocina (bugfix): NO se puede cancelar', () => {
+  it('pendiente pero con un ítem ya entregado (FR-002a): NO se puede cancelar', () => {
     expect(
       puedeCancelarComensal({
-        status: 'recibida',
-        items: [{ estado_cocina: 'en_preparacion' } as any],
+        status: 'pendiente',
+        items: [{ estado_cocina: 'entregado' } as any],
       }),
     ).toBe(false);
   });
 
-  it('abierta con todos los ítems pendiente: se puede cancelar', () => {
+  it('entregada: no se puede cancelar sin importar los ítems', () => {
     expect(
-      puedeCancelarComensal({ status: 'abierta', items: [{ estado_cocina: 'pendiente' } as any] }),
-    ).toBe(true);
-  });
-
-  it('abierta con algún ítem en_preparacion: no se puede cancelar', () => {
-    expect(
-      puedeCancelarComensal({
-        status: 'abierta',
-        items: [{ estado_cocina: 'en_preparacion' } as any],
-      }),
+      puedeCancelarComensal({ status: 'entregada', items: [{ estado_cocina: 'pendiente' } as any] }),
     ).toBe(false);
   });
 
-  it('bloqueada: no se puede cancelar sin importar los ítems', () => {
+  it('cancelada: no se puede cancelar de nuevo', () => {
     expect(
-      puedeCancelarComensal({ status: 'bloqueada', items: [{ estado_cocina: 'pendiente' } as any] }),
+      puedeCancelarComensal({ status: 'cancelada', items: [{ estado_cocina: 'cancelado' } as any] }),
     ).toBe(false);
   });
 });

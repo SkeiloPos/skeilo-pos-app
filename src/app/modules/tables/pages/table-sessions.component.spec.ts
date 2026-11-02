@@ -280,19 +280,20 @@ describe('TableSessionsComponent — pago pendiente y pedido pagado a la vez, si
   const pagadaOrder: DiningOrder = {
     id: 'o1',
     channel: 'POS',
-    status: 'pagada',
+    status: 'entregada',
+    payment_status: 'PAID',
     version: 1,
     dining_table_id: 't1',
     customer_name: null,
     created_at: '2026-08-28T10:00:00',
     paid: true,
-    items: [{ id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '4000', estado_cocina: 'listo' }],
+    items: [{ id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '4000', estado_cocina: 'entregado' }],
   } as DiningOrder;
 
   const pendienteOrder: DiningOrder = {
     id: 'o2',
     channel: 'QR_MENU',
-    status: 'recibida',
+    status: 'pendiente',
     version: 1,
     dining_table_id: 't1',
     customer_name: null,
@@ -300,31 +301,35 @@ describe('TableSessionsComponent — pago pendiente y pedido pagado a la vez, si
     items: [],
   } as DiningOrder;
 
-  it('con ambos tipos de pedido en la mesa, al seleccionar la pestaña del pago pendiente se ven los dos bloques juntos (sin pestañas de vista)', () => {
-    // A pedido del usuario: la tarjeta de confirmación ya no se ve siempre
-    // que la mesa tenga algún pago pendiente -- solo cuando ESE pedido es el
-    // seleccionado (su pestaña "Pedido N"), aquí simulada seteando
-    // `selectedOrderId` directo en vez de hacer clic en la pestaña de verdad.
+  it('con ambos tipos de pedido en la mesa, al seleccionar la pestaña del pago pendiente se ve su resumen de sólo lectura (sin pestañas de vista)', () => {
+    // Spec 147 ciclo 2: ya no hay una tarjeta de confirmación propia
+    // (app-payment-attempt-review-panel, retirada) -- un QR 'pendiente'
+    // cae en el resumen de sólo lectura de app-session-bill-panel
+    // (sidebarMode() === 'resumen'), seleccionado aquí vía `selectedOrderId`
+    // directo en vez de clic en la pestaña de verdad.
     store.orders.set([pagadaOrder, pendienteOrder]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o2');
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('app-pos-order-panel')).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('app-payment-attempt-review-panel')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('app-session-bill-panel')).toBeTruthy();
     // Ningún botón de pestaña "Pagos por confirmar"/"Pedido de la mesa".
     const botones = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
     expect(botones.some((b) => b.textContent?.includes('Pagos por confirmar'))).toBe(false);
   });
 
-  it('con ambos tipos de pedido en la mesa, mientras el pedido pagado sigue seleccionado no se ve la tarjeta de confirmación del pago pendiente', () => {
+  it('con ambos tipos de pedido en la mesa, al cambiar al pedido ya pagado también se ve su propio resumen de sólo lectura', () => {
     store.orders.set([pagadaOrder, pendienteOrder]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('app-pos-order-panel')).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('app-payment-attempt-review-panel')).toBeFalsy();
+    // El pedido pagado también cae en 'resumen' (order.paid, independiente
+    // del canal) -- app-session-bill-panel sigue siendo el componente, solo
+    // que ahora con los datos de ESTE pedido, no del QR pendiente de arriba.
+    expect(fixture.nativeElement.querySelector('app-session-bill-panel')).toBeTruthy();
   });
 
   it('con solo un pedido pagado (sin nada pendiente), no aparece el panel de confirmación', () => {
@@ -397,7 +402,7 @@ describe('TableSessionsComponent — colapso móvil de la grilla de mesas y el p
         {
           id: 'o1',
           channel: 'POS',
-          status: 'recibida',
+          status: 'pendiente',
           version: 1,
           dining_table_id: 't1',
           customer_name: null,
@@ -422,7 +427,7 @@ describe('TableSessionsComponent — colapso móvil de la grilla de mesas y el p
       {
         id: 'o1',
         channel: 'POS',
-        status: 'recibida',
+        status: 'pendiente',
         version: 1,
         dining_table_id: 't1',
         customer_name: null,
@@ -449,7 +454,7 @@ describe('TableSessionsComponent — colapso móvil de la grilla de mesas y el p
         {
           id: 'o1',
           channel: 'POS',
-          status: 'recibida',
+          status: 'pendiente',
           version: 1,
           dining_table_id: 't1',
           customer_name: null,
@@ -480,7 +485,7 @@ describe('TableSessionsComponent — colapso móvil de la grilla de mesas y el p
       {
         id: 'o1',
         channel: 'POS',
-        status: 'recibida',
+        status: 'pendiente',
         version: 1,
         dining_table_id: 't1',
         customer_name: null,
@@ -523,7 +528,7 @@ describe('TableSessionsComponent — columna de detalle: una sola columna flex a
     ({
       id: 'o1',
       channel: 'POS',
-      status: 'recibida',
+      status: 'pendiente',
       version: 1,
       dining_table_id: 't1',
       customer_name: null,
@@ -632,8 +637,7 @@ describe('TableSessionsComponent — columna de detalle: una sola columna flex a
         ...conPedido(),
         id: 'oq',
         channel: 'QR_MENU',
-        status: 'recibida',
-        payment_status: 'pendiente_validacion',
+        status: 'pendiente',
       } as DiningOrder,
     ]);
     store.selectedTableId.set('t1');
@@ -646,16 +650,20 @@ describe('TableSessionsComponent — columna de detalle: una sola columna flex a
     // A pedido del usuario: ya no hay una vista aparte "Pagos por
     // confirmar" que reemplace todo por app-payment-validation-block -- se
     // ve integrado en la vista normal, app-pos-order-panel (con los ítems
-    // de sólo lectura) + app-pos-checkout-panel (con la confirmación),
-    // ambos dentro del mismo ancestro con scroll único.
+    // de sólo lectura) + app-pos-checkout-panel, ambos dentro del mismo
+    // ancestro con scroll único. Spec 147 ciclo 2: ya no existe una tarjeta
+    // propia de revisión de pago (app-payment-attempt-review-panel,
+    // retirada) -- un pago QR todavía 'pendiente' cae en el resumen de
+    // sólo lectura de app-session-bill-panel (sidebarMode() === 'resumen'),
+    // sin nada que cobrar hasta que se entregue.
     const orderPanel = fixture.nativeElement.querySelector('app-pos-order-panel') as HTMLElement;
-    const reviewPanel = fixture.nativeElement.querySelector(
-      'app-payment-attempt-review-panel',
+    const billPanel = fixture.nativeElement.querySelector(
+      'app-session-bill-panel',
     ) as HTMLElement;
     expect(orderPanel).toBeTruthy();
-    expect(reviewPanel).toBeTruthy();
+    expect(billPanel).toBeTruthy();
 
-    const scrollAncestor = reviewPanel.closest('.overflow-y-auto') as HTMLElement | null;
+    const scrollAncestor = billPanel.closest('.overflow-y-auto') as HTMLElement | null;
     expect(scrollAncestor).toBeTruthy();
     expect(scrollAncestor?.contains(orderPanel)).toBe(true);
   });
@@ -933,7 +941,7 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
         {
           id: 'o1',
           channel: 'POS',
-          status: 'recibida',
+          status: 'pendiente',
           version: 1,
           dining_table_id: 't1',
           customer_name: null,
@@ -946,13 +954,13 @@ describe('TableSessionsComponent — CTA "Crear pedido nuevo" en las 3 pestañas
       fixture.detectChanges();
 
       expect(cta()).toBeUndefined(); // sub-barra oculta dentro del detalle de mesa
-      expect(nuevaCuentaButton()?.disabled).toBe(false); // pedido 'recibida' sin pagar — A-138
+      expect(nuevaCuentaButton()?.disabled).toBe(false); // pedido 'pendiente' sin pagar — A-138
 
       store.orders.set([
         {
           id: 'o1',
           channel: 'POS',
-          status: 'recibida',
+          status: 'pendiente',
           version: 1,
           dining_table_id: 't1',
           customer_name: null,
@@ -1206,7 +1214,7 @@ describe('TableSessionsComponent — buscador y filtro de ocupación en la sub-b
       {
         id: 'o1',
         channel: 'POS',
-        status: 'recibida',
+        status: 'pendiente',
         version: 1,
         dining_table_id: 't1',
         customer_name: null,

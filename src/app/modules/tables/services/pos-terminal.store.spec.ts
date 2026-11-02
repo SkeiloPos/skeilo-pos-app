@@ -87,37 +87,40 @@ function order(
 describe('newPendingIds', () => {
   it('detecta el pedido que aún no se había visto', () => {
     const nuevos = newPendingIds(new Set(['o1']), [
-      order('o1', 'recibida'),
-      order('o2', 'recibida'),
+      order('o1', 'pendiente'),
+      order('o2', 'pendiente'),
     ]);
 
     expect(nuevos).toEqual(['o2']);
   });
 
   it('no repite el aviso de un pedido ya conocido', () => {
-    expect(newPendingIds(new Set(['o1']), [order('o1', 'recibida')])).toEqual([]);
+    expect(newPendingIds(new Set(['o1']), [order('o1', 'pendiente')])).toEqual([]);
   });
 
   it('ignora los pedidos que no esperan confirmación', () => {
+    // Spec 147: 'pendiente' cubre tanto "recién llegado" como "ya
+    // confirmado, aún sin entregar" -- ya no hay un estado intermedio
+    // "abierta" que distinguir. Solo entregada/cancelada se ignoran.
     const nuevos = newPendingIds(new Set(), [
-      order('o1', 'abierta'),
-      order('o2', 'pagada'),
+      order('o1', 'pendiente'),
+      order('o2', 'entregada'),
       order('o3', 'cancelada'),
     ]);
 
-    expect(nuevos).toEqual([]);
+    expect(nuevos).toEqual(['o1']);
   });
 
   it('no avisa cuando un pedido conocido se confirma', () => {
     // El contador baja, pero eso no es un pedido nuevo.
-    expect(newPendingIds(new Set(['o1']), [order('o1', 'abierta')])).toEqual([]);
+    expect(newPendingIds(new Set(['o1']), [order('o1', 'pendiente')])).toEqual([]);
   });
 });
 
 describe('deriveTableStatus', () => {
   it('marca por confirmar la mesa con un pedido del QR sin aceptar', () => {
     // Era el fallo reportado: estas mesas se pintaban "Libre" con $ 0.
-    expect(deriveTableStatus([order('o1', 'recibida', ['pendiente'])], 'ocupada')).toBe(
+    expect(deriveTableStatus([order('o1', 'pendiente', ['pendiente'])], 'ocupada')).toBe(
       'por_confirmar',
     );
   });
@@ -129,24 +132,28 @@ describe('deriveTableStatus', () => {
     }
 
     it('NO marca por confirmar un pedido de mostrador en espera de armarse (hold_for_payment)', () => {
-      // Un pedido `counter` también vive en `recibida` mientras el cajero lo
+      // Un pedido `counter` también vive en `pendiente` mientras el cajero lo
       // arma (feature 028), pero no tiene ningún pago que revisar: mostrarlo
       // como "Por confirmar" sería una falsa alarma para el resto del staff.
-      expect(deriveTableStatus([counterOrder('o1', 'recibida')], 'ocupada')).not.toBe(
+      expect(deriveTableStatus([counterOrder('o1', 'pendiente')], 'ocupada')).not.toBe(
         'por_confirmar',
       );
     });
 
-    it('caso mixto: un comensal ya confirmado y otro QR todavía pendiente → sigue "Por confirmar"', () => {
-      const confirmado = order('o1', 'abierta', ['pendiente']);
-      const pendiente = order('o2', 'recibida', ['pendiente']);
+    it('caso mixto: un comensal ya entregado y otro QR todavía pendiente → sigue "Por confirmar"', () => {
+      // Spec 147: "ya confirmado" ya no es un status distinto ('abierta' ya
+      // no existe -- confirmar no mueve status); el caso surrogate más cercano
+      // es un pedido ya `entregada`, resuelto del todo, junto a otro QR que
+      // sigue esperando revisión.
+      const entregado = order('o1', 'entregada', ['entregado']);
+      const pendiente = order('o2', 'pendiente', ['pendiente']);
 
-      expect(deriveTableStatus([confirmado, pendiente], 'ocupada')).toBe('por_confirmar');
+      expect(deriveTableStatus([entregado, pendiente], 'ocupada')).toBe('por_confirmar');
     });
 
     it('caso mixto: un pedido de mostrador armándose junto a uno QR pendiente → sigue "Por confirmar"', () => {
-      const mostrador = counterOrder('o1', 'recibida');
-      const qrPendiente = order('o2', 'recibida', ['pendiente']);
+      const mostrador = counterOrder('o1', 'pendiente');
+      const qrPendiente = order('o2', 'pendiente', ['pendiente']);
 
       expect(deriveTableStatus([mostrador, qrPendiente], 'ocupada')).toBe('por_confirmar');
     });
@@ -162,71 +169,71 @@ describe('deriveTableStatus', () => {
     expect(deriveTableStatus([], 'libre')).toBe('libre');
   });
 
-  it('prioriza el cobro pendiente sobre el estado de cocina', () => {
-    expect(deriveTableStatus([order('o1', 'bloqueada', ['listo'])], 'ocupada')).toBe(
+  it('prioriza el cobro pendiente sobre el estado de cocina ya completo', () => {
+    // Spec 147: ya no existe 'entregada' (la entrega es la única acción de
+    // pedido completo). El caso surrogate: ítems ya entregados del todo,
+    // pero sin pagar -- sigue "Pago pendiente", no "Listo".
+    expect(deriveTableStatus([order('o1', 'entregada', ['entregado'])], 'ocupada')).toBe(
       'pago_pendiente',
     );
   });
 
   it('distingue preparación en curso de pedido listo', () => {
-    expect(deriveTableStatus([order('o1', 'abierta', ['en_preparacion', 'listo'])], 'ocupada')).toBe(
-      'en_preparacion',
-    );
-    expect(deriveTableStatus([order('o1', 'abierta', ['pendiente', 'listo'])], 'ocupada')).toBe(
+    expect(deriveTableStatus([order('o1', 'entregada', ['pendiente', 'entregado'])], 'ocupada')).toBe(
       'en_preparacion',
     );
     // Spec 029: "listo" exige además el pago — sin él, `paid` (`o1`, tercer
     // arg de cocina omitido, cuarto `true`) es lo que hace la diferencia.
-    expect(deriveTableStatus([order('o1', 'abierta', ['listo', 'listo'], true)], 'ocupada')).toBe(
+    expect(deriveTableStatus([order('o1', 'entregada', ['entregado', 'entregado'], true)], 'ocupada')).toBe(
       'listo',
     );
   });
 
   it('ignora los ítems anulados al mirar la preparación', () => {
-    expect(deriveTableStatus([order('o1', 'abierta', ['anulado'])], 'ocupada')).toBe('ocupada');
+    expect(deriveTableStatus([order('o1', 'entregada', ['cancelado'])], 'ocupada')).toBe('ocupada');
   });
 
   // ── spec 029, Historia 3: "Listo" exige pago Y cocina, las dos a la vez ──
   describe('"Listo" exige pago (spec 029)', () => {
     it('cocina lista pero sin pagar → "Pago pendiente", no "Listo"', () => {
-      // El caso real que motivó la spec: pedido de mesero ('abierta'),
-      // cocina ya terminó, pero `paid` sigue `false` — nunca pasó por
+      // El caso real que motivó la spec: pedido ya `entregada`, cocina ya
+      // terminó, pero `paid` sigue `false` — nunca pasó por
       // `checkout_and_send`/`pay_order` todavía.
-      expect(deriveTableStatus([order('o1', 'abierta', ['listo'], false)], 'ocupada')).toBe(
+      expect(deriveTableStatus([order('o1', 'entregada', ['entregado'], false)], 'ocupada')).toBe(
         'pago_pendiente',
       );
     });
 
     it('cocina lista y ya pagado → "Listo"', () => {
-      expect(deriveTableStatus([order('o1', 'abierta', ['listo'], true)], 'ocupada')).toBe('listo');
+      expect(deriveTableStatus([order('o1', 'entregada', ['entregado'], true)], 'ocupada')).toBe('listo');
     });
 
     it('pagado pero cocina todavía en curso → "Pagado", no "Listo" ni "En preparación"', () => {
       // Bugfix: antes esto se veía IGUAL que un pedido sin pagar todavía
       // (ambos 'en_preparacion'), perdiendo la señal de que el pago ya
-      // entró. El caso real: "Aceptar pedido" sin cobrar (POST
-      // /orders/{id}/start-preparation) seguido de confirmar el pago antes
-      // de que cocina termine.
+      // entró. El caso real spec 147: un ítem nuevo agregado después de la
+      // primera entrega (FR-002a, nace 'pendiente') mientras el pago ya se
+      // confirmó.
       expect(
-        deriveTableStatus([order('o1', 'abierta', ['en_preparacion'], true)], 'ocupada'),
+        deriveTableStatus([order('o1', 'entregada', ['pendiente'], true)], 'ocupada'),
       ).toBe('pagado');
     });
 
     it('sin pagar y cocina en curso → sigue "En preparación"', () => {
       expect(
-        deriveTableStatus([order('o1', 'abierta', ['en_preparacion'], false)], 'ocupada'),
+        deriveTableStatus([order('o1', 'entregada', ['pendiente'], false)], 'ocupada'),
       ).toBe('en_preparacion');
     });
 
     it('varios pedidos: uno pagado, otro sin pagar, ambos en curso → sigue "En preparación"', () => {
-      const pagado = order('o1', 'abierta', ['en_preparacion'], true);
-      const sinPagar = order('o2', 'abierta', ['pendiente'], false);
+      const pagado = order('o1', 'entregada', ['pendiente'], true);
+      const sinPagar = order('o2', 'entregada', ['pendiente'], false);
       expect(deriveTableStatus([pagado, sinPagar], 'ocupada')).toBe('en_preparacion');
     });
 
     it('varios pedidos: uno pagado y listo, otro listo pero sin pagar → sigue "Pago pendiente"', () => {
-      const pagado = order('o1', 'abierta', ['listo'], true);
-      const sinPagar = order('o2', 'abierta', ['listo'], false);
+      const pagado = order('o1', 'entregada', ['entregado'], true);
+      const sinPagar = order('o2', 'entregada', ['entregado'], false);
       expect(deriveTableStatus([pagado, sinPagar], 'ocupada')).toBe('pago_pendiente');
     });
   });
@@ -244,7 +251,7 @@ describe('deriveTableStatus', () => {
 describe('newPendingIds tras una reconexión', () => {
   it('el replay de un pedido ya visto no vuelve a sonar', () => {
     const vistos = new Set(['o1', 'o2']);
-    const orders = [order('o1', 'recibida'), order('o2', 'recibida')];
+    const orders = [order('o1', 'pendiente'), order('o2', 'pendiente')];
 
     // Lo que llega en el replay es exactamente lo que ya estaba.
     expect(newPendingIds(vistos, orders)).toEqual([]);
@@ -252,7 +259,7 @@ describe('newPendingIds tras una reconexión', () => {
 
   it('pero un pedido nuevo entre los repetidos sí suena, y solo ese', () => {
     const vistos = new Set(['o1']);
-    const orders = [order('o1', 'recibida'), order('o2', 'recibida')];
+    const orders = [order('o1', 'pendiente'), order('o2', 'pendiente')];
 
     expect(newPendingIds(vistos, orders)).toEqual(['o2']);
   });
@@ -260,7 +267,7 @@ describe('newPendingIds tras una reconexión', () => {
   it('un pedido que entró y se confirmó dentro de la misma ventana ya no cuenta', () => {
     // Es el motivo de comparar ids y no cantidades: el contador vuelve a su
     // sitio, pero el aviso debió sonar cuando entró.
-    expect(newPendingIds(new Set(['o1']), [order('o1', 'abierta')])).toEqual([]);
+    expect(newPendingIds(new Set(['o1']), [order('o1', 'pendiente')])).toEqual([]);
   });
 });
 
@@ -294,8 +301,8 @@ describe('currentNow — A-09: sin sync, el cliente no previsualiza descuento (s
 });
 
 /**
- * Bugfix (gap de spec 035, A-52): una orden `'pagada'` con toda la cocina en
- * `'listo'` seguía contando como consumo vivo de la mesa antes del fix, pero
+ * Bugfix (gap de spec 035, A-52): una orden `'entregada'` con toda la cocina en
+ * `'entregado'` seguía contando como consumo vivo de la mesa antes del fix, pero
  * `activeOrders`/`tableOrders` la excluían justo en ese momento -- la mesa se
  * veía "libre" con la sesión todavía abierta. Ver spec 047.
  */
@@ -323,7 +330,7 @@ describe('PosTerminalStore — orden "pagada" ya lista sigue visible (gap spec 0
 
   it('centralState no cae a "mesa-libre" tras marcar listo un pedido de mostrador ya cobrado', () => {
     store.orders.set([
-      { ...order('o1', 'pagada', ['listo', 'listo'], true), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'entregada', ['entregado', 'entregado'], true), channel: 'POS', dining_table_id: 't1' },
     ]);
     store.selectedTableId.set('t1');
 
@@ -332,7 +339,7 @@ describe('PosTerminalStore — orden "pagada" ya lista sigue visible (gap spec 0
 
   it('tablesView pinta "Listo", no "Ocupada", para esa mesa', () => {
     store.orders.set([
-      { ...order('o1', 'pagada', ['listo', 'listo'], true), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'entregada', ['entregado', 'entregado'], true), channel: 'POS', dining_table_id: 't1' },
     ]);
 
     const fila = store.tablesView().find((t) => t.id === 't1');
@@ -406,7 +413,7 @@ describe('PosTerminalStore.centralState — mesa ocupada sin pedido (spec 110)',
       { id: 't1', number: 3, name: null, qr_token: 'qr-t1', active: true, status: 'ocupada' },
     ]);
     store.orders.set([
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
     ]);
     store.selectedTableId.set('t1');
 
@@ -454,9 +461,12 @@ describe('PosTerminalStore.tableCounts', () => {
       { id: 't4', number: 4, name: null, qr_token: 'qr-t4', active: true, status: 'ocupada' },
     ]);
     store.orders.set([
-      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't2' },
-      { ...order('o3', 'recibida'), channel: 'QR_MENU', dining_table_id: 't3' },
-      { ...order('o4', 'bloqueada'), channel: 'POS', dining_table_id: 't4' },
+      { ...order('o2', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't2' },
+      { ...order('o3', 'pendiente'), channel: 'QR_MENU', dining_table_id: 't3' },
+      // Spec 147: ya no existe 'bloqueada' (su "pago pendiente" directo) --
+      // el caso surrogate es un pedido ya `entregada` con su único ítem
+      // `entregado` pero sin pagar (`paid` omitido).
+      { ...order('o4', 'entregada', ['entregado']), channel: 'POS', dining_table_id: 't4' },
     ]);
   });
 
@@ -509,8 +519,8 @@ describe('PosTerminalStore — pestañas cuando coexisten pago pendiente y pedid
 
   it('con una orden pagada y otra pendiente en la misma mesa, hasPendingAndActiveOrders() es true y effectiveCentralView() empieza en "validar-pago"', () => {
     store.orders.set([
-      { ...order('o1', 'pagada', ['listo'], true), channel: 'POS', dining_table_id: 't1' },
-      { ...order('o2', 'recibida'), channel: 'QR_MENU', dining_table_id: 't1' },
+      { ...order('o1', 'entregada', ['entregado'], true), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o2', 'pendiente'), channel: 'QR_MENU', dining_table_id: 't1' },
     ]);
     store.selectedTableId.set('t1');
 
@@ -520,8 +530,8 @@ describe('PosTerminalStore — pestañas cuando coexisten pago pendiente y pedid
 
   it('al elegir la pestaña "pedido", effectiveCentralView() cambia sin tocar centralState()', () => {
     store.orders.set([
-      { ...order('o1', 'pagada', ['listo'], true), channel: 'POS', dining_table_id: 't1' },
-      { ...order('o2', 'recibida'), channel: 'QR_MENU', dining_table_id: 't1' },
+      { ...order('o1', 'entregada', ['entregado'], true), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o2', 'pendiente'), channel: 'QR_MENU', dining_table_id: 't1' },
     ]);
     store.selectedTableId.set('t1');
 
@@ -532,7 +542,7 @@ describe('PosTerminalStore — pestañas cuando coexisten pago pendiente y pedid
   });
 
   it('con solo uno de los dos tipos de pedido, no hay pestañas y effectiveCentralView() coincide con centralState()', () => {
-    store.orders.set([{ ...order('o1', 'recibida'), channel: 'QR_MENU', dining_table_id: 't1' }]);
+    store.orders.set([{ ...order('o1', 'pendiente'), channel: 'QR_MENU', dining_table_id: 't1' }]);
     store.selectedTableId.set('t1');
 
     expect(store.hasPendingAndActiveOrders()).toBe(false);
@@ -541,9 +551,9 @@ describe('PosTerminalStore — pestañas cuando coexisten pago pendiente y pedid
 
   it('al seleccionar otra mesa, centralPanelTab() vuelve a "validar-pago"', () => {
     store.orders.set([
-      { ...order('o1', 'pagada', ['listo'], true), channel: 'POS', dining_table_id: 't1' },
-      { ...order('o2', 'recibida'), channel: 'QR_MENU', dining_table_id: 't1' },
-      { ...order('o3', 'pagada', ['listo'], true), channel: 'POS', dining_table_id: 't2' },
+      { ...order('o1', 'entregada', ['entregado'], true), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o2', 'pendiente'), channel: 'QR_MENU', dining_table_id: 't1' },
+      { ...order('o3', 'entregada', ['entregado'], true), channel: 'POS', dining_table_id: 't2' },
     ]);
     store.selectTable('t1');
     store.centralPanelTab.set('pedido');
@@ -632,7 +642,7 @@ describe('PosTerminalStore.resolveSaleForOrder', () => {
  * Hotfix de spec 029: `billOrphan` (el aviso "No se puede cobrar esta mesa
  * — su sesión está cerrada") contaba cualquier pedido no terminal como
  * "sin cobrar", sin mirar `paid` — un pedido ya pagado (que nunca llega a
- * `status === 'pagada'` en el camino QR/mostrador) disparaba el aviso
+ * `status === 'entregada'` en el camino QR/mostrador) disparaba el aviso
  * aunque ya estuviera resuelto.
  */
 describe('PosTerminalStore.loadSessionBill — billOrphan (hotfix spec 029)', () => {
@@ -657,7 +667,7 @@ describe('PosTerminalStore.loadSessionBill — billOrphan (hotfix spec 029)', ()
   afterEach(() => http.verify());
 
   it('sin sesión pero con un pedido ya pagado → NO marca huérfano', async () => {
-    store.orders.set([{ ...order('o1', 'abierta', ['listo'], true), dining_table_id: 't1' }]);
+    store.orders.set([{ ...order('o1', 'pendiente', ['entregado'], true), dining_table_id: 't1' }]);
 
     const promise = store.loadSessionBill('t1');
     const req = http.expectOne(`${API}/table-sessions`);
@@ -668,7 +678,7 @@ describe('PosTerminalStore.loadSessionBill — billOrphan (hotfix spec 029)', ()
   });
 
   it('sin sesión y con un pedido genuinamente sin pagar → sí marca huérfano', async () => {
-    store.orders.set([{ ...order('o1', 'abierta', ['listo'], false), dining_table_id: 't1' }]);
+    store.orders.set([{ ...order('o1', 'pendiente', ['entregado'], false), dining_table_id: 't1' }]);
 
     const promise = store.loadSessionBill('t1');
     const req = http.expectOne(`${API}/table-sessions`);
@@ -680,12 +690,63 @@ describe('PosTerminalStore.loadSessionBill — billOrphan (hotfix spec 029)', ()
 });
 
 /**
+ * Reporte del usuario (spec 147 ciclo 2): con `keepTableOpen`, cobrar ya no
+ * cierra la sesión de mesa -- el cajero se queda en la misma mesa, viendo
+ * `sessionBill()` para que el footer ("Liberar Mesa") tenga algo que leer.
+ * `onCharged()` lo ponía en `null` y nunca lo volvía a cargar (antes era
+ * inofensivo: cobrar SIEMPRE cerraba la sesión, así que nadie necesitaba
+ * leerlo después) -- el panel se quedaba completamente en blanco, sin
+ * "Liberar Mesa" ni ninguna otra acción.
+ */
+describe('PosTerminalStore.onCharged — refresca sessionBill tras cobrar (bugfix)', () => {
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('deja sessionBill recargado (no null) para la mesa seleccionada', async () => {
+    store.selectedTableId.set('t1');
+    vi.spyOn(store, 'reload').mockResolvedValue(undefined);
+
+    const promise = store.onCharged({ table_session: {} as never, sale_ids: [] });
+
+    const sessionsReq = http.expectOne(`${API}/table-sessions`);
+    sessionsReq.flush([{ id: 'ts1', dining_table_id: 't1', status: 'active' } as never]);
+    // `loadSessionBill` pide .../bill recién después de resolver la lista de
+    // sesiones -- hace falta un tick de microtarea antes de que exista.
+    await new Promise((r) => setTimeout(r));
+    const billReq = http.expectOne(`${API}/table-sessions/ts1/bill`);
+    billReq.flush({ table_session_id: 'ts1', dining_table_id: 't1', total: '0', order_ids: [], split: [] });
+
+    await promise;
+
+    expect(store.sessionBill()).not.toBeNull();
+    expect(store.sessionBill()?.table_session_id).toBe('ts1');
+  });
+});
+
+/**
  * Reporte del usuario: crear un pedido de mostrador, recargar la página y
  * volver a seleccionar la mesa dejaba el panel central como "Pedido nuevo
  * sin guardar" aunque el pedido ya existía con productos. Causa raíz:
  * `activeOrders` (de la que depende `selectTable()` para auto-seleccionar)
- * excluía TODO pedido `'recibida'` sin mirar el canal — un pedido de
- * mostrador `hold_for_payment` vive en `'recibida'` mientras se arma, pero sí
+ * excluía TODO pedido `'pendiente'` sin mirar el canal — un pedido de
+ * mostrador `hold_for_payment` vive en `'pendiente'` mientras se arma, pero sí
  * es editable/seleccionable, a diferencia de uno del QR sin confirmar.
  */
 describe('PosTerminalStore.selectTable', () => {
@@ -710,9 +771,9 @@ describe('PosTerminalStore.selectTable', () => {
 
   afterEach(() => http.verify());
 
-  it('un pedido de mostrador "recibida" (hold_for_payment) SÍ se auto-selecciona', () => {
+  it('un pedido de mostrador "pendiente" (hold_for_payment) SÍ se auto-selecciona', () => {
     store.orders.set([
-      { ...order('o1', 'recibida', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
     ]);
 
     store.selectTable('t1');
@@ -721,9 +782,9 @@ describe('PosTerminalStore.selectTable', () => {
     expect(store.selectedOrder()?.id).toBe('o1');
   });
 
-  it('un pedido QR "recibida" (por confirmar) SÍ se auto-selecciona (a pedido del usuario: una pestaña más, de sólo lectura)', () => {
+  it('un pedido QR "pendiente" (por confirmar) SÍ se auto-selecciona (a pedido del usuario: una pestaña más, de sólo lectura)', () => {
     store.orders.set([
-      { ...order('o1', 'recibida', ['pendiente']), channel: 'QR_MENU', dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'QR_MENU', dining_table_id: 't1' },
     ]);
 
     store.selectTable('t1');
@@ -919,7 +980,7 @@ describe('PosTerminalStore.additionPicker / confirmAddition — spec 123', () =>
   });
 
   it('additionPickerExistingQty lee la cantidad ya persistida en la línea abierta', () => {
-    const o = order('o1', 'abierta', ['pendiente']);
+    const o = order('o1', 'pendiente', ['pendiente']);
     o.items = [
       { ...o.items![0], options: [{ id: 'oio1', option_id: 'opt1', quantity: 3 }] },
     ] as DiningOrderItem[];
@@ -1029,7 +1090,7 @@ describe('PosTerminalStore.checkoutAndSend — spec 125 (confirmación única de
     http = TestBed.inject(HttpTestingController);
     toast = TestBed.inject(ToastService);
     realtime = TestBed.inject(RealtimeService);
-    store.orders.set([order('o1', 'recibida')]);
+    store.orders.set([order('o1', 'pendiente')]);
     store.selectedOrderId.set('o1');
   });
 
@@ -1059,7 +1120,7 @@ describe('PosTerminalStore.checkoutAndSend — spec 125 (confirmación única de
   });
 
   it('a pedido del usuario: un pedido de mesa conserva la selección tras cobrar (no se expulsa a la grilla de la Terminal — el cajero puede cobrar el siguiente pedido de la misma mesa, A-138)', async () => {
-    store.orders.set([{ ...order('o1', 'recibida'), dining_table_id: 't1' }]);
+    store.orders.set([{ ...order('o1', 'pendiente'), dining_table_id: 't1' }]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
 
@@ -1073,7 +1134,7 @@ describe('PosTerminalStore.checkoutAndSend — spec 125 (confirmación única de
     http.expectOne(`${API}/orders/tables`).flush([]);
     http
       .expectOne((r) => r.url === `${API}/orders`)
-      .flush([{ ...order('o1', 'abierta'), paid: true, dining_table_id: 't1' }]);
+      .flush([{ ...order('o1', 'pendiente'), paid: true, dining_table_id: 't1' }]);
     // `selectedTableId` sigue puesta -> `reload()` también dispara, sin
     // esperarla (`void`), la cuenta de sesión (mismo patrón que el resto de
     // este archivo: un tick extra antes de que la petición exista).
@@ -1144,7 +1205,7 @@ describe('PosTerminalStore.rejectOrder', () => {
     http = TestBed.inject(HttpTestingController);
     toast = TestBed.inject(ToastService);
     confirm = TestBed.inject(ConfirmService);
-    store.orders.set([{ ...order('o1', 'abierta', ['pendiente']), dining_table_id: 't1' }]);
+    store.orders.set([{ ...order('o1', 'pendiente', ['pendiente']), dining_table_id: 't1' }]);
     store.selectedOrderId.set('o1');
   });
 
@@ -1203,7 +1264,7 @@ describe('PosTerminalStore.rejectOrder', () => {
  * `selectedOrderId` — al confirmar/aprobar un pago QR pendiente, el pedido
  * dejaba de estar excluido de `activeOrders()`, pero la selección se quedaba
  * en `null` (desde que se eligió la mesa mientras el pedido aún era
- * `recibida`+`qr`) hasta que el cajero volvía a tocar la tarjeta.
+ * `pendiente`+`qr`) hasta que el cajero volvía a tocar la tarjeta.
  */
 describe('PosTerminalStore.reload — resincroniza la selección tras confirmar un pago', () => {
   let store: PosTerminalStore;
@@ -1234,7 +1295,7 @@ describe('PosTerminalStore.reload — resincroniza la selección tras confirmar 
 
   it('mesa con un único pedido QR pendiente: sigue seleccionado sin interrupciones al confirmarse el pago (reload())', async () => {
     store.orders.set([
-      { ...order('o1', 'recibida', ['pendiente']), channel: 'QR_MENU', dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'QR_MENU', dining_table_id: 't1' },
     ]);
     store.selectTable('t1');
     http.expectOne(`${API}/table-sessions`).flush([]);
@@ -1248,12 +1309,12 @@ describe('PosTerminalStore.reload — resincroniza la selección tras confirmar 
     http.expectOne(`${API}/orders/tables`).flush([]);
     http
       .expectOne((r) => r.url === `${API}/orders`)
-      .flush([{ ...order('o1', 'abierta', ['pendiente']), channel: 'QR_MENU', dining_table_id: 't1' }]);
+      .flush([{ ...order('o1', 'entregada', ['entregado']), channel: 'QR_MENU', dining_table_id: 't1' }]);
     await tick();
     http.expectOne(`${API}/table-sessions`).flush([]);
     await promise;
 
-    // Tras confirmarse el pago (status ya no es 'recibida'), sigue siendo el
+    // Tras confirmarse el pago (status ya no es 'pendiente'), sigue siendo el
     // mismo pedido seleccionado -- ya no de sólo lectura.
     expect(store.selectedOrder()?.id).toBe('o1');
     expect(store.selectedOrderPending()).toBe(false);
@@ -1261,8 +1322,8 @@ describe('PosTerminalStore.reload — resincroniza la selección tras confirmar 
 
   it('mesa con dos pedidos activos y uno ya elegido a mano: reload() no cambia la selección mientras siga vigente', async () => {
     store.orders.set([
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
-      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o2', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
     ]);
     store.selectTable('t1');
     http.expectOne(`${API}/table-sessions`).flush([]);
@@ -1274,8 +1335,8 @@ describe('PosTerminalStore.reload — resincroniza la selección tras confirmar 
     http
       .expectOne((r) => r.url === `${API}/orders`)
       .flush([
-        { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
-        { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+        { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+        { ...order('o2', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
       ]);
     await tick();
     http.expectOne(`${API}/table-sessions`).flush([]);
@@ -1287,12 +1348,18 @@ describe('PosTerminalStore.reload — resincroniza la selección tras confirmar 
 
 /**
  * Bugfix (gap de spec 035, A-52): `marcarListo()` llama a `reload()`, que
- * dispara `resyncSelectedOrder()` -- antes del fix, un pedido `'pagada'`
+ * dispara `resyncSelectedOrder()` -- antes del fix, un pedido `'entregada'`
  * dejaba de aparecer en `ordersOfTable()` justo al terminar de cocinar, así
  * que la selección se perdía en el mismo `reload()` que confirmaba el
  * "Marcar pedido listo". Ver spec 047.
  */
-describe('PosTerminalStore.marcarListo — pedido "pagada" no desaparece (gap spec 035, A-52)', () => {
+// `PosTerminalStore.marcarListo` se retira (spec 147, FR-002/research.md R4):
+// el PATCH por ítem (`/orders/items/{id}/kitchen`) y `POST /orders/{id}/ready`
+// ya no existen -- `deliverOrder()` los reemplaza, una sola llamada
+// (`POST /orders/{id}/deliver`) para todo el pedido. El siguiente describe
+// cubre el mismo caso ("el pedido entregado sigue seleccionado") con el
+// método nuevo.
+describe('PosTerminalStore.deliverOrder — pedido entregado sigue seleccionado (spec 147)', () => {
   let store: PosTerminalStore;
   let http: HttpTestingController;
 
@@ -1316,9 +1383,9 @@ describe('PosTerminalStore.marcarListo — pedido "pagada" no desaparece (gap sp
 
   afterEach(() => http.verify());
 
-  it('tras marcarListo(), el pedido pagado sigue seleccionado y centralState sigue en "pedido"', async () => {
+  it('tras deliverOrder(), el pedido sigue seleccionado y centralState sigue en "pedido"', async () => {
     store.orders.set([
-      { ...order('o1', 'pagada', ['pendiente'], true), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente'], true), channel: 'POS', dining_table_id: 't1' },
     ]);
     store.selectTable('t1');
     http.expectOne(`${API}/table-sessions`).flush([]);
@@ -1328,20 +1395,17 @@ describe('PosTerminalStore.marcarListo — pedido "pagada" no desaparece (gap sp
     http.expectOne((r) => r.url === `${API}/invoices`).flush([]);
     expect(store.selectedOrderId()).toBe('o1');
 
-    const promise = store.marcarListo();
+    const promise = store.deliverOrder();
 
-    // PATCH por ítem, no `POST /orders/{id}/ready` — ese endpoint rechaza con
-    // 409 justo cuando `status === 'pagada'` (A-16), que es el caso de este
-    // test (pedido de mostrador cobrado por adelantado).
-    const kitchenReq = http.expectOne(`${API}/orders/items/o1-i0/kitchen`);
-    expect(kitchenReq.request.method).toBe('PATCH');
-    kitchenReq.flush({ id: 'o1-i0', estado_cocina: 'listo' });
+    const deliverReq = http.expectOne(`${API}/orders/o1/deliver`);
+    expect(deliverReq.request.method).toBe('POST');
+    deliverReq.flush({ ...order('o1', 'entregada', ['entregado'], true), channel: 'POS', dining_table_id: 't1' });
     await tick();
 
     http.expectOne(`${API}/orders/tables`).flush([]);
     http
       .expectOne((r) => r.url === `${API}/orders`)
-      .flush([{ ...order('o1', 'pagada', ['listo'], true), channel: 'POS', dining_table_id: 't1' }]);
+      .flush([{ ...order('o1', 'entregada', ['entregado'], true), channel: 'POS', dining_table_id: 't1' }]);
     await tick();
     http.expectOne(`${API}/table-sessions`).flush([]);
 
@@ -1349,30 +1413,6 @@ describe('PosTerminalStore.marcarListo — pedido "pagada" no desaparece (gap sp
 
     expect(store.selectedOrderId()).toBe('o1');
     expect(store.centralState()).toBe('pedido');
-  });
-
-  it('marcarListo() no llama a "ready" y en cambio hace PATCH por cada ítem pendiente, sin chocar con el 409 de A-16', async () => {
-    store.orders.set([
-      { ...order('o1', 'pagada', ['pendiente', 'pendiente'], true), channel: 'POS', dining_table_id: 't1' },
-    ]);
-    store.selectedTableId.set('t1');
-    store.selectedOrderId.set('o1');
-
-    const promise = store.marcarListo();
-
-    http.expectOne(`${API}/orders/items/o1-i0/kitchen`).flush({ id: 'o1-i0', estado_cocina: 'listo' });
-    await tick();
-    http.expectOne(`${API}/orders/items/o1-i1/kitchen`).flush({ id: 'o1-i1', estado_cocina: 'listo' });
-    await tick();
-
-    http.expectOne(`${API}/orders/tables`).flush([]);
-    http.expectOne((r) => r.url === `${API}/orders`).flush([]);
-    await tick();
-    http.expectOne(`${API}/table-sessions`).flush([]);
-
-    await promise;
-
-    http.expectNone(`${API}/orders/o1/ready`);
   });
 });
 
@@ -1409,7 +1449,7 @@ describe('PosTerminalStore.ensureReadyToCharge', () => {
   afterEach(() => http.verify());
 
   it('con todos los ítems ya listos, resuelve true de inmediato sin preguntar ni pegar a la red', async () => {
-    store.orders.set([{ ...order('o1', 'abierta', ['listo']), dining_table_id: 't1' }]);
+    store.orders.set([{ ...order('o1', 'pendiente', ['entregado']), dining_table_id: 't1' }]);
     store.sessionBill.set({
       table_session_id: 'ts1', dining_table_id: 't1', total: '4000', order_ids: ['o1'], split: [],
     });
@@ -1418,7 +1458,7 @@ describe('PosTerminalStore.ensureReadyToCharge', () => {
   });
 
   it('con ítems sin marcar, pregunta y —si el cajero confirma— los marca listos y recarga', async () => {
-    store.orders.set([{ ...order('o1', 'abierta', ['pendiente']), dining_table_id: 't1' }]);
+    store.orders.set([{ ...order('o1', 'pendiente', ['pendiente']), dining_table_id: 't1' }]);
     store.sessionBill.set({
       table_session_id: 'ts1', dining_table_id: 't1', total: '4000', order_ids: ['o1'], split: [],
     });
@@ -1427,8 +1467,8 @@ describe('PosTerminalStore.ensureReadyToCharge', () => {
     confirm.respond(true);
     await Promise.resolve();
 
-    const readyReq = http.expectOne(`${API}/orders/o1/ready`);
-    readyReq.flush({ ...order('o1', 'abierta', ['listo']), dining_table_id: 't1' });
+    const deliverReq = http.expectOne(`${API}/orders/o1/deliver`);
+    deliverReq.flush({ ...order('o1', 'entregada', ['entregado']), dining_table_id: 't1' });
     await new Promise((resolve) => setTimeout(resolve));
 
     const reloadReq = http.expectOne((r) => r.url === `${API}/orders` && r.params.get('active_sessions_only') === 'true');
@@ -1438,7 +1478,7 @@ describe('PosTerminalStore.ensureReadyToCharge', () => {
   });
 
   it('si el cajero cancela el aviso, resuelve false sin marcar nada', async () => {
-    store.orders.set([{ ...order('o1', 'abierta', ['pendiente']), dining_table_id: 't1' }]);
+    store.orders.set([{ ...order('o1', 'pendiente', ['pendiente']), dining_table_id: 't1' }]);
     store.sessionBill.set({
       table_session_id: 'ts1', dining_table_id: 't1', total: '4000', order_ids: ['o1'], split: [],
     });
@@ -1604,7 +1644,7 @@ describe('PosTerminalStore.createManualOrderFromDraft', () => {
     expect(req.request.body).toEqual(
       expect.objectContaining({ channel: 'POS', order_type: 'DINE_IN', dining_table_id: 't1' }),
     );
-    req.flush({ id: 'o1', channel: 'POS', order_type: 'DINE_IN', status: 'abierta', created_at: '2026-08-29' });
+    req.flush({ id: 'o1', channel: 'POS', order_type: 'DINE_IN', status: 'pendiente', created_at: '2026-08-29' });
 
     expect(await promise).toBe(true);
   });
@@ -1617,7 +1657,7 @@ describe('PosTerminalStore.createManualOrderFromDraft', () => {
     expect(req.request.body).toEqual(
       expect.objectContaining({ channel: 'POS', order_type: 'TAKEAWAY', dining_table_id: null }),
     );
-    req.flush({ id: 'o1', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+    req.flush({ id: 'o1', channel: 'POS', order_type: 'TAKEAWAY', status: 'pendiente', created_at: '2026-08-29' });
 
     expect(await promise).toBe(true);
   });
@@ -1650,7 +1690,7 @@ describe('PosTerminalStore.createManualOrderFromDraft', () => {
         delivery_fee: 6000,
       }),
     );
-    req.flush({ id: 'o1', channel: 'POS', order_type: 'DELIVERY', status: 'recibida', created_at: '2026-08-29' });
+    req.flush({ id: 'o1', channel: 'POS', order_type: 'DELIVERY', status: 'pendiente', created_at: '2026-08-29' });
 
     expect(await promise).toBe(true);
   });
@@ -1666,7 +1706,7 @@ describe('PosTerminalStore.createManualOrderFromDraft', () => {
     expect(req.request.body).toEqual(
       expect.objectContaining({ delivery_phone: null, delivery_fee: 0 }),
     );
-    req.flush({ id: 'o1', channel: 'POS', order_type: 'DELIVERY', status: 'recibida', created_at: '2026-08-29' });
+    req.flush({ id: 'o1', channel: 'POS', order_type: 'DELIVERY', status: 'pendiente', created_at: '2026-08-29' });
 
     expect(await promise).toBe(true);
   });
@@ -1678,7 +1718,7 @@ describe('PosTerminalStore.createManualOrderFromDraft', () => {
     const promise = store.createManualOrderFromDraft();
 
     const req = http.expectOne(`${API}/orders`);
-    req.flush({ id: 'o-nuevo-123', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+    req.flush({ id: 'o-nuevo-123', channel: 'POS', order_type: 'TAKEAWAY', status: 'pendiente', created_at: '2026-08-29' });
 
     expect(await promise).toBe(true);
     expect(store.selectedOrderId()).toBe('o-nuevo-123');
@@ -1696,7 +1736,7 @@ describe('PosTerminalStore.createManualOrderFromDraft', () => {
     const segundaPromise = store.createManualOrderFromDraft();
     const segunda = http.expectOne(`${API}/orders`);
     expect(segunda.request.body).toEqual(expect.objectContaining({ client_request_id: idEnviado1 }));
-    segunda.flush({ id: 'o1', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+    segunda.flush({ id: 'o1', channel: 'POS', order_type: 'TAKEAWAY', status: 'pendiente', created_at: '2026-08-29' });
     expect(await segundaPromise).toBe(true);
 
     store.addDraftFromSelection({
@@ -1711,7 +1751,7 @@ describe('PosTerminalStore.createManualOrderFromDraft', () => {
     const idEnviado3 = (tercerReq.request.body as { client_request_id: string }).client_request_id;
     expect(idEnviado3).toBeTruthy();
     expect(idEnviado3).not.toBe(idEnviado1);
-    tercerReq.flush({ id: 'o2', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+    tercerReq.flush({ id: 'o2', channel: 'POS', order_type: 'TAKEAWAY', status: 'pendiente', created_at: '2026-08-29' });
     expect(await tercera).toBe(true);
   });
 
@@ -1736,7 +1776,7 @@ describe('PosTerminalStore.createManualOrderFromDraft', () => {
     const segunda = store.createManualOrderFromDraft();
     expect(await segunda).toBe(false);
 
-    http.expectOne(`${API}/orders`).flush({ id: 'o1', channel: 'POS', order_type: 'TAKEAWAY', status: 'recibida', created_at: '2026-08-29' });
+    http.expectOne(`${API}/orders`).flush({ id: 'o1', channel: 'POS', order_type: 'TAKEAWAY', status: 'pendiente', created_at: '2026-08-29' });
     expect(await primera).toBe(true);
   });
 });
@@ -1895,7 +1935,7 @@ describe('PosTerminalStore.createManualOrderFromDraft — carrito mixto, agnóst
       expect.objectContaining({ product_variant_id: 'v1', quantity: 2 }),
       expect.objectContaining({ product_variant_id: 'v2', quantity: 1 }),
     ]);
-    req.flush({ id: 'o1', channel: 'POS', order_type: orderType, status: 'abierta', created_at: '2026-10-12' });
+    req.flush({ id: 'o1', channel: 'POS', order_type: orderType, status: 'pendiente', created_at: '2026-10-12' });
 
     expect(await promise).toBe(true);
   });
@@ -2252,10 +2292,10 @@ describe('PosTerminalStore — no mezclar paquete con suelto en la misma línea 
     const promise = store.saveOrder();
     const req1 = http.expectOne(`${API}/orders/o1/items`);
     expect(req1.request.body).toEqual(expect.objectContaining({ product_variant_id: 'v1', quantity: 2 }));
-    req1.flush({ id: 'o1', channel: 'POS', order_type: 'DINE_IN', status: 'abierta', created_at: '2026-10-12' });
+    req1.flush({ id: 'o1', channel: 'POS', order_type: 'DINE_IN', status: 'pendiente', created_at: '2026-10-12' });
     const req2 = http.expectOne(`${API}/orders/o1/items`);
     expect(req2.request.body).toEqual(expect.objectContaining({ product_variant_id: 'v1', quantity: 1 }));
-    req2.flush({ id: 'o1', channel: 'POS', order_type: 'DINE_IN', status: 'abierta', created_at: '2026-10-12' });
+    req2.flush({ id: 'o1', channel: 'POS', order_type: 'DINE_IN', status: 'pendiente', created_at: '2026-10-12' });
 
     expect(await promise).toBe(true);
     http.verify();
@@ -2811,8 +2851,8 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
 
   it('orderTabs() rotula "Pedido N" con el table_order_number del backend, no por posición ni por nombre de cliente (spec 087, FR-006/FR-009 -- reemplaza el rotulado por posición, causa del bug de reordenamiento que documentaba este test antes de A-86)', () => {
     store.orders.set([
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', customer_name: 'Ana', table_order_number: 1 },
-      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', customer_name: 'Luis', table_order_number: 2 },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1', customer_name: 'Ana', table_order_number: 1 },
+      { ...order('o2', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1', customer_name: 'Luis', table_order_number: 2 },
     ]);
     store.selectedTableId.set('t1');
 
@@ -2824,8 +2864,8 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
 
   it('orderTabs() ordena ascendente por table_order_number, sin importar el orden de llegada (spec 087, FR-006)', () => {
     store.orders.set([
-      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 2 },
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 1 },
+      { ...order('o2', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 2 },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 1 },
     ]);
     store.selectedTableId.set('t1');
 
@@ -2837,8 +2877,8 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
 
   it('orderTabs() rotula sin número ("Pedido" a secas) un pedido histórico sin table_order_number (spec 087)', () => {
     store.orders.set([
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: null },
-      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 1 },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: null },
+      { ...order('o2', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 1 },
     ]);
     store.selectedTableId.set('t1');
 
@@ -2850,8 +2890,8 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
 
   it('orderTabs() marca `pending: true` un pago QR por confirmar, incluido entre las pestañas (a pedido del usuario)', () => {
     store.orders.set([
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 1 },
-      { ...order('o2', 'recibida', ['pendiente']), channel: 'QR_MENU', dining_table_id: 't1', table_order_number: 2 },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1', table_order_number: 1 },
+      { ...order('o2', 'pendiente', ['pendiente']), channel: 'QR_MENU', dining_table_id: 't1', table_order_number: 2 },
     ]);
     store.selectedTableId.set('t1');
 
@@ -2862,7 +2902,7 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
   });
 
   it('selectedOrderTotal() es null con un único pedido en la mesa (sin pestañas que navegar)', () => {
-    store.orders.set([{ ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' }]);
+    store.orders.set([{ ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' }]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
 
@@ -2871,8 +2911,8 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
 
   it('selectedOrderTotal() acompaña al pedido enfocado por su pestaña, no al total de toda la mesa', () => {
     store.orders.set([
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
-      { ...order('o2', 'abierta', ['pendiente', 'pendiente']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o2', 'pendiente', ['pendiente', 'pendiente']), channel: 'POS', dining_table_id: 't1' },
     ]);
     store.selectedTableId.set('t1');
 
@@ -2885,8 +2925,8 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
 
   it('ordersView() devuelve una tarjeta por pedido, con sus ítems y si le falta algo por preparar', () => {
     store.orders.set([
-      { ...order('o1', 'abierta', ['listo']), channel: 'POS', dining_table_id: 't1' },
-      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['entregado']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o2', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
     ]);
     store.selectedTableId.set('t1');
 
@@ -2907,7 +2947,7 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
       });
       store.orders.set([
         {
-          ...order('o1', 'abierta', ['listo']),
+          ...order('o1', 'pendiente', ['entregado']),
           channel: 'POS',
           dining_table_id: 't1',
           created_at: '2026-10-25T23:30:00+00:00',
@@ -2926,43 +2966,25 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
     expect(store.selectedTableStatusMeta()).toBeNull();
   });
 
-  it('marcarListo(orderId) opera sobre ese pedido aunque no sea el seleccionado', async () => {
+  // `avanzarItem` se retira (spec 147, FR-002): ya no hay entrega por línea
+  // dentro de un pedido -- la acción es por pedido completo. `deliverOrder`
+  // ya cubre "opera sobre ese pedido aunque no sea el seleccionado" (abajo),
+  // que es la parte de este concern que sigue aplicando.
+
+  it('deliverOrder(orderId) opera sobre ese pedido aunque no sea el seleccionado', async () => {
     const http = TestBed.inject(HttpTestingController);
     store.orders.set([
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
-      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o2', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
     ]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
 
-    // Se corta con un error antes del reload (fuera de alcance de este test,
-    // ver describe de marcarListo/gap spec 035 para ese flujo completo) — lo
-    // único que interesa aquí es a qué pedido apuntó la petición (PATCH por
-    // ítem, no "ready" — ver bugfix del botón "Marcar pedido listo", A-16).
-    const promise = store.marcarListo('o2');
-    http.expectOne(`${API}/orders/items/o2-i0/kitchen`).flush({ detail: 'boom' }, { status: 500, statusText: 'Error' });
-    await promise;
-
-    http.verify();
-  });
-
-  it('avanzarItem busca la línea en cualquier pedido de la mesa, no solo en el seleccionado', async () => {
-    const http = TestBed.inject(HttpTestingController);
-    store.orders.set([
-      { ...order('o1', 'abierta', ['listo']), channel: 'POS', dining_table_id: 't1' },
-      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
-    ]);
-    store.selectedTableId.set('t1');
-    store.selectedOrderId.set('o1');
-
-    // spec 118: `key` ya no es necesariamente el `id` real de la fila (una
-    // card agrupada comparte un `key` sintético, FR-008) -- `avanzarItem`
-    // sigue operando sobre los `id` reales vía `pendingItemIds`.
-    const linea = store.ordersView()[1].items[0];
-    const promise = store.avanzarItem(linea.key);
-    http
-      .expectOne(`${API}/orders/items/${linea.pendingItemIds[0]}/kitchen`)
-      .flush({ detail: 'boom' }, { status: 500, statusText: 'Error' });
+    // Se corta con un error antes del reload (fuera de alcance de este
+    // test) — lo único que interesa aquí es a qué pedido apuntó la
+    // petición (`POST /orders/{id}/deliver`, no la del seleccionado).
+    const promise = store.deliverOrder('o2');
+    http.expectOne(`${API}/orders/o2/deliver`).flush({ detail: 'boom' }, { status: 500, statusText: 'Error' });
     await promise;
 
     http.verify();
@@ -2972,7 +2994,7 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
     const http = TestBed.inject(HttpTestingController);
     const confirm = TestBed.inject(ConfirmService);
     const conItemDeCombo: DiningOrder = {
-      ...order('o2', 'abierta', []),
+      ...order('o2', 'pendiente', []),
       channel: 'POS',
       dining_table_id: 't1',
       items: [
@@ -2980,7 +3002,7 @@ describe('PosTerminalStore — cabecera y pestañas del panel de pedido (spec 04
       ] as DiningOrderItem[],
     };
     store.orders.set([
-      { ...order('o1', 'abierta', ['listo']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['entregado']), channel: 'POS', dining_table_id: 't1' },
       conItemDeCombo,
     ]);
     store.selectedTableId.set('t1');
@@ -3031,7 +3053,7 @@ describe('PosTerminalStore.selectedTablePaidSummary — "Ya pagado" (bugfix spec
     expect(store.selectedTablePaidSummary()).toBeNull();
 
     store.orders.set([
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
     ]);
     store.selectedTableId.set('t1');
     expect(store.selectedTablePaidSummary()).toBeNull();
@@ -3039,7 +3061,7 @@ describe('PosTerminalStore.selectedTablePaidSummary — "Ya pagado" (bugfix spec
 
   it('selectTable() de una mesa con un pedido pagado precarga su venta real y la refleja en el resumen', async () => {
     store.orders.set([
-      { ...order('o1', 'pagada', ['pendiente'], true), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'entregada', ['pendiente'], true), channel: 'POS', dining_table_id: 't1' },
     ]);
 
     store.selectTable('t1');
@@ -3060,7 +3082,7 @@ describe('PosTerminalStore.selectedTablePaidSummary — "Ya pagado" (bugfix spec
 
   it('no reintenta ni repite la búsqueda al volver a seleccionar la misma mesa', async () => {
     store.orders.set([
-      { ...order('o1', 'pagada', ['pendiente'], true), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o1', 'entregada', ['pendiente'], true), channel: 'POS', dining_table_id: 't1' },
     ]);
 
     store.selectTable('t1');
@@ -3149,8 +3171,8 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
   it('seleccionar una mesa con pedido los pide exactamente una vez cada uno, y no los repite en una segunda selección (FR-002/FR-003)', async () => {
     localStorage.setItem(REGISTER_STORAGE_KEY, 'reg-1');
     store.orders.set([
-      { ...order('o1', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
-      { ...order('o2', 'abierta', ['pendiente']), channel: 'POS', dining_table_id: 't2' },
+      { ...order('o1', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
+      { ...order('o2', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't2' },
     ]);
 
     store.selectTable('t1');
@@ -3191,7 +3213,7 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
     // se vuelve a llamar `selectTable('t1')`.
     const reloadPromise = store.reload();
     http.expectOne((r) => r.url === `${API}/orders`).flush([
-      { ...order('o1', 'recibida', ['pendiente']), dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente']), dining_table_id: 't1' },
     ]);
     await new Promise((r) => setTimeout(r, 0));
     http
@@ -3219,7 +3241,7 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
 
     const reloadPromise = store.reload();
     http.expectOne((r) => r.url === `${API}/orders`).flush([
-      { ...order('o1', 'recibida', ['pendiente']), dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente']), dining_table_id: 't1' },
     ]);
     await new Promise((r) => setTimeout(r, 0));
     http
@@ -3249,7 +3271,7 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
 
     const reloadPromise = store.reload();
     http.expectOne((r) => r.url === `${API}/orders`).flush([
-      { ...order('o1', 'recibida', ['pendiente']), dining_table_id: 't1' },
+      { ...order('o1', 'pendiente', ['pendiente']), dining_table_id: 't1' },
     ]);
     await new Promise((r) => setTimeout(r, 0));
     http
@@ -3399,7 +3421,7 @@ describe('PosTerminalStore.ordersByType (spec 059, Historia 2)', () => {
     orderType: 'TAKEAWAY' | 'DELIVERY' | 'DINE_IN',
     extra: Partial<DiningOrder> = {},
   ): DiningOrder {
-    return { ...order(id, 'abierta', ['pendiente']), channel: 'POS', order_type: orderType, ...extra };
+    return { ...order(id, 'pendiente', ['pendiente']), channel: 'POS', order_type: orderType, ...extra };
   }
 
   it('"para-llevar" solo trae pedidos TAKEAWAY pendientes de cobro', () => {
@@ -3482,7 +3504,7 @@ describe('PosTerminalStore.ordersByType — total de la tarjeta de Domicilio (sp
 
   function delivery(id: string, items: Partial<DiningOrderItem>[], extra: Partial<DiningOrder> = {}): DiningOrder {
     return {
-      ...order(id, 'abierta', []),
+      ...order(id, 'pendiente', []),
       channel: 'POS',
       order_type: 'DELIVERY',
       items: items.map((it, i) => ({
@@ -3575,7 +3597,7 @@ describe('PosTerminalStore.ordersByType — total de la tarjeta de Domicilio (sp
 
   it('TAKEAWAY / pedido de mesa: totalLabel idéntico al de hoy — delivery_fee nulo, no se suma nada (FR-005)', () => {
     store.orders.set([
-      { ...order('t1', 'abierta', []), channel: 'POS', order_type: 'TAKEAWAY', items: [{ id: 't1-i0', product_variant_id: 'v1', quantity: 1, unit_price: '25000', estado_cocina: 'pendiente' }] as DiningOrderItem[] } as DiningOrder,
+      { ...order('t1', 'pendiente', []), channel: 'POS', order_type: 'TAKEAWAY', items: [{ id: 't1-i0', product_variant_id: 'v1', quantity: 1, unit_price: '25000', estado_cocina: 'pendiente' }] as DiningOrderItem[] } as DiningOrder,
     ]);
 
     expect(store.ordersByType('para-llevar')[0].totalLabel).toBe(store.fmt(25000));
@@ -3840,7 +3862,7 @@ describe('PosTerminalStore — adicionales del panel del pedido (spec 087, FR-01
   });
 
   function pedidoConOpciones(options: DiningOrderItem['options']): DiningOrder {
-    const base = order('o1', 'abierta', ['listo']);
+    const base = order('o1', 'pendiente', ['entregado']);
     return {
       ...base,
       channel: 'POS',
@@ -3926,7 +3948,7 @@ describe('PosTerminalStore.persistedItemsView — agrupamiento de adiciones suce
   afterEach(() => http.verify());
 
   function pedidoConItems(items: Partial<DiningOrderItem>[]): DiningOrder {
-    const base = order('o1', 'abierta', []);
+    const base = order('o1', 'pendiente', []);
     return {
       ...base,
       channel: 'POS',
@@ -3936,7 +3958,7 @@ describe('PosTerminalStore.persistedItemsView — agrupamiento de adiciones suce
         product_variant_id: 'v1',
         quantity: 1,
         unit_price: '7000',
-        estado_cocina: 'listo',
+        estado_cocina: 'entregado',
         ...i,
       })) as DiningOrderItem[],
     } as DiningOrder;
@@ -3973,7 +3995,7 @@ describe('PosTerminalStore.persistedItemsView — agrupamiento de adiciones suce
     store.orders.set([
       pedidoConItems([
         { discounted_unit_price: null, discounted_line_total: null },
-        { discounted_unit_price: '6000', discounted_line_total: '6000', estado_cocina: 'anulado' },
+        { discounted_unit_price: '6000', discounted_line_total: '6000', estado_cocina: 'cancelado' },
       ]),
     ]);
     store.selectedTableId.set('t1');
@@ -4064,7 +4086,7 @@ describe('PosTerminalStore.loadDraftPreview — conjunto vigente completo (spec 
   });
 
   function seleccionarPedidoConItemsGuardados(): void {
-    const base = order('o1', 'abierta', ['listo', 'anulado', 'listo']);
+    const base = order('o1', 'pendiente', ['entregado', 'cancelado', 'entregado']);
     store.orders.set([
       {
         ...base,
@@ -4195,7 +4217,7 @@ describe('PosTerminalStore — total inmediato al guardar y quitar (spec 089, A-
 
   const pos = (items: Partial<DiningOrderItem>[] = []): DiningOrder =>
     ({
-      id: 'o1', channel: 'POS', status: 'abierta', version: 1, created_at: '2026-09-30T10:00:00',
+      id: 'o1', channel: 'POS', status: 'pendiente', version: 1, created_at: '2026-09-30T10:00:00',
       items: items.map((it, i) => ({
         id: `i${i}`, product_variant_id: 'v1', quantity: 1, unit_price: '20000', estado_cocina: 'pendiente', ...it,
       })),

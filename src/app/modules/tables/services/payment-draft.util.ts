@@ -1,5 +1,5 @@
 import { PaymentMethodCheckoutOption } from '../../sales/interfaces/sales.interface';
-import { PaymentLine } from '../interfaces/dining.interface';
+import { PaymentAttempt, PaymentLine } from '../interfaces/dining.interface';
 import { formatMoney } from './receipt.util';
 
 /**
@@ -27,6 +27,48 @@ export const MAX_PAYMENT_LINES = 3;
 
 export function emptyPaymentLineDraft(amount = 0): PaymentLineDraft {
   return { methodId: '', amount, reference: null };
+}
+
+/**
+ * Borrador precargado con lo que el comensal ya eligió al pedir por el QR
+ * (spec 147 ciclo 2, a pedido del usuario): cuando el pedido llega a la
+ * mesa sin pagar y el cajero tiene que cobrarlo en persona (p. ej. se
+ * entregó sin que el comensal completara el pago a distancia), arranca con
+ * el método -- o los dos, si fue mixto -- que el comensal ya declaró, en
+ * vez de un selector vacío.
+ *
+ * Mixto (`cash_amount != null`, spec 130): `cash_amount`/`transfer_amount`
+ * quedaron fijos desde `submit_cart` -- son los montos reales que el
+ * comensal repartió, no un estimado. `transfer_method_id` es el método
+ * concreto de esa pata; la de efectivo usa el método marcado `is_cash` del
+ * catálogo del tenant (no hay otro en un intento mixto).
+ *
+ * Método único: el monto no viene del intento (`amount_received` es un
+ * campo que llena el CAJERO al confirmar, no algo que el comensal declaró
+ * -- `null` en todo intento sin revisar) -- se precarga con `total`, igual
+ * que arrancaría un cobro de un solo método.
+ *
+ * `emptyPaymentDraft()` si el intento no tiene ninguna línea utilizable
+ * (dato incompleto/inconsistente) -- nunca una línea con `methodId: ''` que
+ * el cajero no pueda distinguir de un borrador realmente vacío.
+ */
+export function paymentDraftFromAttempt(
+  attempt: PaymentAttempt,
+  methods: PaymentMethodCheckoutOption[],
+  total: number,
+): PaymentDraft {
+  if (attempt.cash_amount != null) {
+    const cashMethodId = methods.find((m) => m.is_cash)?.id;
+    const lines: PaymentDraft = [];
+    if (cashMethodId && Number(attempt.cash_amount) > 0) {
+      lines.push({ methodId: cashMethodId, amount: Number(attempt.cash_amount), reference: null });
+    }
+    if (attempt.transfer_method_id && Number(attempt.transfer_amount) > 0) {
+      lines.push({ methodId: attempt.transfer_method_id, amount: Number(attempt.transfer_amount), reference: null });
+    }
+    return lines.length > 0 ? lines : emptyPaymentDraft();
+  }
+  return [{ methodId: attempt.payment_method_id, amount: total, reference: null }];
 }
 
 /** Borrador inicial: una sola línea vacía -- el caso de un único método
