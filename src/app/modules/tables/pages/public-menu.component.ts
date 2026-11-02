@@ -15,6 +15,12 @@ import {
   PendingPaymentExitError,
 } from '../services/diner.service';
 import { DinerTokenStore } from '../services/diner-token.store';
+import {
+  AvailabilitySyncService,
+  AvailabilityTarget,
+} from '../../../core/availability/availability-sync.service';
+import { AvailabilityChange, AvailabilitySnapshot } from '../../../core/availability/availability.model';
+import { applyChanges, applySnapshot, isProductSoldOut, parseSoldOutConflict } from '../../../core/availability/availability.util';
 import { CartLine, DiningCartService } from '../services/dining-cart.service';
 import { buildMenuLookup, splitVariantLabel } from '../services/menu-lookup';
 import { CartItemOptionsComponent } from '../components/cart-item-options.component';
@@ -59,6 +65,13 @@ type MenuSection = 'carta' | 'pedidos';
  * `DinerTokenStore` para el token de sesión del comensal.
  */
 const SECTION_PARAM = 'v';
+/**
+ * spec 148 (US2, T055): query param que pide abrir el carrito al llegar --
+ * lo usa el botón "Volver al carrito" del checkout cuando una línea se agotó.
+ * Se retira de la URL con `replaceUrl` apenas se consume, para que no quede
+ * en el historial ni se reabra con "atrás".
+ */
+const CART_PARAM = 'carrito';
 
 /**
  * spec 081: sentinel de `activeCategoryId` para la pestaña "Promociones" — nunca
@@ -587,13 +600,15 @@ const REFRESH_DEBOUNCE_MS = 250;
                 @for (product of visibleProducts(); track product.id) {
                   <button
                     (click)="openProduct(product)"
-                    [disabled]="product.sold_out"
+                    [disabled]="isProductSoldOut(product)"
+                    [attr.aria-disabled]="isProductSoldOut(product) ? 'true' : null"
                     class="text-left bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:border-violet-300 hover:shadow-md active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-100 disabled:hover:shadow-sm disabled:active:scale-100"
                   >
                     <div class="relative w-full aspect-square bg-violet-50 flex items-center justify-center text-4xl overflow-hidden">
                       <!-- spec 093 (escenario 6): sigue visible, atenuado, sin poder
-                           agregarse al carrito. -->
-                      @if (product.sold_out) {
+                           agregarse al carrito. spec 148: mismo trato para marca
+                           manual y agotado por inventario (FR-012). -->
+                      @if (isProductSoldOut(product)) {
                         <span class="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
                           Agotado
                         </span>
@@ -727,7 +742,7 @@ const REFRESH_DEBOUNCE_MS = 250;
       <!-- Product selection modal -->
       @if (selectedProduct()) {
         <app-product-select
-          [product]="selectedProduct()!"
+          [product]="selectedProductLive()!"
           [fromPromotions]="selectedProductFromPromotions()"
           [existingQtyFor]="selectedProductExistingQtyFor()"
           [addonsPerLine]="true"
@@ -842,12 +857,14 @@ const REFRESH_DEBOUNCE_MS = 250;
     </div>
   `,
 })
-export class PublicMenuComponent implements OnInit, OnDestroy {
+export class PublicMenuComponent implements OnInit, OnDestroy, AvailabilityTarget {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly api = inject(DinerService);
   private readonly tokenStore = inject(DinerTokenStore);
   private readonly realtime = inject(RealtimeService);
+  private readonly availabilitySync = inject(AvailabilitySyncService);
+  private unregisterAvailabilityTarget: (() => void) | null = null;
 
   constructor() {
     // El sondeo se relaja cuando el stream está sano y vuelve al ritmo de antes
@@ -890,6 +907,19 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
   readonly joining = signal(false);
 
   readonly selectedProduct = signal<MenuProduct | null>(null);
+  /** Spec 148 (D10/H11): resuelve el producto abierto por id contra el menú
+   *  **vivo** (`categories()`), con la copia de `selectedProduct()` como
+   *  respaldo si ya no aparece en el catálogo. Así el selector abierto nota
+   *  que el producto se agotó sin perder lo que el comensal ya eligió. */
+  readonly selectedProductLive = computed<MenuProduct | null>(() => {
+    const base = this.selectedProduct();
+    if (!base) return null;
+    for (const cat of this.categories()) {
+      const found = cat.products.find((p) => p.id === base.id);
+      if (found) return found;
+    }
+    return base;
+  });
   /** spec 081: si `selectedProduct` se abrió desde la pestaña "Promociones" (foto fija al abrir). */
   readonly selectedProductFromPromotions = signal(false);
   /** spec 081 (research.md D5): cuántas unidades ya hay en el carrito para una variante+opciones, al momento de abrir el modal. */
@@ -1002,6 +1032,13 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
         return;
       }
       // 422/409 del backend: se muestra su mensaje SIN cerrar el selector.
+      // Spec 148 (US3, T080): 409 unificado primero, mismo criterio que `showCartError`.
+      const conflict = parseSoldOutConflict(err);
+      if (conflict) {
+        this.cart.applyConflict(conflict);
+        this.editError.set(conflict.error);
+        return;
+      }
       const stock = this.api.stockConflict(err);
       this.editError.set(
         stock
@@ -1129,13 +1166,34 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
   private rtOff: (() => void)[] = [];
   private refreshHandle: ReturnType<typeof setTimeout> | null = null;
 
+  /** Spec 148 (D10): mientras vive, además del índice de `DiningCartService`
+   *  (raíz, sobrevive a este componente), parcha su propia copia de `categories`
+   *  para que las tarjetas del menú se actualicen sin recargar. */
+  applyAvailability(changes: readonly AvailabilityChange[]): void {
+    this.categories.update((cats) => applyChanges(cats, changes));
+  }
+
+  applyAvailabilitySnapshot(snapshot: AvailabilitySnapshot): void {
+    this.categories.update((cats) => applySnapshot(cats, snapshot));
+  }
+
   async ngOnInit(): Promise<void> {
+    this.unregisterAvailabilityTarget = this.availabilitySync.registerTarget(this);
     this.token = this.route.snapshot.paramMap.get('token') ?? '';
 
     // La sección la manda la URL, no el estado: así el botón atrás la deshace y una
     // recarga estando en "Mis pedidos" vuelve ahí.
     this.route.queryParamMap.subscribe((params) => {
       this.section.set(params.get(SECTION_PARAM) === 'pedidos' ? 'pedidos' : 'carta');
+      if (params.get(CART_PARAM) === 'abierto') {
+        this.cartDrawerOpen.set(true);
+        this.router.navigate([], {
+          relativeTo: this.route,
+          queryParams: { [CART_PARAM]: null },
+          queryParamsHandling: 'merge',
+          replaceUrl: true,
+        });
+      }
     });
 
     // 1. Resolver mesa + menú desde el token firmado.
@@ -1194,7 +1252,12 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.stopPolling();
     this.disconnectRealtime();
+    this.unregisterAvailabilityTarget?.();
+    this.unregisterAvailabilityTarget = null;
   }
+
+  /** Expuesto para la plantilla (spec 148, FR-012). */
+  readonly isProductSoldOut = isProductSoldOut;
 
   priceLabel(product: MenuProduct): string {
     const prices = product.variants.map((v) => effectivePrice(v.price, v.discounted_price));
@@ -1807,9 +1870,21 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
 
   // ── Errores ──────────────────────────────────────────────────────────────
 
-  /** Muestra el conflicto de stock señalando el insumo concreto que falta. */
+  /** Muestra el conflicto de stock señalando el insumo concreto que falta.
+   *
+   *  Spec 148 (US3, T080): un 409 unificado por agotado (`agotados[]`) se
+   *  prueba PRIMERO -- marca la línea afectada sin vaciar el carrito y deja
+   *  que `DiningCartService.applyConflict` reconcilie; el 409
+   *  `productos_no_disponibles` de la spec 128 (que limpia el carrito) no
+   *  trae `agotados[]`, así que sigue cayendo en la rama de siempre. */
   private showCartError(err: unknown): void {
     if (this.handleSessionError(err)) return;
+    const conflict = parseSoldOutConflict(err);
+    if (conflict) {
+      this.cart.applyConflict(conflict);
+      this.orderError.set(conflict.error);
+      return;
+    }
     const stock = this.api.stockConflict(err);
     this.orderError.set(
       stock

@@ -190,3 +190,88 @@ describe('MenuService — nombre comercial propio de la variante (spec 099)', ()
     expect(service.categories()[0].products[0].variants[0].name).toBe('<b>x</b>');
   });
 });
+
+/** Spec 148 (D10, T026): `MenuService` como destino de `AvailabilitySyncService`. */
+describe('MenuService — disponibilidad en vivo (spec 148)', () => {
+  let http: HttpTestingController;
+  let service: MenuService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    http = TestBed.inject(HttpTestingController);
+    service = TestBed.inject(MenuService);
+  });
+
+  afterEach(() => {
+    http.verify();
+  });
+
+  function cargarMenuConUnProducto(): void {
+    const req = http.expectOne((r) => r.url.endsWith('/menu'));
+    req.flush([
+      {
+        id: 'c1',
+        name: 'Granizados',
+        products: [
+          {
+            id: 'p1',
+            name: 'Granizado de mora',
+            description: null,
+            image_url: null,
+            available: true,
+            sold_out: false,
+            option_groups: [],
+            variants: [
+              {
+                id: 'v1',
+                presentation_id: 'pr1',
+                presentation_name: '16 oz',
+                price: '8000',
+                option_groups: [],
+                available: true,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  }
+
+  it('applyAvailability parcha categories sin volver a pedir el menú', async () => {
+    const cargando = service.loadMenu();
+    cargarMenuConUnProducto();
+    await cargando;
+
+    service.applyAvailability([{ kind: 'product', id: 'p1', sold_out: true, available: true }]);
+
+    expect(service.categories()[0].products[0].sold_out).toBe(true);
+    http.expectNone((r) => r.url.endsWith('/menu'));
+  });
+
+  it('loadAvailability llama a GET /menu/availability', async () => {
+    const promise = service.loadAvailability();
+    const req = http.expectOne((r) => r.url.endsWith('/menu/availability'));
+    expect(req.request.method).toBe('GET');
+    req.flush({ as_of: 42, products: [], variants: [], options: [] });
+
+    const snapshot = await promise;
+    expect(snapshot.as_of).toBe(42);
+  });
+
+  it('applyAvailabilitySnapshot reemplaza el estado de disponibilidad', async () => {
+    const cargando = service.loadMenu();
+    cargarMenuConUnProducto();
+    await cargando;
+
+    service.applyAvailabilitySnapshot({
+      as_of: 10,
+      products: [{ id: 'p1', sold_out: true, available: true }],
+      variants: [],
+      options: [],
+    });
+
+    expect(service.categories()[0].products[0].sold_out).toBe(true);
+  });
+});

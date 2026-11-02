@@ -286,6 +286,44 @@ describe('PosCatalogDrawerComponent', () => {
     expect(productButton.disabled).toBe(false);
   });
 
+  // ─── spec 148 (T042): disponibilidad en vivo con el drawer abierto ───────
+
+  function soldOutByInventoryProduct(id: string, name: string): MenuProduct {
+    return { ...product(id, name), available: false } as unknown as MenuProduct;
+  }
+
+  it('un cambio available:false (inventario) deshabilita la tarjeta igual que la marca manual, con el drawer abierto', () => {
+    menuService.categories.set([
+      { id: 'c1', name: 'Bebidas', products: [soldOutByInventoryProduct('p1', 'Granizado de mora')] },
+    ]);
+    fixture.detectChanges();
+
+    const productButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Granizado de mora'),
+    ) as HTMLButtonElement;
+
+    expect(productButton.disabled).toBe(true);
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Agotado');
+  });
+
+  it('el menú vivo cambia a "Agotado" mientras el drawer está abierto, sin cerrarlo ni recargarlo', () => {
+    menuService.categories.set([
+      { id: 'c1', name: 'Bebidas', products: [product('p1', 'Malteada de fresa')] },
+    ]);
+    fixture.detectChanges();
+
+    menuService.applyAvailability([{ kind: 'product', id: 'p1', sold_out: true, available: true }]);
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Agotado');
+    const productButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Malteada de fresa'),
+    ) as HTMLButtonElement;
+    expect(productButton.disabled).toBe(true);
+  });
+
   // ─── spec 115: pestaña "Promociones" (FR-014 — mismo tratamiento que manual-order-page) ───
 
   function productoConPromo(id: string, name: string, minQty = 2): MenuProduct {

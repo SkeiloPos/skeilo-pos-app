@@ -9,6 +9,9 @@ import {
   MenuTopping,
   MenuVariantPromotion,
 } from '../../modules/products/interfaces/product.interface';
+import { AvailabilityTarget } from '../availability/availability-sync.service';
+import { AvailabilityChange, AvailabilitySnapshot } from '../availability/availability.model';
+import { applyChanges, applySnapshot } from '../availability/availability.util';
 
 /** Raw backend menu (decimals arrive as strings). */
 interface MenuOptionResponse {
@@ -117,13 +120,31 @@ function toGroup(g: MenuOptionGroupResponse): MenuOptionGroup {
 
 /** Read-only public menu (`GET /menu`) — the active catalog customers see. */
 @Injectable({ providedIn: 'root' })
-export class MenuService {
+export class MenuService implements AvailabilityTarget {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = `${environment.apiBaseUrl}/menu`;
 
   readonly categories = signal<MenuCategory[]>([]);
   readonly isLoading = signal(false);
   readonly error = signal<string | null>(null);
+
+  /** Spec 148: destino de `AvailabilitySyncService` -- parcha `categories`
+   *  sin volver a pedir el menú completo. */
+  applyAvailability(changes: readonly AvailabilityChange[]): void {
+    this.categories.update((cats) => applyChanges(cats, changes));
+  }
+
+  applyAvailabilitySnapshot(snapshot: AvailabilitySnapshot): void {
+    this.categories.update((cats) => applySnapshot(cats, snapshot));
+  }
+
+  /** `GET /menu/availability` (contracts/availability-snapshot-api.md): la
+   *  consulta de reconciliación ligera que usa `AvailabilitySyncService`. */
+  async loadAvailability(): Promise<AvailabilitySnapshot> {
+    return firstValueFrom(
+      this.http.get<AvailabilitySnapshot>(`${this.baseUrl}/availability`),
+    );
+  }
 
   async loadMenu(): Promise<void> {
     this.isLoading.set(true);

@@ -1,3 +1,5 @@
+import { AvailabilityChange } from '../availability/availability.model';
+
 /**
  * Catálogo de eventos de tiempo real. Espejo de `app/core/events.py`.
  *
@@ -140,6 +142,17 @@ export interface MenuUpdatedEvent extends RealtimeBase {
   readonly type: 'menu.updated';
 }
 
+/**
+ * Spec 148 (FR-001 a FR-010): un lote de cambios de disponibilidad (marca
+ * manual o inventario) ocurridos en un mismo commit. Estado **absoluto** por
+ * elemento, nunca un delta -- ver `contracts/availability-event.md`.
+ */
+export interface AvailabilityChangedEvent extends RealtimeBase {
+  readonly type: 'availability.changed';
+  readonly changes: AvailabilityChange[];
+  readonly refresh: boolean;
+}
+
 export type RealtimeEvent =
   | OrderCreatedEvent
   | OrderConfirmedEvent
@@ -153,7 +166,8 @@ export type RealtimeEvent =
   | SessionClosedEvent
   | TableStatusChangedEvent
   | NotificationCreatedEvent
-  | MenuUpdatedEvent;
+  | MenuUpdatedEvent
+  | AvailabilityChangedEvent;
 
 export type RealtimeEventType = RealtimeEvent['type'];
 

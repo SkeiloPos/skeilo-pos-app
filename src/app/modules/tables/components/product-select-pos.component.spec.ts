@@ -1,10 +1,25 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ProductSelectPosComponent } from './product-select-pos.component';
-import { MenuProduct, MenuVariant } from '../../products/interfaces/product.interface';
+import {
+  MenuOption, MenuOptionGroup, MenuProduct, MenuVariant,
+} from '../../products/interfaces/product.interface';
 import { simulateTranslation } from '../../../testing/simulate-translation';
 
 function makeVariant(partial: Partial<MenuVariant> = {}): MenuVariant {
   return { id: 'v1', name: 'Única', price: 15000, available: true, option_groups: [], ...partial };
+}
+
+function makeOption(partial: Partial<MenuOption> = {}): MenuOption {
+  return { id: 'o1', name: 'Opción', extra_price: 0, available: true, ...partial };
+}
+
+function makeGroup(partial: Partial<MenuOptionGroup> = {}): MenuOptionGroup {
+  return {
+    id: 'g1', name: 'Grupo', min_select: 0, max_select: 1, consume: false,
+    selection_mode: 'conteo', max_quantity_per_option: null, max_total_quantity: null,
+    options: [],
+    ...partial,
+  };
 }
 
 function makeProduct(partial: Partial<MenuProduct> = {}): MenuProduct {
@@ -94,5 +109,89 @@ describe('ProductSelectPosComponent — botón de confirmar con la página alter
     }
     expect(texto()).not.toContain('Elige una presentación');
     traduccion.revert();
+  });
+});
+
+// ── spec 148 (T103, US6.7/FR-017): disponibilidad en vivo a nivel de opción ──
+
+describe('ProductSelectPosComponent — disponibilidad en vivo de la opción', () => {
+  let fixture: ComponentFixture<ProductSelectPosComponent>;
+  let component: ProductSelectPosComponent;
+
+  function create(product: MenuProduct): void {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [ProductSelectPosComponent] });
+    fixture = TestBed.createComponent(ProductSelectPosComponent);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('product', product);
+    fixture.componentRef.setInput('openToken', 1);
+    fixture.detectChanges();
+  }
+
+  it('un cambio kind:"option" agota ese sabor/salsa sin afectar a las demás opciones del grupo', () => {
+    const mora = makeOption({ id: 'o1', name: 'Mora', available: true });
+    const fresa = makeOption({ id: 'o2', name: 'Fresa', available: true });
+    const group = makeGroup({ id: 'g1', name: 'Sabor', selection_mode: 'conteo', max_select: 1, options: [mora, fresa] });
+    const producto = makeProduct({ variants: [makeVariant({ option_groups: [group] })] });
+    create(producto);
+
+    // Estado inicial: ambas opciones aparecen entre las seleccionables, ninguna en "Agotados".
+    let options = Array.from(
+      fixture.nativeElement.querySelectorAll('[data-testid="conteo-option"]'),
+    ) as HTMLElement[];
+    expect(options.map((o) => o.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining('Mora'), expect.stringContaining('Fresa')]),
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('Agotados');
+
+    // Llega availability.changed kind:'option' que agota "Mora" -- el padre
+    // reasigna una nueva copia inmutable del producto (misma mecánica de T022).
+    const parchado = makeProduct({
+      variants: [
+        makeVariant({
+          option_groups: [
+            { ...group, options: [{ ...mora, available: false }, fresa] },
+          ],
+        }),
+      ],
+    });
+    fixture.componentRef.setInput('product', parchado);
+    fixture.detectChanges();
+
+    // "Mora" pasa a la lista de Agotados; "Fresa" sigue entre las seleccionables.
+    expect(fixture.nativeElement.textContent).toContain('Agotados');
+    options = Array.from(
+      fixture.nativeElement.querySelectorAll('[data-testid="conteo-option"]'),
+    ) as HTMLElement[];
+    expect(options.length).toBe(1);
+    expect(options[0].textContent).toContain('Fresa');
+    const agotados = fixture.nativeElement.querySelectorAll('.line-through');
+    expect(Array.from(agotados).some((el) => (el as HTMLElement).textContent?.includes('Mora'))).toBe(true);
+  });
+
+  it('una opción que vuelve a estar disponible se rehabilita sola', () => {
+    const mora = makeOption({ id: 'o1', name: 'Mora', available: false });
+    const fresa = makeOption({ id: 'o2', name: 'Fresa', available: true });
+    const group = makeGroup({ id: 'g1', name: 'Sabor', selection_mode: 'conteo', max_select: 1, options: [mora, fresa] });
+    create(makeProduct({ variants: [makeVariant({ option_groups: [group] })] }));
+
+    expect(fixture.nativeElement.textContent).toContain('Agotados');
+
+    fixture.componentRef.setInput('product', makeProduct({
+      variants: [
+        makeVariant({
+          option_groups: [{ ...group, options: [{ ...mora, available: true }, fresa] }],
+        }),
+      ],
+    }));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).not.toContain('Agotados');
+    const options = Array.from(
+      fixture.nativeElement.querySelectorAll('[data-testid="conteo-option"]'),
+    ) as HTMLElement[];
+    expect(options.map((o) => o.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining('Mora'), expect.stringContaining('Fresa')]),
+    );
   });
 });

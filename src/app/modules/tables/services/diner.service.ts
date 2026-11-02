@@ -22,6 +22,7 @@ import {
   SubmitCartPayload,
 } from '../interfaces/diner.interface';
 import { DinerTokenStore } from './diner-token.store';
+import { AvailabilitySnapshot } from '../../../core/availability/availability.model';
 
 /** Branding del negocio que acompaña al menú público. */
 export interface ResolvedBusiness {
@@ -162,6 +163,15 @@ export class DinerService {
       this.http.get<Record<string, unknown>>(`${this.api}/menu/qr-token/${token}`),
     );
     return this.mapResolved(raw);
+  }
+
+  /** Spec 148 (D8/FR-026): consulta ligera de reconciliación de disponibilidad
+   *  para el comensal. Mismo token firmado que `resolveByToken`, sin sesión
+   *  (no pasa por `call()`: 401 aquí es token inválido/vencido, no sesión). */
+  async getAvailability(token: string): Promise<AvailabilitySnapshot> {
+    return firstValueFrom(
+      this.http.get<AvailabilitySnapshot>(`${this.api}/menu/qr-token/${token}/availability`),
+    );
   }
 
   // ── Sesión ───────────────────────────────────────────────────────────────
