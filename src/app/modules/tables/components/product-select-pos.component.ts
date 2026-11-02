@@ -24,6 +24,7 @@ import { normalizeText } from '../../../shared/normalize-text';
 import { DiscountInfo, discountInfo, effectivePrice, packagePrice } from '../../promotions/services/promotion-pricing.util';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.component';
+import { isProductSoldOut } from '../../../core/availability/availability.util';
 
 /** Una opción elegida junto con cuántas unidades de ella (spec 065). Siempre
  *  `quantity: 1` para una opción de un grupo "conteo". */
@@ -399,7 +400,16 @@ export class ProductSelectPosComponent implements OnChanges {
   private readonly filters = signal<Record<string, string>>({});
   private readonly SEARCH_THRESHOLD = 10;
 
+  /** Spec 148 (T103): `product` es un `@Input` plano, no una signal input --
+   *  reasignarlo (parche en vivo del menú) no invalida por sí solo los
+   *  `computed()` que dependen de él (`selectedVariant`, `activeGroups`,
+   *  `hasPromotion`, `selectedToppingsList`). Este espejo reactivo es su
+   *  única dependencia real; sin él quedan memoizados con el primer valor
+   *  para siempre, aunque Angular renderice con un `product` distinto. */
+  private readonly productSig = signal<MenuProduct | null>(null);
+
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['product']) this.productSig.set(this.product);
     // Solo reinicia cuando efectivamente se (re)abrió -- `openToken` sube en
     // cada `openConfig`/`openConfigForEdit` (ver doc del `@Input` arriba);
     // ignora cambios de otros `@Input`s sueltos (p. ej. `externalError`) que
@@ -437,7 +447,7 @@ export class ProductSelectPosComponent implements OnChanges {
   }
 
   readonly selectedVariant = computed<MenuVariant | null>(
-    () => this.product.variants.find((v) => v.id === this.variantId()) ?? null,
+    () => this.productSig()?.variants.find((v) => v.id === this.variantId()) ?? null,
   );
 
   readonly activeGroups = computed<MenuOptionGroup[]>(
@@ -449,7 +459,7 @@ export class ProductSelectPosComponent implements OnChanges {
    *  elegida -- igual que la insignia de la tarjeta del catálogo
    *  (`pos-catalog-drawer.component.ts`, `store.cardPromotionText`). */
   readonly hasPromotion = computed(() =>
-    this.product.variants.some((v) => v.promotion != null || v.discounted_price != null),
+    this.productSig()?.variants.some((v) => v.promotion != null || v.discounted_price != null) ?? false,
   );
 
   selectVariant(v: MenuVariant): void {
@@ -504,7 +514,7 @@ export class ProductSelectPosComponent implements OnChanges {
 
   readonly selectedToppingsList = computed<ChosenMenuTopping[]>(() => {
     const map = this.selectedToppings();
-    return (this.product.toppings ?? [])
+    return (this.productSig()?.toppings ?? [])
       .map((topping) => ({ topping, quantity: map[topping.id] ?? 0 }))
       .filter((c) => c.quantity > 0);
   });
@@ -700,7 +710,14 @@ export class ProductSelectPosComponent implements OnChanges {
     return 'Opcional';
   }
 
+  /** Spec 148 (T036): lee `this.product` directamente, no un `computed`
+   *  memoizado por `variantId`, para reflejar el menú vivo. */
+  productSoldOut(): boolean {
+    return isProductSoldOut(this.product);
+  }
+
   blockingLabel(): string | null {
+    if (this.productSoldOut()) return 'Producto agotado';
     const variant = this.selectedVariant();
     if (!variant) return 'Elige una presentación';
     if (variant.available === false) return 'Presentación agotada';
@@ -799,6 +816,7 @@ export class ProductSelectPosComponent implements OnChanges {
   }
 
   canConfirm(): boolean {
+    if (this.productSoldOut()) return false;
     const variant = this.selectedVariant();
     if (!variant || variant.available === false) return false;
     if (this.unavailableChosen().length > 0) return false;

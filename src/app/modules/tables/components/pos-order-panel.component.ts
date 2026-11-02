@@ -285,7 +285,12 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                    patrón visual en toda la fila, en vez de una sola línea
                    plana "3x Nombre ... $ Importe". -->
               @let parts = splitVariantLabel(it.name);
-              <div class="py-3 flex items-start gap-3">
+              @let soldOut = rowSoldOut(it);
+              <div
+                class="py-3 flex items-start gap-3"
+                [class]="soldOut ? '-mx-2 px-2' : ''"
+                [style]="soldOut ? 'background:var(--terminal-color-error-soft,#fee2e2);border-left:2px solid var(--terminal-color-error,#e11d48)' : ''"
+              >
                 <div
                   class="shrink-0 w-9 h-9 rounded-[8px] flex items-center justify-center text-[13px] font-bold"
                   style="background:var(--terminal-color-primary-soft);color:var(--terminal-color-primary-text)"
@@ -293,6 +298,21 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                   {{ it.qty }}x
                 </div>
                 <div class="flex-1 min-w-0 space-y-2.5">
+                  @if (soldOut) {
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="text-[12px] font-semibold" style="color:var(--terminal-color-error,#e11d48)"
+                        >Agotado: {{ soldOut }}</span
+                      >
+                      <button
+                        type="button"
+                        (click)="store.removeDraft(it.key)"
+                        class="text-[12px] font-semibold rounded-[8px] px-2.5 py-1 border"
+                        style="border-color:var(--terminal-color-error,#e11d48);color:var(--terminal-color-error,#e11d48)"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  }
                   <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0 space-y-1.5">
                       <div class="flex items-center gap-1.5 flex-wrap">
@@ -462,10 +482,22 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                subió a la cabecera, a la derecha de "Mesa N" (a pedido del
                usuario). -->
           @if (store.hasDraft()) {
-            <div class="p-4 pt-3 border-t shrink-0" style="border-color:var(--terminal-color-border)">
+            <div class="p-4 pt-3 border-t shrink-0 flex flex-col gap-1.5" style="border-color:var(--terminal-color-border)">
+              @if (store.affectedDraftMessage(); as soldOutMsg) {
+                <!-- Spec 148 (US2, T049, FR-024): mismo aviso que manual-order-page --
+                     bloquea "Guardar pedido" mientras haya líneas agotadas. -->
+                <div
+                  role="alert"
+                  data-testid="sold-out-cart-alert"
+                  class="rounded-[6px] border border-[var(--terminal-color-error,#e11d48)] bg-[var(--terminal-color-error-soft,#fee2e2)] px-3 py-2 text-[12px]"
+                  style="color:var(--terminal-color-error,#e11d48)"
+                >
+                  {{ soldOutMsg }}
+                </div>
+              }
               <button
                 (click)="store.saveOrder()"
-                [disabled]="store.submitting()"
+                [disabled]="store.submitting() || store.hasAffectedLines()"
                 class="w-full py-2.5 text-white rounded-[8px] text-[13px] font-semibold disabled:opacity-50 transition-colors"
                 style="background:var(--terminal-color-primary)"
               >
@@ -587,4 +619,9 @@ export class PosOrderPanelComponent {
 
   /** Separa el nombre del producto de su variante -- ver `splitVariantLabel()` en `menu-lookup.ts`. */
   splitVariantLabel = splitVariantLabel;
+
+  /** Spec 148 (US2, T049): solo las filas de BORRADOR llevan `soldOut`. */
+  rowSoldOut(it: ReturnType<PosTerminalStore['cartView']>[number]): string | null {
+    return it.kind === 'draft' ? it.soldOut : null;
+  }
 }

@@ -6,6 +6,7 @@ import { IconComponent } from '../../../../shared/icon/icon.component';
 import { MoneyPipe } from '../../../../shared/money.pipe';
 import { CheckoutStepIndicatorComponent } from './checkout-step-indicator.component';
 import { CheckoutProgressStore } from './checkout-progress.store';
+import { SoldOutCartAlertComponent } from './sold-out-cart-alert.component';
 
 /**
  * Paso del monto en efectivo de un "Pago mixto" (spec 130, FR-005/FR-006),
@@ -16,7 +17,7 @@ import { CheckoutProgressStore } from './checkout-progress.store';
 @Component({
   selector: 'app-cash-amount-step',
   standalone: true,
-  imports: [IconComponent, MoneyPipe, CheckoutStepIndicatorComponent],
+  imports: [IconComponent, MoneyPipe, CheckoutStepIndicatorComponent, SoldOutCartAlertComponent],
   template: `
     <div class="min-h-screen bg-gray-50 flex flex-col">
       <div class="bg-white border-b border-gray-100 sticky top-0 z-10">
@@ -40,6 +41,21 @@ import { CheckoutProgressStore } from './checkout-progress.store';
         @if (error()) {
           <p class="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-3">{{ error() }}</p>
         }
+
+        <!-- spec 148 (US2, T062): el total cambió desde que este paso lo vio. -->
+        @if (cart.totalChangedTo() !== null) {
+          <p role="status" class="text-xs text-violet-700 mb-3">El total cambió a {{ cart.totalChangedTo() | money }}</p>
+        }
+
+        <!-- spec 148 (US2, T062): el efectivo ya guardado cubre el nuevo total. -->
+        @if (rawAmount() !== null && rawAmount()! >= cart.total()) {
+          <p role="alert" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+            El efectivo ya cubre el total; corrige el monto
+          </p>
+        }
+
+        <!-- spec 148 (US2, T059): alerta compartida + bloqueo del continuar. -->
+        <app-sold-out-cart-alert />
 
         <label class="block mb-4">
           <span class="text-sm font-medium text-gray-700">Monto en efectivo</span>
@@ -86,7 +102,7 @@ import { CheckoutProgressStore } from './checkout-progress.store';
 
         <button
           (click)="continue_()"
-          [disabled]="submitting()"
+          [disabled]="submitting() || cart.hasAffectedLines() || (rawAmount() !== null && rawAmount()! >= cart.total())"
           class="w-full py-3 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
         >
           Continuar
@@ -124,6 +140,7 @@ export class CashAmountStepComponent implements OnInit {
   private mixedMethodId: string | null = null;
 
   async ngOnInit(): Promise<void> {
+    this.cart.seenCheckoutTotalOnce();
     const record = this.progress.read();
     this.mixedMethodId = record?.payment_method_id ?? null;
     if (!this.mixedMethodId) {
@@ -161,6 +178,7 @@ export class CashAmountStepComponent implements OnInit {
    * transferencia activo exige elegir cuál recibe el resto (FR-005).
    */
   continue_(): void {
+    if (this.cart.hasAffectedLines()) return;
     const amount = this.rawAmount();
     const total = this.cart.total();
     if (amount === null || amount < 0) {

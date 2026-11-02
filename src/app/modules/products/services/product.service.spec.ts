@@ -485,4 +485,61 @@ describe('ProductService', () => {
       expect(service.products()[0]?.category_name).toBeNull();
     });
   });
+
+  describe('refreshOne (spec 148, T038)', () => {
+    it('reemplaza solo esa fila sin volver a pedir la página', async () => {
+      service.loadProducts();
+      await tick();
+      const list = http.expectOne((r) => r.url === PRODUCTS && r.method === 'GET');
+      list.flush({ items: [productResponse()], total: 1, page: 1, size: 20, pages: 1 });
+      await tick();
+      expect(service.products()[0]?.available).toBe(true);
+
+      const refresh = service.refreshOne(PID);
+      const req = http.expectOne(`${PRODUCTS}/${PID}`);
+      expect(req.request.method).toBe('GET');
+      req.flush({
+        ...productResponse(),
+        available: false,
+        available_changed_by_name: 'Ana',
+        available_changed_at: '2026-11-02T10:00:00',
+      });
+      await refresh;
+      await tick();
+
+      expect(service.products()[0]?.available).toBe(false);
+      http.expectNone((r) => r.url === PRODUCTS && r.method === 'GET');
+    });
+
+    it('no rompe si la fila no está en la página cacheada', async () => {
+      service.loadProducts();
+      await tick();
+      const list = http.expectOne((r) => r.url === PRODUCTS && r.method === 'GET');
+      list.flush({ items: [productResponse()], total: 1, page: 1, size: 20, pages: 1 });
+      await tick();
+
+      const refresh = service.refreshOne('otro-id-que-no-esta-en-la-pagina');
+      const req = http.expectOne(`${PRODUCTS}/otro-id-que-no-esta-en-la-pagina`);
+      req.flush({ ...productResponse(), id: 'otro-id-que-no-esta-en-la-pagina' });
+      await refresh;
+
+      expect(service.products()).toHaveLength(1);
+      expect(service.products()[0]?.id).toBe(PID);
+    });
+
+    it('no lanza si GET /products/{id} falla (la fila pudo desactivarse)', async () => {
+      service.loadProducts();
+      await tick();
+      const list = http.expectOne((r) => r.url === PRODUCTS && r.method === 'GET');
+      list.flush({ items: [productResponse()], total: 1, page: 1, size: 20, pages: 1 });
+      await tick();
+
+      const refresh = service.refreshOne(PID);
+      const req = http.expectOne(`${PRODUCTS}/${PID}`);
+      req.flush({ error: 'no existe' }, { status: 404, statusText: 'Not Found' });
+      await expect(refresh).resolves.toBeUndefined();
+
+      expect(service.products()[0]?.available).toBe(true);
+    });
+  });
 });

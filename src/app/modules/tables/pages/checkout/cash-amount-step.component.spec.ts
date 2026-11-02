@@ -35,6 +35,7 @@ describe('CashAmountStepComponent', () => {
     total: number;
     transferMethods: DinerPaymentMethod[];
     record?: { payment_method_id: string | null; cash_amount?: number | null; transfer_method_id?: string | null };
+    affectedLines?: ReadonlyMap<string, string>;
   }): Promise<void> {
     TestBed.resetTestingModule();
     router = { navigate: vi.fn() };
@@ -51,7 +52,17 @@ describe('CashAmountStepComponent', () => {
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'test-token' } } } },
         { provide: DinerService, useValue: { getPaymentMethods: vi.fn().mockResolvedValue(opts.transferMethods) } },
-        { provide: DiningCartService, useValue: { total: signal(opts.total) } },
+        {
+          provide: DiningCartService,
+          useValue: {
+            total: signal(opts.total),
+            affectedLines: signal<ReadonlyMap<string, string>>(opts.affectedLines ?? new Map()),
+            hasAffectedLines: () => (opts.affectedLines?.size ?? 0) > 0,
+            checkoutTotalSeen: signal<number | null>(null),
+            totalChangedTo: signal<number | null>(null),
+            seenCheckoutTotalOnce: vi.fn(),
+          },
+        },
         { provide: CheckoutProgressStore, useValue: progress },
       ],
     });
@@ -129,5 +140,56 @@ describe('CashAmountStepComponent', () => {
       step: 'transfer', payment_method_id: 'pm-mixto',
       cash_amount: 3000, transfer_method_id: 'pm-banco',
     });
+  });
+
+  // ── spec 148 (US2, T059/T063): línea agotada bloquea "Continuar" ──────────
+
+  it('con una línea agotada muestra la alerta y deshabilita "Continuar", conservando el monto', async () => {
+    await createComponent({
+      total: 8000,
+      transferMethods: [buildTransfer('pm-nequi', 'Nequi')],
+      affectedLines: new Map([['i1', 'Granizado de mora']]),
+    });
+    component.rawAmount.set(3000);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeTruthy();
+    const boton = Array.from(
+      fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
+    ).find((b) => b.textContent?.includes('Continuar')) as HTMLButtonElement;
+    expect(boton.disabled).toBe(true);
+    expect(component.rawAmount()).toBe(3000);
+  });
+
+  it('continue_() no avanza mientras haya líneas afectadas (defensa en profundidad)', async () => {
+    await createComponent({
+      total: 8000,
+      transferMethods: [buildTransfer('pm-nequi', 'Nequi')],
+      affectedLines: new Map([['i1', 'Granizado de mora']]),
+    });
+    component.rawAmount.set(3000);
+
+    component.continue_();
+
+    expect(router.navigate).not.toHaveBeenCalled();
+    expect(progress.write).not.toHaveBeenCalled();
+  });
+
+  // ── spec 148 (US2, T062): el efectivo ya guardado cubre el nuevo total ───
+
+  it('si el monto ya guardado cubre el nuevo total, avisa y bloquea "Continuar" sin perder el monto', async () => {
+    await createComponent({
+      total: 5000,
+      transferMethods: [buildTransfer('pm-nequi', 'Nequi')],
+      record: { payment_method_id: 'pm-mixto', cash_amount: 8000, transfer_method_id: null },
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('El efectivo ya cubre el total; corrige el monto');
+    const boton = Array.from(
+      fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
+    ).find((b) => b.textContent?.includes('Continuar')) as HTMLButtonElement;
+    expect(boton.disabled).toBe(true);
+    expect(component.rawAmount()).toBe(8000);
   });
 });

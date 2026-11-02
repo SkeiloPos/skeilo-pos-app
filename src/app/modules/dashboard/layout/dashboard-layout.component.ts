@@ -15,6 +15,8 @@ import { BootstrapService } from '../../../core/bootstrap/bootstrap.service';
 import { ToastContainerComponent } from '../../../shared/feedback/toast-container.component';
 import { ConfirmDialogComponent } from '../../../shared/feedback/confirm-dialog.component';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
+import { AvailabilitySyncService } from '../../../core/availability/availability-sync.service';
+import { MenuService } from '../../../core/services/menu.service';
 
 @Component({
   selector: 'app-dashboard-layout',
@@ -174,6 +176,9 @@ export class DashboardLayoutComponent implements OnInit, OnDestroy {
   private readonly bootstrapService = inject(BootstrapService);
   private readonly realtime = inject(RealtimeService);
   private readonly overlayContainer = inject(OverlayContainer);
+  private readonly availabilitySync = inject(AvailabilitySyncService);
+  private readonly menuService = inject(MenuService);
+  private unregisterAvailabilityTarget: (() => void) | null = null;
 
   /** Misma fuente que ya usa SidebarComponent (research.md R1) -- la única
    *  bifurcación entre el panel legado (Super Admin) y el rediseñado
@@ -200,10 +205,18 @@ export class DashboardLayoutComponent implements OnInit, OnDestroy {
     // antes). Así sobrevive a la navegación entre secciones del POS — el
     // cajero sigue recibiendo avisos aunque no esté en Terminal de Mesas.
     this.realtime.connectStaff();
+    // Spec 148: el sincronizador de disponibilidad vive aquí, junto a la
+    // conexión SSE del staff, por la misma razón (sobrevive a la navegación
+    // entre secciones del POS en vez de reiniciarse en cada página).
+    this.unregisterAvailabilityTarget = this.availabilitySync.registerTarget(this.menuService);
+    this.availabilitySync.start(() => this.menuService.loadAvailability());
   }
 
   ngOnDestroy(): void {
     this.realtime.disconnect();
+    this.availabilitySync.stop();
+    this.unregisterAvailabilityTarget?.();
+    this.unregisterAvailabilityTarget = null;
   }
 
   constructor() {

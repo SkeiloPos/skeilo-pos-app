@@ -49,6 +49,11 @@ describe('ReviewStepComponent', () => {
     grossTotal: ReturnType<typeof signal<number>>;
     savings: ReturnType<typeof signal<number>>;
     isEmpty: ReturnType<typeof computed<boolean>>;
+    affectedLines: ReturnType<typeof signal<ReadonlyMap<string, string>>>;
+    hasAffectedLines: () => boolean;
+    checkoutTotalSeen: ReturnType<typeof signal<number | null>>;
+    totalChangedTo: ReturnType<typeof signal<number | null>>;
+    seenCheckoutTotalOnce: ReturnType<typeof vi.fn>;
   };
   let navigate: ReturnType<typeof vi.fn>;
 
@@ -62,6 +67,7 @@ describe('ReviewStepComponent', () => {
   function render(state: CartState = {}): void {
     TestBed.resetTestingModule();
     const lines = signal<CartLine[]>(state.lines ?? []);
+    const affectedLines = signal<ReadonlyMap<string, string>>(new Map());
     cart = {
       lines,
       total: signal(state.total ?? 0),
@@ -69,6 +75,11 @@ describe('ReviewStepComponent', () => {
       grossTotal: signal(0),
       savings: signal(state.savings ?? 0),
       isEmpty: computed(() => lines().length === 0),
+      affectedLines,
+      hasAffectedLines: () => affectedLines().size > 0,
+      checkoutTotalSeen: signal<number | null>(null),
+      totalChangedTo: signal<number | null>(null),
+      seenCheckoutTotalOnce: vi.fn(),
     };
     navigate = vi.fn();
     TestBed.configureTestingModule({
@@ -192,5 +203,26 @@ describe('ReviewStepComponent', () => {
     continuar().click();
 
     expect(navigate).toHaveBeenCalledWith(['/menu/t', 'test-token', 'checkout', 'method']);
+  });
+
+  // ── spec 148 (US2, T057/T061): línea agotada bloquea la confirmación ───────
+
+  it('marca la línea agotada en el resumen y bloquea "Elegir método de pago"', () => {
+    render({ lines: [buildLine()], total: 15000, count: 1 });
+    cart.affectedLines.set(new Map([['l1', 'Granizado del diablo']]));
+    fixture.detectChanges();
+
+    expect(text()).toContain('Agotado: Granizado del diablo');
+    expect(continuar().disabled).toBe(true);
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeTruthy();
+  });
+
+  it('continue() no navega mientras haya líneas afectadas (defensa en profundidad)', () => {
+    render({ lines: [buildLine()], total: 15000, count: 1 });
+    cart.affectedLines.set(new Map([['l1', 'Granizado del diablo']]));
+    fixture.detectChanges();
+    (fixture.componentInstance as unknown as { continue(): void }).continue();
+
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

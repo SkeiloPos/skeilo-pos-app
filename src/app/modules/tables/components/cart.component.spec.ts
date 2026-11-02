@@ -13,6 +13,8 @@ class FakeDiningCartService {
   readonly total = signal(0);
   readonly busy = signal(false);
   readonly isEmpty = signal(false);
+  readonly affectedLines = signal<ReadonlyMap<string, string>>(new Map());
+  readonly hasAffectedLines = () => this.affectedLines().size > 0;
   steps = new Map<string, number>();
   stepFor(line: CartLine): number {
     return this.steps.get(line.id) ?? 1;
@@ -190,5 +192,56 @@ describe('CartComponent', () => {
       '[data-testid="editar-adicionales"]',
     );
     expect(botones.length).toBe(1);
+  });
+
+  // ── spec 148 (US2, T054): línea afectada por disponibilidad ────────────────
+
+  it('resalta solo la línea afectada con "Agotado: <elemento>" y un botón Quitar', () => {
+    create();
+    cart.isEmpty.set(false);
+    cart.lines.set([line({ id: 'l1' }), line({ id: 'l2' })]);
+    cart.affectedLines.set(new Map([['l1', 'Granizado de mora']]));
+    fixture.detectChanges();
+
+    const html = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(html).toContain('Agotado: Granizado de mora');
+
+    const emitted: { itemId: string; quantity: number }[] = [];
+    component.quantityChanged.subscribe((e) => emitted.push(e));
+    const quitar = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+    ).find((b) => b.textContent?.trim() === 'Quitar') as HTMLButtonElement;
+    quitar.click();
+
+    expect(emitted).toEqual([{ itemId: 'l1', quantity: 0 }]);
+  });
+
+  it('muestra una alerta role="alert" y deshabilita "Revisar pedido" mientras haya líneas afectadas', () => {
+    create();
+    cart.isEmpty.set(false);
+    cart.lines.set([line({ id: 'l1' })]);
+    cart.affectedLines.set(new Map([['l1', 'Granizado de mora']]));
+    fixture.detectChanges();
+
+    const alert = (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain('Se agotó: Granizado de mora. Quítalo para continuar');
+
+    const boton = (fixture.nativeElement as HTMLElement).querySelector(
+      'button.bg-violet-700.w-full',
+    ) as HTMLButtonElement;
+    expect(boton.disabled).toBe(true);
+  });
+
+  it('sin líneas afectadas no muestra la alerta ni deshabilita el envío', () => {
+    create();
+    cart.isEmpty.set(false);
+    cart.lines.set([line({ id: 'l1' })]);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')).toBeNull();
+    const boton = (fixture.nativeElement as HTMLElement).querySelector(
+      'button.bg-violet-700.w-full',
+    ) as HTMLButtonElement;
+    expect(boton.disabled).toBe(false);
   });
 });

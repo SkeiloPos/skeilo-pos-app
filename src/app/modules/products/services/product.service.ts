@@ -312,6 +312,41 @@ export class ProductService {
     }
   }
 
+  /**
+   * Spec 148 (T038, D15): reemplaza SOLO la fila `id` en la página que la
+   * query paginada tiene en caché, sin invalidar/recargar nada -- trae
+   * `available_changed_by_name`/`available_changed_at` (quién y cuándo marcó
+   * "Agotado"), que el evento de disponibilidad no lleva (no hay nombres de
+   * empleados en un canal que también oye el comensal).
+   */
+  async refreshOne(id: string): Promise<void> {
+    let raw: ProductResponse;
+    try {
+      raw = await firstValueFrom(this.http.get<ProductResponse>(`${this.productsUrl}/${id}`));
+    } catch {
+      return; // la fila puede haberse desactivado/borrado entre el evento y esta consulta.
+    }
+    const key = [
+      'products',
+      'page',
+      {
+        page: this.page(),
+        size: this.size(),
+        search: this.search().trim(),
+        active: this.activeFilter(),
+        available: this.availabilityFilter(),
+      },
+    ];
+    this.queryClient.setQueryData<Page<ProductResponse>>(key, (old) => {
+      if (!old) return old;
+      const idx = old.items.findIndex((p) => p.id === id);
+      if (idx === -1) return old;
+      const items = [...old.items];
+      items[idx] = raw;
+      return { ...old, items };
+    });
+  }
+
   /** Creates a product and returns its id (or null on error). */
   async createProduct(form: ProductForm): Promise<string | null> {
     this.isSubmitting.set(true);

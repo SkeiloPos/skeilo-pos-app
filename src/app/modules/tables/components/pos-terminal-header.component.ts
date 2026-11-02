@@ -7,6 +7,7 @@ import { formatInZone, zonedParts } from '../../../shared/date-format.util';
 import { ToastService } from '../../../shared/feedback/toast.service';
 import { VisibleInterval, startVisibleInterval } from '../../../core/realtime/visible-interval';
 import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.component';
+import { LiveStatusIndicatorComponent } from '../../../core/availability/live-status-indicator.component';
 
 /**
  * Cabecera de terminal compartida entre `table-sessions.component.ts` y
@@ -21,7 +22,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
   selector: 'app-pos-terminal-header',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconLucideComponent],
+  imports: [IconLucideComponent, LiveStatusIndicatorComponent],
   template: `
     <header
       class="flex items-center justify-between gap-4 flex-wrap px-5 py-3 border-b shrink-0"
@@ -32,6 +33,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
           <span class="w-2 h-2 rounded-full shrink-0" [style.background]="connectionColor()"></span>
           {{ connectionLabel() }}
         </div>
+        <app-live-status-indicator />
         <div class="flex items-center gap-2 text-[13px]" style="color:var(--terminal-color-text-secondary)">
           <app-lucide-icon name="users" [size]="16" />
           {{ shiftLabel() }}

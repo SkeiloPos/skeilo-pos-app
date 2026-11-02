@@ -8,6 +8,7 @@ import { environment } from '../../../../environments/environment';
 import { DinerService } from './diner.service';
 import { DinerTokenStore } from './diner-token.store';
 import { DiningCartService } from './dining-cart.service';
+import { AvailabilitySyncService } from '../../../core/availability/availability-sync.service';
 
 const API = environment.apiBaseUrl;
 
@@ -41,6 +42,9 @@ describe('DiningCartService', () => {
     });
     cart = TestBed.inject(DiningCartService);
     http = TestBed.inject(HttpTestingController);
+    // `applyConflict`/`applyAvailability` delegan en `AvailabilitySyncService.applyLocal`,
+    // que solo entrega a destinos registrados (igual que `DinerShellComponent` en producción).
+    TestBed.inject(AvailabilitySyncService).registerTarget(cart);
   });
 
   afterEach(() => {
@@ -456,5 +460,210 @@ describe('DiningCartService', () => {
     expect(cart.total()).toBe(0);
     expect(cart.grossTotal()).toBe(0);
     expect(cart.savings()).toBe(0);
+  });
+
+  // --- Disponibilidad (spec 148, US2, T052) ---
+
+  const menuWithProduct = (overrides: Partial<{ sold_out: boolean; available: boolean }> = {}) => [
+    {
+      products: [
+        {
+          id: 'p1',
+          name: 'Granizado de mora',
+          description: null,
+          image_url: null,
+          available: true,
+          sold_out: false,
+          ...overrides,
+          variants: [
+            {
+              id: 'v1', name: '16 oz', price: 15000, available: true,
+              option_groups: [
+                {
+                  id: 'g1', name: 'Sabor', min_select: 1, max_select: 1, consume: true,
+                  selection_mode: 'conteo' as const,
+                  max_quantity_per_option: 1, max_total_quantity: 1,
+                  options: [{ id: 'o1', name: 'Mora', extra_price: 0, available: true }],
+                },
+              ],
+            },
+          ],
+          option_groups: [],
+          toppings: [{ id: 't1', name: 'Chispas', unit_price: 1000, available: true }],
+        },
+      ],
+    },
+  ];
+
+  it('indexMenu hidrata el índice de disponibilidad', async () => {
+    cart.indexMenu(menuWithProduct());
+
+    await load({
+      ...emptyCart('Ana'),
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '15000', line_total: '15000', notes: null, options: [] },
+      ],
+    });
+
+    expect(cart.hasAffectedLines()).toBe(false);
+  });
+
+  it('un cambio marca solo la línea afectada; vuelve a disponible y la marca desaparece', async () => {
+    cart.indexMenu(menuWithProduct());
+    await load({
+      ...emptyCart('Ana'),
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '15000', line_total: '15000', notes: null, options: [] },
+      ],
+    });
+
+    cart.applyAvailability([{ kind: 'product', id: 'p1', sold_out: true, available: true }]);
+    expect(cart.affectedLines().get('i1')).toBe('Granizado de mora');
+
+    cart.applyAvailability([{ kind: 'product', id: 'p1', sold_out: false, available: true }]);
+    expect(cart.hasAffectedLines()).toBe(false);
+  });
+
+  it('presentación u opción agotada marca solo la línea que la contiene', async () => {
+    cart.indexMenu(menuWithProduct());
+    await load({
+      ...emptyCart('Ana'),
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '15000', line_total: '15000', notes: null, options: [{ id: 'oo1', option_id: 'o1', quantity: 1 }] },
+        { id: 'i2', product_variant_id: 'v1', quantity: 1, unit_price: '15000', line_total: '15000', notes: null, options: [] },
+      ],
+    });
+
+    cart.applyAvailability([{ kind: 'option', id: 'o1', available: false }]);
+
+    expect(cart.affectedLines().get('i1')).toBe('Mora');
+    expect(cart.affectedLines().has('i2')).toBe(false);
+  });
+
+  it('el carrito del servidor (lines()) no cambia por un evento de disponibilidad', async () => {
+    cart.indexMenu(menuWithProduct());
+    await load({
+      ...emptyCart('Ana'),
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '15000', line_total: '15000', notes: null, options: [] },
+      ],
+    });
+    const before = cart.lines();
+
+    cart.applyAvailability([{ kind: 'product', id: 'p1', sold_out: true, available: true }]);
+
+    expect(cart.lines()).toBe(before);
+  });
+
+  // T094 (US5.3): un snapshot de reconciliación marca la línea igual que un evento en vivo.
+  it('un snapshot que agota el producto marca la línea, igual que un evento en vivo', async () => {
+    cart.indexMenu(menuWithProduct());
+    await load({
+      ...emptyCart('Ana'),
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '15000', line_total: '15000', notes: null, options: [] },
+      ],
+    });
+    expect(cart.hasAffectedLines()).toBe(false);
+
+    cart.applyAvailabilitySnapshot({
+      as_of: 1,
+      products: [{ id: 'p1', sold_out: true, available: true }],
+      variants: [],
+      options: [],
+    });
+
+    expect(cart.affectedLines().get('i1')).toBe('Granizado de mora');
+    expect(cart.hasAffectedLines()).toBe(true);
+  });
+
+  it('remove() limpia el conflicto de cantidad de esa línea', async () => {
+    cart.indexMenu(menuWithProduct());
+    await load({
+      ...emptyCart('Ana'),
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 5, unit_price: '15000', line_total: '75000', notes: null, options: [] },
+      ],
+    });
+    cart.markQuantityConflicts(['i1']);
+    expect(cart.affectedLines().get('i1')).toBe('No alcanza para esa cantidad');
+
+    const promise = cart.remove('i1');
+    http.expectOne(`${API}/cart/items/i1`).flush({ ...emptyCart('Ana'), items: [] });
+    await promise;
+
+    expect(cart.affectedLines().has('i1')).toBe(false);
+  });
+
+  // --- spec 148 (US3, T079/T081): 409 unificado en el carrito del comensal ---
+
+  it('applyConflict: motivo manual marca el producto sin tocar lines()', async () => {
+    cart.indexMenu(menuWithProduct());
+    await load({
+      ...emptyCart('Ana'),
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '15000', line_total: '15000', notes: null, options: [] },
+      ],
+    });
+    const before = cart.lines();
+
+    cart.applyConflict({
+      error: 'Se agotó: Granizado de mora. Quítalo para continuar',
+      productos_agotados: ['Granizado de mora'],
+      agotados: [{ id: 'p1', tipo: 'producto', nombre: 'Granizado de mora', producto_id: 'p1', motivo: 'manual' }],
+    });
+
+    expect(cart.affectedLines().get('i1')).toBe('Granizado de mora');
+    expect(cart.lines()).toBe(before);
+  });
+
+  it('applyConflict: motivo cantidad marca solo la línea cuya presentación coincide', async () => {
+    cart.indexMenu(menuWithProduct());
+    await load({
+      ...emptyCart('Ana'),
+      items: [
+        { id: 'i1', product_variant_id: 'v1', quantity: 5, unit_price: '15000', line_total: '75000', notes: null, options: [] },
+      ],
+    });
+
+    cart.applyConflict({
+      error: 'Se agotó: Granizado de mora · 16 oz. Quítalo para continuar',
+      productos_agotados: ['Granizado de mora · 16 oz'],
+      agotados: [{ id: 'v1', tipo: 'presentacion', nombre: 'Granizado de mora · 16 oz', producto_id: 'p1', motivo: 'cantidad' }],
+    });
+
+    expect(cart.affectedLines().get('i1')).toBe('No alcanza para esa cantidad');
+  });
+
+  // --- spec 148 (US2, T062): aviso de total cambiado ---
+
+  it('seenCheckoutTotalOnce fija la línea base solo la primera vez', async () => {
+    await load({ ...emptyCart('Ana'), total: '10000' });
+    cart.seenCheckoutTotalOnce();
+    expect(cart.totalChangedTo()).toBeNull();
+
+    await load({ ...emptyCart('Ana'), total: '8000' });
+    expect(cart.totalChangedTo()).toBe(8000);
+
+    cart.seenCheckoutTotalOnce(); // ya no es null: no mueve la línea base
+    expect(cart.totalChangedTo()).toBe(8000);
+  });
+
+  it('clear() limpia checkoutTotalSeen junto con el resto del carrito', async () => {
+    await load({ ...emptyCart('Ana'), total: '10000' });
+    cart.seenCheckoutTotalOnce();
+
+    cart.clear();
+
+    expect(cart.checkoutTotalSeen()).toBeNull();
+  });
+
+  it('clearCheckoutTotalSeen() limpia solo el aviso de total', async () => {
+    await load({ ...emptyCart('Ana'), total: '10000' });
+    cart.seenCheckoutTotalOnce();
+
+    cart.clearCheckoutTotalSeen();
+
+    expect(cart.checkoutTotalSeen()).toBeNull();
   });
 });

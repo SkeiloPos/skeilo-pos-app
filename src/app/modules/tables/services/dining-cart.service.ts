@@ -8,6 +8,16 @@ import { AdjustedOption, CartResponse } from '../interfaces/diner.interface';
 import { DinerService } from './diner.service';
 import { effectivePrice } from '../../promotions/services/promotion-pricing.util';
 import { formatQuantifiedLabel } from './menu-lookup';
+import { AvailabilityChange, AvailabilitySnapshot, SoldOutConflict } from '../../../core/availability/availability.model';
+import { AvailabilitySyncService, AvailabilityTarget } from '../../../core/availability/availability-sync.service';
+import {
+  AvailabilityIndex,
+  affectedElement,
+  applyChangesToIndex,
+  applySnapshotToIndex,
+  buildAvailabilityIndex,
+  changesFromConflict,
+} from '../../../core/availability/availability.util';
 
 /** Una línea del carrito, ya resuelta contra el menú para poder pintarla. */
 export interface CartLine {
@@ -63,8 +73,9 @@ interface MenuIndex {
  * stock insuficiente aparezca al añadir la línea, no al final.
  */
 @Injectable({ providedIn: 'root' })
-export class DiningCartService {
+export class DiningCartService implements AvailabilityTarget {
   private readonly api = inject(DinerService);
+  private readonly availabilitySync = inject(AvailabilitySyncService);
 
   readonly lines = signal<CartLine[]>([]);
   readonly total = signal(0);
@@ -109,6 +120,68 @@ export class DiningCartService {
    */
   private stepByKey = new Map<string, number>();
 
+  /**
+   * spec 148 (US2, T051): índice de disponibilidad del menú, actualizado por
+   * `AvailabilitySyncService` **aunque `PublicMenuComponent` no esté vivo**
+   * (research.md H9) -- por eso vive aquí y no en el componente: el carrito
+   * del comensal sigue marcando líneas afectadas en los pasos de pago.
+   */
+  readonly availability = signal<AvailabilityIndex>(buildAvailabilityIndex([]));
+
+  /** Claves de `quantityConflicts`: id de línea de carrito marcada por un 409
+   *  `motivo:'cantidad'` (spec 148, US3). Se limpia al quitar la línea o al
+   *  cambiar su cantidad -- nunca por un evento en vivo (esa marca no sale del
+   *  menú, sale del rechazo del servidor). */
+  readonly quantityConflicts = signal<ReadonlySet<string>>(new Set());
+
+  /** Líneas del carrito cuyo producto, presentación, opción o adición elegida
+   *  ya no se puede pedir -- resuelto contra el menú VIVO (research.md H11),
+   *  nunca contra las copias que guarda `CartLine`. */
+  readonly affectedLines = computed<ReadonlyMap<string, string>>(() => {
+    const index = this.availability();
+    const conflicts = this.quantityConflicts();
+    const out = new Map<string, string>();
+    for (const line of this.lines()) {
+      const label = affectedElement(
+        {
+          variantId: line.productVariantId,
+          optionIds: line.optionKey ? line.optionKey.split(',') : [],
+          toppingIds: (line.toppingSelections ?? []).map((t) => t.toppingProductId),
+        },
+        index,
+        conflicts.has(line.id),
+      );
+      if (label) out.set(line.id, label);
+    }
+    return out;
+  });
+
+  readonly hasAffectedLines = computed(() => this.affectedLines().size > 0);
+
+  /**
+   * spec 148 (US2, research.md D14): total visto la última vez que se mostró
+   * el resumen del checkout, para detectar "El total cambió a $X" al quitar
+   * una línea afectada. En memoria, se limpia con `clear()` y al terminar el
+   * checkout (`clearCheckoutTotalSeen()`).
+   */
+  readonly checkoutTotalSeen = signal<number | null>(null);
+
+  /** `total()` si cambió desde la última vez que un paso del checkout lo vio
+   *  (`seenCheckoutTotalOnce`), `null` en cualquier otro caso (incluida la
+   *  primera visita, antes de fijar la línea base). */
+  readonly totalChangedTo = computed<number | null>(() => {
+    const seen = this.checkoutTotalSeen();
+    const total = this.total();
+    return seen !== null && seen !== total ? total : null;
+  });
+
+  /** Fija la línea base de `totalChangedTo` la primera vez que un paso del
+   *  checkout la observa -- no hace nada en visitas posteriores, así que el
+   *  aviso "El total cambió" permanece hasta que el carrito se limpia. */
+  seenCheckoutTotalOnce(): void {
+    if (this.checkoutTotalSeen() === null) this.checkoutTotalSeen.set(this.total());
+  }
+
   private static lineKey(variantId: string, optionKey: string): string {
     return `${variantId}::${optionKey}`;
   }
@@ -130,6 +203,61 @@ export class DiningCartService {
       }
     }
     this.index = { variants, options, toppings };
+    this.availability.set(buildAvailabilityIndex(categories));
+  }
+
+  /** `AvailabilityTarget`: parcha el índice con los cambios del evento en vivo. */
+  applyAvailability(changes: readonly AvailabilityChange[]): void {
+    this.availability.update((index) => applyChangesToIndex(index, changes));
+  }
+
+  /** `AvailabilityTarget`: reemplaza el estado de disponibilidad con un snapshot. */
+  applyAvailabilitySnapshot(snapshot: AvailabilitySnapshot): void {
+    this.availability.update((index) => applySnapshotToIndex(index, snapshot));
+  }
+
+  /** Quita `itemId` de `quantityConflicts` (lo usa `remove`/`setQuantity`). */
+  private clearQuantityConflict(itemId: string): void {
+    if (!this.quantityConflicts().has(itemId)) return;
+    this.quantityConflicts.update((s) => {
+      const next = new Set(s);
+      next.delete(itemId);
+      return next;
+    });
+  }
+
+  /** Marca estas líneas como en conflicto de cantidad (lo usa el manejo del 409, US3). */
+  markQuantityConflicts(itemIds: readonly string[]): void {
+    if (itemIds.length === 0) return;
+    this.quantityConflicts.update((s) => new Set([...s, ...itemIds]));
+  }
+
+  /** Spec 148 (US3, T079): un 409 unificado llegó al agregar/actualizar/
+   *  enviar el carrito del comensal. Marca el índice en vivo con los
+   *  elementos `manual`/`inventario` (sin esperar al evento), marca por
+   *  cantidad las líneas cuyo `productVariantId` coincide con un `motivo:
+   *  'cantidad'`, y dispara una reconciliación. Nunca toca `lines()` (el
+   *  carrito del servidor no se vacía por esto). */
+  applyConflict(conflict: SoldOutConflict): void {
+    this.availabilitySync.applyLocal(changesFromConflict(conflict, this.availability()));
+
+    const cantidadIds = new Set(
+      conflict.agotados.filter((a) => a.motivo === 'cantidad').map((a) => a.id),
+    );
+    if (cantidadIds.size > 0) {
+      const affectedLineIds = this.lines()
+        .filter((l) => cantidadIds.has(l.productVariantId))
+        .map((l) => l.id);
+      this.markQuantityConflicts(affectedLineIds);
+    }
+
+    void this.availabilitySync.reconcile();
+  }
+
+  /** Se llama al terminar el checkout (enviado o cancelado) -- limpia el aviso
+   *  de "El total cambió" para el próximo carrito. */
+  clearCheckoutTotalSeen(): void {
+    this.checkoutTotalSeen.set(null);
   }
 
   /** Carga el carrito vigente del backend (al abrir o al reingresar). */
@@ -209,11 +337,13 @@ export class DiningCartService {
       return [];
     }
     const cart = await this.mutate(() => this.api.updateItem(itemId, { quantity }));
+    this.clearQuantityConflict(itemId);
     return cart.items.find((it) => it.id === itemId)?.adjusted_options ?? [];
   }
 
   async remove(itemId: string): Promise<void> {
     await this.mutate(() => this.api.removeItem(itemId));
+    this.clearQuantityConflict(itemId);
   }
 
   /**
@@ -226,6 +356,8 @@ export class DiningCartService {
     this.lines.set([]);
     this.total.set(0);
     this.grossTotal.set(0);
+    this.quantityConflicts.set(new Set());
+    this.checkoutTotalSeen.set(null);
   }
 
   /** Olvida al comensal (sesión expirada o salida de la mesa). */

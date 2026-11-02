@@ -65,6 +65,9 @@ class FakeDiningCartService {
   readonly total = signal(0);
   readonly busy = signal(false);
   readonly lines = signal<Partial<CartLine>[]>([]);
+  /** spec 148 (US2): sin líneas afectadas por defecto. */
+  readonly affectedLines = signal<ReadonlyMap<string, string>>(new Map());
+  readonly hasAffectedLines = () => this.affectedLines().size > 0;
   /** spec 089 (Historia 3): `PATCH /cart/items/{id}` — cada test decide si acepta o rechaza. */
   updateItem = vi.fn(async (): Promise<void> => undefined);
   /** spec 117 (A-126, D5): `[]` por defecto (sin ajuste automático) — cada test que
@@ -112,6 +115,8 @@ describe('PublicMenuComponent', () => {
       withSession?: boolean;
       business?: ResolvedBusiness | null;
       promotions?: MenuPromotionAnnouncement[];
+      queryParams?: Record<string, string>;
+      router?: { navigate: ReturnType<typeof vi.fn> };
     } = {},
   ): Promise<{ fixture: ComponentFixture<PublicMenuComponent>; component: PublicMenuComponent }> {
     TestBed.resetTestingModule();
@@ -133,10 +138,10 @@ describe('PublicMenuComponent', () => {
           provide: ActivatedRoute,
           useValue: {
             snapshot: { paramMap: convertToParamMap({ token }) },
-            queryParamMap: of(convertToParamMap({})),
+            queryParamMap: of(convertToParamMap(opts.queryParams ?? {})),
           },
         },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: opts.router ?? { navigate: vi.fn() } },
       ],
     });
     const fixture = TestBed.createComponent(PublicMenuComponent);
@@ -295,6 +300,81 @@ describe('PublicMenuComponent', () => {
       (b as HTMLButtonElement).textContent?.includes('Oreo split'),
     ) as HTMLButtonElement;
     expect(productButton.disabled).toBe(false);
+  });
+
+  // ── spec 148 (T040): disponibilidad en vivo, sin recargar ────────────────
+  describe('disponibilidad en vivo (spec 148)', () => {
+    function findButton(fixture: ComponentFixture<PublicMenuComponent>, text: string): HTMLButtonElement {
+      return Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+        (b as HTMLButtonElement).textContent?.includes(text),
+      ) as HTMLButtonElement;
+    }
+
+    it('un cambio product.sold_out deshabilita la tarjeta sin recargar', async () => {
+      const categories: MenuCategory[] = [
+        { id: 'c1', name: 'Helados', products: [product({ id: 'p1', name: 'Fresa boom', sold_out: false })] },
+      ];
+      const { fixture, component } = await createComponent('tok-1', categories, { withSession: true });
+
+      expect(findButton(fixture, 'Fresa boom').disabled).toBe(false);
+
+      component.applyAvailability([{ kind: 'product', id: 'p1', sold_out: true, available: true }]);
+      fixture.detectChanges();
+
+      expect(findButton(fixture, 'Fresa boom').disabled).toBe(true);
+      const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(texto).toContain('Agotado');
+    });
+
+    it('un cambio available:false (inventario) deshabilita la tarjeta igual que la marca manual', async () => {
+      const categories: MenuCategory[] = [
+        { id: 'c1', name: 'Granizados', products: [product({ id: 'p1', name: 'Granizado de mora', sold_out: false, available: true })] },
+      ];
+      const { fixture, component } = await createComponent('tok-1', categories, { withSession: true });
+
+      expect(findButton(fixture, 'Granizado de mora').disabled).toBe(false);
+
+      component.applyAvailability([{ kind: 'product', id: 'p1', sold_out: false, available: false }]);
+      fixture.detectChanges();
+
+      expect(findButton(fixture, 'Granizado de mora').disabled).toBe(true);
+      const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(texto).toContain('Agotado');
+    });
+
+    it('el selector abierto deshabilita "Agregar" cuando el producto se agota, sin perder lo elegido', async () => {
+      const categories: MenuCategory[] = [
+        { id: 'c1', name: 'Helados', products: [product({ id: 'p1', name: 'Fresa boom', sold_out: false })] },
+      ];
+      const { fixture, component } = await createComponent('tok-1', categories, { withSession: true });
+
+      component.openProduct(component.visibleProducts()[0]);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('app-product-select')).not.toBeNull();
+
+      component.applyAvailability([{ kind: 'product', id: 'p1', sold_out: true, available: true }]);
+      fixture.detectChanges();
+
+      // El modal sigue abierto (no se perdió la selección), pero "Agregar" quedó bloqueado.
+      expect(component.selectedProduct()).not.toBeNull();
+      const modal = fixture.nativeElement.querySelector('app-product-select') as HTMLElement;
+      expect(modal.textContent).toContain('Producto agotado');
+    });
+
+    it('volver a disponible rehabilita la tarjeta', async () => {
+      const categories: MenuCategory[] = [
+        { id: 'c1', name: 'Helados', products: [product({ id: 'p1', name: 'Fresa boom', sold_out: true })] },
+      ];
+      const { fixture, component } = await createComponent('tok-1', categories, { withSession: true });
+      expect(findButton(fixture, 'Fresa boom').disabled).toBe(true);
+
+      component.applyAvailability([{ kind: 'product', id: 'p1', sold_out: false, available: true }]);
+      fixture.detectChanges();
+
+      expect(findButton(fixture, 'Fresa boom').disabled).toBe(false);
+      const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(texto).not.toContain('Agotado');
+    });
   });
 
   // ── Notas del ítem en "Mis pedidos" (spec 061, FR-001 a FR-003) ───────────
@@ -1461,6 +1541,34 @@ describe('PublicMenuComponent', () => {
     cambiar(() => component.selectCategory(PROMOTIONS_TAB_ID));
     expect(mensaje()).toBe('No hay promociones activas en este momento.');
     traduccion.revert();
+  });
+
+  // --- spec 148 (US2, T055): abrir el carrito al llegar con ?carrito=abierto ---
+  describe('abrir el carrito desde "Volver al carrito"', () => {
+    it('con ?carrito=abierto abre el carrito y quita el parámetro de la URL', async () => {
+      const navigate = vi.fn();
+      const { component } = await createComponent('tok-1', [], {
+        withSession: true,
+        queryParams: { carrito: 'abierto' },
+        router: { navigate },
+      });
+
+      expect(component.cartDrawerOpen()).toBe(true);
+      expect(navigate).toHaveBeenCalledWith(
+        [],
+        expect.objectContaining({
+          queryParams: { carrito: null },
+          queryParamsHandling: 'merge',
+          replaceUrl: true,
+        }),
+      );
+    });
+
+    it('sin el parámetro no toca el carrito', async () => {
+      const { component } = await createComponent('tok-1', [], { withSession: true });
+
+      expect(component.cartDrawerOpen()).toBe(false);
+    });
   });
 });
 

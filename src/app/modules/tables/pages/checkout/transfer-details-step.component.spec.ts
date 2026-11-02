@@ -42,6 +42,7 @@ function buildMethod(fields: PaymentMethodField[], paymentInfo: Record<string, s
  */
 function buildCartStub() {
   const lines = signal<CartLine[]>([]);
+  const affectedLines = signal<ReadonlyMap<string, string>>(new Map());
   return {
     lines,
     total: signal(0),
@@ -51,6 +52,12 @@ function buildCartStub() {
     isEmpty: computed(() => lines().length === 0),
     clear: vi.fn(),
     clearDiner: vi.fn(),
+    affectedLines,
+    hasAffectedLines: () => affectedLines().size > 0,
+    checkoutTotalSeen: signal<number | null>(null),
+    totalChangedTo: signal<number | null>(null),
+    seenCheckoutTotalOnce: vi.fn(),
+    applyConflict: vi.fn(),
   };
 }
 
@@ -123,6 +130,7 @@ describe('TransferDetailsStepComponent', () => {
           useValue: {
             getPaymentMethods: vi.fn().mockResolvedValue([method]),
             extractError: vi.fn((_err: unknown, fallback: string) => fallback),
+            submitCart: vi.fn().mockResolvedValue({ id: 'o1' }),
           },
         },
         { provide: DinerTokenStore, useValue: { clear: vi.fn() } },
@@ -614,5 +622,72 @@ describe('TransferDetailsStepComponent', () => {
     }
     expect(text()).not.toContain('Enviar pedido Enviar pedido');
     traduccion.revert();
+  });
+
+  // ── spec 148 (US2, T060): línea agotada bloquea el envío ─────────────────
+
+  it('con una línea agotada muestra la alerta, marca la línea en el resumen y deshabilita "Enviar pedido"', async () => {
+    await createComponent(nequi(), { lines: buildLines(1), total: 15000, count: 1 });
+    cart.affectedLines.set(new Map([['l1', 'Granizado del diablo']]));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeTruthy();
+    expect(text()).toContain('Agotado: Granizado del diablo');
+    const enviar = buttons().find((b) => b.className.includes('bg-violet-600'))!;
+    expect(enviar.disabled).toBe(true);
+  });
+
+  it('confirmSend() no envía mientras haya líneas afectadas (defensa en profundidad)', async () => {
+    await createComponent(nequi(), { lines: buildLines(1), total: 15000, count: 1 });
+    cart.affectedLines.set(new Map([['l1', 'Granizado del diablo']]));
+    fixture.detectChanges();
+
+    await component.confirmSend();
+
+    expect(component.submitting()).toBe(false);
+  });
+
+  // ── spec 148 (US2, T062): el efectivo ya guardado cubre el nuevo total ───
+
+  it('pago mixto: si el efectivo ya guardado cubre el nuevo total, avisa y bloquea "Enviar pedido"', async () => {
+    await createComponent(nequi(), { lines: buildLines(1), total: 5000, count: 1 });
+    component.mixedCashAmount.set(8500);
+    fixture.detectChanges();
+
+    expect(text()).toContain('El efectivo ya cubre el total; corrige el monto');
+    const enviar = buttons().find((b) => b.className.includes('bg-violet-600'))!;
+    expect(enviar.disabled).toBe(true);
+  });
+
+  it('confirmSend() no envía si el efectivo mixto ya cubre el nuevo total (defensa en profundidad)', async () => {
+    await createComponent(nequi(), { lines: buildLines(1), total: 5000, count: 1 });
+    component.mixedCashAmount.set(8500);
+    fixture.detectChanges();
+
+    await component.confirmSend();
+
+    expect(component.submitting()).toBe(false);
+  });
+
+  // ── spec 148 (US3, T080/T081): 409 unificado al enviar ──────────────────
+
+  it('un 409 unificado al enviar mantiene el paso, el método y el comprobante, y marca la línea', async () => {
+    await createComponent(nequi(), { lines: buildLines(1), total: 15000, count: 1 });
+    const conflict = {
+      error: 'Se agotó: Granizado del diablo. Quítalo para continuar',
+      productos_agotados: ['Granizado del diablo'],
+      agotados: [{ id: 'v1', tipo: 'producto', nombre: 'Granizado del diablo', producto_id: 'v1', motivo: 'manual' as const }],
+    };
+    const api = TestBed.inject(DinerService);
+    (api.submitCart as ReturnType<typeof vi.fn>).mockRejectedValue(
+      Object.assign(new Error('conflict'), { status: 409, error: { detail: conflict } }),
+    );
+
+    await component.confirmSend();
+
+    expect(cart.applyConflict).toHaveBeenCalledWith(conflict);
+    expect(component.error()).toBe(conflict.error);
+    // Se queda en el paso (no navega) con el método ya elegido.
+    expect(component.method()?.id).toBe(nequi().id);
   });
 });

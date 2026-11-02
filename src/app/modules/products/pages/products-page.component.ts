@@ -10,17 +10,33 @@ import { RelativeTimePipe } from '../../../shared/relative-time.pipe';
 import { AuthService } from '../../../core/services/auth.service';
 import { UserRole } from '../../../core/interfaces/user.interface';
 import { ProductImportModalComponent } from '../components/product-import-modal.component';
+import {
+  AvailabilitySyncService,
+  AvailabilityTarget,
+} from '../../../core/availability/availability-sync.service';
+import { AvailabilityChange, AvailabilitySnapshot } from '../../../core/availability/availability.model';
+import { LiveStatusIndicatorComponent } from '../../../core/availability/live-status-indicator.component';
 
 @Component({
   selector: 'app-products-page',
   standalone: true,
-  imports: [FormsModule, PaginationBarComponent, IconMiComponent, RelativeTimePipe, ProductImportModalComponent],
+  imports: [
+    FormsModule,
+    PaginationBarComponent,
+    IconMiComponent,
+    RelativeTimePipe,
+    ProductImportModalComponent,
+    LiveStatusIndicatorComponent,
+  ],
   template: `
     <div class="space-y-6">
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900">Carta del menú</h1>
+          <div class="flex items-center gap-2">
+            <h1 class="text-2xl font-bold text-gray-900">Carta del menú</h1>
+            <app-live-status-indicator />
+          </div>
           <p class="text-gray-500 text-sm mt-1">
             {{ isAdmin() ? 'Gestiona el catálogo de productos' : 'Consulta el catálogo y marca lo que se agote' }}
           </p>
@@ -311,11 +327,13 @@ import { ProductImportModalComponent } from '../components/product-import-modal.
     </div>
   `,
 })
-export class ProductsPageComponent implements OnInit, OnDestroy {
+export class ProductsPageComponent implements OnInit, OnDestroy, AvailabilityTarget {
   readonly productService = inject(ProductService);
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
   private readonly auth = inject(AuthService);
+  private readonly availabilitySync = inject(AvailabilitySyncService);
+  private unregisterAvailabilityTarget: (() => void) | null = null;
 
   /** spec 093: el Cajero comparte esta pantalla con el Admin, en solo lectura salvo
    *  el interruptor "Agotado" -- mismo patrón que `cash-session.store.ts`. */
@@ -332,6 +350,32 @@ export class ProductsPageComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.productService.loadProducts();
+    this.unregisterAvailabilityTarget = this.availabilitySync.registerTarget(this);
+  }
+
+  /**
+   * Spec 148 (D15, T039): un cambio `kind:'product'` cuya `sold_out` difiere
+   * de `!row.available` de una fila de la página VISIBLE dispara
+   * `refreshOne` (trae quién/cuándo, sin ponerlo en el evento). Un cambio que
+   * solo trae el `available` derivado por inventario (sin diferencia de
+   * `sold_out`) NO toca el interruptor manual (US6.5) -- no se refresca nada
+   * por eso solo. Nada fuera de la página visible (está paginada, spec 079).
+   */
+  applyAvailability(changes: readonly AvailabilityChange[]): void {
+    const visibleIds = new Set(this.productService.products().map((p) => p.id));
+    for (const c of changes) {
+      if (c.kind !== 'product') continue;
+      if (c.sold_out === undefined) continue;
+      if (!visibleIds.has(c.id)) continue;
+      const row = this.productService.products().find((p) => p.id === c.id);
+      if (!row) continue;
+      if (c.sold_out === !row.available) continue; // sin diferencia -- no es un cambio manual.
+      void this.productService.refreshOne(c.id);
+    }
+  }
+
+  applyAvailabilitySnapshot(_snapshot: AvailabilitySnapshot): void {
+    this.productService.loadProducts(this.productService.page(), this.productService.size());
   }
 
   /** Descarga la carta completa en `.xlsx` (spec 143). */
@@ -358,6 +402,8 @@ export class ProductsPageComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     if (this.searchDebounce) clearTimeout(this.searchDebounce);
+    this.unregisterAvailabilityTarget?.();
+    this.unregisterAvailabilityTarget = null;
   }
 
   onSearchInput(value: string): void {

@@ -1089,3 +1089,72 @@ describe('ProductSelectComponent — [fromPromotions]/[existingQtyFor] (spec 081
     traduccion.revert();
   });
 });
+
+// ── spec 148 (T103, US6.7/FR-017): disponibilidad en vivo a nivel de presentación ──
+
+describe('ProductSelectComponent — disponibilidad en vivo de la presentación', () => {
+  let fixture: ComponentFixture<ProductSelectComponent>;
+  let component: ProductSelectComponent;
+
+  function create(product: MenuProduct): void {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [ProductSelectComponent] });
+    fixture = TestBed.createComponent(ProductSelectComponent);
+    component = fixture.componentInstance;
+    component.product = product;
+    fixture.detectChanges();
+  }
+
+  it('un cambio kind:"variant" marca solo esa presentación como "Agotada" sin afectar al producto ni a las demás presentaciones', () => {
+    const chica = makeVariant({ id: 'v1', name: 'Chica', available: true });
+    const grande = makeVariant({ id: 'v2', name: 'Grande', available: true });
+    const producto = makeProduct({ variants: [chica, grande], available: true });
+    create(producto);
+
+    // Estado inicial: ninguna presentación muestra "Agotado".
+    expect(fixture.nativeElement.textContent).not.toContain('Agotado');
+
+    // Llega un cambio availability.changed kind:'variant' que agota "Chica" --
+    // el padre (public-menu.component.ts, T034) parcha `categories` de forma
+    // inmutable y reasigna una nueva copia del producto a este @Input.
+    const parchado = makeProduct({
+      ...producto,
+      variants: [{ ...chica, available: false }, grande],
+    });
+    fixture.componentRef.setInput('product', parchado);
+    fixture.detectChanges();
+
+    const texto = (fixture.nativeElement.textContent ?? '') as string;
+    expect(texto).toContain('Agotado');
+    // El producto sigue siendo seleccionable (no hay mensaje de bloqueo total)
+    // y "Grande" sigue disponible: el radio de "Grande" no está deshabilitado.
+    const radios = Array.from(
+      fixture.nativeElement.querySelectorAll('input[type="radio"][name="variant"]'),
+    ) as HTMLInputElement[];
+    expect(radios.length).toBe(2);
+    expect(radios[0].disabled).toBe(true); // Chica, agotada
+    expect(radios[1].disabled).toBe(false); // Grande, sigue disponible
+  });
+
+  it('una presentación que vuelve a estar disponible se rehabilita sola', () => {
+    const chica = makeVariant({ id: 'v1', name: 'Chica', available: false });
+    const grande = makeVariant({ id: 'v2', name: 'Grande', available: true });
+    create(makeProduct({ variants: [chica, grande] }));
+
+    let radios = Array.from(
+      fixture.nativeElement.querySelectorAll('input[type="radio"][name="variant"]'),
+    ) as HTMLInputElement[];
+    expect(radios[0].disabled).toBe(true);
+
+    fixture.componentRef.setInput('product', makeProduct({
+      variants: [{ ...chica, available: true }, grande],
+    }));
+    fixture.detectChanges();
+
+    radios = Array.from(
+      fixture.nativeElement.querySelectorAll('input[type="radio"][name="variant"]'),
+    ) as HTMLInputElement[];
+    expect(radios[0].disabled).toBe(false);
+    expect(fixture.nativeElement.textContent).not.toContain('Agotado');
+  });
+});

@@ -161,4 +161,14 @@ export const KNOWN_EVENT_TYPES = [
   // callback para él (se descarta en silencio) — sigue el mismo patrón que
   // el resto de esta lista.
   'notification.created',
+  // Spec 148 (D13, H8): misma trampa. Sin registrar este tipo, `EventSource`
+  // recibe el frame `availability.changed` y lo descarta sin disparar ningún
+  // callback -- el parche en vivo del menú nunca llegaría.
+  'availability.changed',
+  // Spec 148 (T105, con confirmación del usuario): `menu.updated` (spec 128)
+  // sufría exactamente este mismo problema -- el frame llegaba y el
+  // navegador lo descartaba en silencio, así que el refresco en vivo de
+  // categorías ocultas en el menú QR nunca funcionó en producción. Este
+  // registro lo activa por primera vez.
+  'menu.updated',
 ] as const;

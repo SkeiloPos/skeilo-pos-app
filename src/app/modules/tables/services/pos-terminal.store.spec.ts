@@ -21,6 +21,7 @@ import { ToastService } from '../../../shared/feedback/toast.service';
 import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { Sale } from '../../sales/interfaces/sales.interface';
 import { MenuService } from '../../../core/services/menu.service';
+import { AvailabilitySyncService } from '../../../core/availability/availability-sync.service';
 import { MenuProduct, MenuVariantPromotion } from '../../products/interfaces/product.interface';
 import { PaymentMethodService } from '../../sales/services/payment-method.service';
 import { CashService } from '../../cash-register/services/cash.service';
@@ -4636,5 +4637,365 @@ describe('PosTerminalStore — bloqueador del momento seguro (spec 134, M6)', ()
 
     otro.draftLines.set([]);
     expect(gateCompartido.isSafeMoment()).toBe(true);
+  });
+});
+
+// ── spec 148 (T041, T036): openConfig ignora un producto agotado; configuringProductLive sigue el menú vivo ──
+describe('PosTerminalStore — disponibilidad en vivo (spec 148)', () => {
+  let store: PosTerminalStore;
+  let menuService: MenuService;
+
+  function product(partial: Partial<MenuProduct> = {}): MenuProduct {
+    return {
+      id: 'p1',
+      name: 'Fresa Salvaje',
+      description: null,
+      image_url: null,
+      variants: [],
+      option_groups: [],
+      available: true,
+      ...partial,
+    };
+  }
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    menuService = TestBed.inject(MenuService);
+  });
+
+  it('openConfig no abre el selector para un producto con sold_out:true', () => {
+    store.openConfig(product({ sold_out: true }));
+    expect(store.configuringProduct()).toBeNull();
+  });
+
+  it('openConfig no abre el selector para un producto con available:false (agotado por inventario)', () => {
+    store.openConfig(product({ available: false }));
+    expect(store.configuringProduct()).toBeNull();
+  });
+
+  it('openConfig sí abre el selector para un producto disponible', () => {
+    store.openConfig(product());
+    expect(store.configuringProduct()?.id).toBe('p1');
+  });
+
+  it('configuringProductLive resuelve por id contra el menú vivo (categories())', () => {
+    menuService.categories.set([{ id: 'c1', name: 'Cat', products: [product()] }]);
+    store.openConfig(product());
+    expect(store.configuringProductLive()?.sold_out).toBeFalsy();
+
+    menuService.applyAvailability([{ kind: 'product', id: 'p1', sold_out: true, available: true }]);
+
+    expect(store.configuringProductLive()?.sold_out).toBe(true);
+    // El respaldo (configuringProduct) no cambia -- la copia del momento de abrir.
+    expect(store.configuringProduct()?.sold_out).toBeFalsy();
+  });
+
+  it('configuringProductLive cae al respaldo de configuringProduct si el producto ya no está en categories()', () => {
+    store.openConfig(product());
+    expect(store.configuringProductLive()?.id).toBe('p1');
+  });
+});
+
+// ── spec 148 (US2, T047/T050): línea afectada del carrito de la Terminal ──
+describe('PosTerminalStore — línea afectada del carrito (spec 148, US2)', () => {
+  let store: PosTerminalStore;
+  let menuService: MenuService;
+
+  const moraOption = { id: 'o-mora', name: 'Mora', extra_price: 0, available: true };
+  const limonOption = { id: 'o-limon', name: 'Limón', extra_price: 0, available: true };
+  const saboresGroup = {
+    id: 'g-sabores', name: 'Sabores', min_select: 1, max_select: 1, consume: true,
+    selection_mode: 'conteo' as const, max_quantity_per_option: null, max_total_quantity: null,
+    options: [moraOption, limonOption],
+  };
+  const granizadoVariant16 = {
+    id: 'v-16oz', name: '16 oz', price: 8000, available: true,
+    option_groups: [saboresGroup],
+  } as never;
+  const granizado = {
+    id: 'granizado', name: 'Granizado de mora', description: null, image_url: null,
+    available: true, sold_out: false,
+    variants: [granizadoVariant16],
+    option_groups: [saboresGroup],
+  } as never;
+  const paletaVariant = { id: 'v-paleta', name: 'Única', price: 4000, available: true, option_groups: [] } as never;
+  const paleta = {
+    id: 'paleta', name: 'Paleta de coco', description: null, image_url: null,
+    available: true, sold_out: false,
+    variants: [paletaVariant],
+    option_groups: [],
+  } as never;
+
+  function moraChoice() {
+    return { option: moraOption, quantity: 1, groupName: 'Sabores', selectionMode: 'conteo' as const };
+  }
+  function limonChoice() {
+    return { option: limonOption, quantity: 1, groupName: 'Sabores', selectionMode: 'conteo' as const };
+  }
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    menuService = TestBed.inject(MenuService);
+    menuService.categories.set([{ id: 'c1', name: 'Cat', products: [granizado, paleta] }]);
+  });
+
+  it('agotar el producto marca solo su línea; la otra línea queda intacta y el envío se bloquea', () => {
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant16, options: [moraChoice()], quantity: 2, notes: 'sin azúcar' } as never);
+    store.addDraftFromSelection({ product: paleta, variant: paletaVariant, options: [], quantity: 1, notes: null } as never);
+    expect(store.hasAffectedLines()).toBe(false);
+
+    menuService.applyAvailability([{ kind: 'product', id: 'granizado', sold_out: true, available: true }]);
+
+    const view = store.cartView();
+    const granizadoRow = view.find((r) => r.name.includes('Granizado'))!;
+    const paletaRow = view.find((r) => r.name.includes('Paleta'))!;
+    expect((granizadoRow as { soldOut: string | null }).soldOut).toBe('Granizado de mora');
+    expect((paletaRow as { soldOut: string | null }).soldOut).toBeNull();
+    expect(store.hasAffectedLines()).toBe(true);
+    expect(store.affectedDraftMessage()).toBe('Se agotó: Granizado de mora. Quítalo para continuar');
+  });
+
+  it('volver a disponible quita la marca y el bloqueo solos', () => {
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant16, options: [moraChoice()], quantity: 1, notes: null } as never);
+    menuService.applyAvailability([{ kind: 'product', id: 'granizado', sold_out: true, available: true }]);
+    expect(store.hasAffectedLines()).toBe(true);
+
+    menuService.applyAvailability([{ kind: 'product', id: 'granizado', sold_out: false, available: true }]);
+
+    expect(store.hasAffectedLines()).toBe(false);
+    expect((store.cartView()[0] as { soldOut: string | null }).soldOut).toBeNull();
+  });
+
+  it('dos productos agotados a la vez producen dos marcas', () => {
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant16, options: [moraChoice()], quantity: 1, notes: null } as never);
+    store.addDraftFromSelection({ product: paleta, variant: paletaVariant, options: [], quantity: 1, notes: null } as never);
+
+    menuService.applyAvailability([
+      { kind: 'product', id: 'granizado', sold_out: true, available: true },
+      { kind: 'product', id: 'paleta', sold_out: true, available: true },
+    ]);
+
+    expect(store.affectedDraftKeys().size).toBe(2);
+    expect(store.affectedDraftMessage()).toBe(
+      'Se agotaron: Granizado de mora, Paleta de coco. Quítalos para continuar',
+    );
+  });
+
+  it('quitar una línea agotada conserva el resto con su cantidad, opciones y notas', () => {
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant16, options: [moraChoice()], quantity: 2, notes: 'nota granizado' } as never);
+    store.addDraftFromSelection({ product: paleta, variant: paletaVariant, options: [], quantity: 3, notes: 'nota paleta' } as never);
+    menuService.applyAvailability([{ kind: 'product', id: 'granizado', sold_out: true, available: true }]);
+    const granizadoKey = store.draftLines().find((l) => l.kind === 'product' && l.product.id === 'granizado')!.key;
+
+    store.removeDraft(granizadoKey);
+
+    expect(store.draftLines()).toHaveLength(1);
+    const remaining = store.draftLines()[0];
+    expect(remaining.kind).toBe('product');
+    expect(remaining.quantity).toBe(3);
+    expect(remaining.notes).toBe('nota paleta');
+    expect(store.hasAffectedLines()).toBe(false);
+  });
+
+  it('agotar solo el sabor "mora" marca la línea que lo eligió con su nombre; otra línea con otro sabor no se marca', () => {
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant16, options: [moraChoice()], quantity: 1, notes: null } as never);
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant16, options: [limonChoice()], quantity: 1, notes: null } as never);
+
+    menuService.applyAvailability([{ kind: 'option', id: 'o-mora', available: false }]);
+
+    const view = store.cartView() as { soldOut: string | null; options: { text: string }[] }[];
+    const moraRow = view.find((r) => r.options.some((o) => o.text.includes('Mora')))!;
+    const limonRow = view.find((r) => r.options.some((o) => o.text.includes('Limón')))!;
+    expect(moraRow.soldOut).toBe('Mora');
+    expect(limonRow.soldOut).toBeNull();
+  });
+
+  it('ningún evento de disponibilidad muta draftLines (sigue siendo la misma referencia)', () => {
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant16, options: [moraChoice()], quantity: 1, notes: null } as never);
+    const before = store.draftLines();
+
+    menuService.applyAvailability([{ kind: 'product', id: 'granizado', sold_out: true, available: true }]);
+
+    expect(store.draftLines()).toBe(before);
+  });
+
+  // T094 (US5.3): un snapshot de reconciliación marca la línea igual que un evento en vivo.
+  it('un snapshot que agota el producto marca la línea y bloquea el envío, igual que un evento en vivo', () => {
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant16, options: [moraChoice()], quantity: 1, notes: null } as never);
+    expect(store.hasAffectedLines()).toBe(false);
+
+    menuService.applyAvailabilitySnapshot({
+      as_of: 1,
+      products: [{ id: 'granizado', sold_out: true, available: true }],
+      variants: [],
+      options: [],
+    });
+
+    expect(store.hasAffectedLines()).toBe(true);
+    expect((store.cartView()[0] as { soldOut: string | null }).soldOut).toBe('Granizado de mora');
+  });
+
+  // FR-029: el indicador «Sin actualización en vivo» es informativo, no un candado — agregar
+  // y enviar sigue disponible mientras la conexión está caída, independiente de
+  // `realtimeStatus()`. El único bloqueo real por disponibilidad es `hasAffectedLines()`.
+  it('operar sin conexión no deshabilita nada por sí solo: hasAffectedLines no depende de realtimeStatus (FR-029)', () => {
+    expect(store.realtimeStatus()).not.toBe('open'); // RealtimeService real, sin conectar en este test
+    store.addDraftFromSelection({ product: paleta, variant: paletaVariant, options: [], quantity: 1, notes: null } as never);
+
+    expect(store.hasAffectedLines()).toBe(false);
+
+    menuService.applyAvailability([{ kind: 'product', id: 'granizado', sold_out: true, available: true }]);
+
+    // Agregar la línea de paleta (disponible) sigue sin bloquear, sin importar el estado de conexión.
+    expect(store.hasAffectedLines()).toBe(false);
+  });
+});
+
+// ── spec 148 (US3, T078/T081): 409 unificado al crear/guardar desde la Terminal ──
+describe('PosTerminalStore — manejo del 409 unificado por agotado (spec 148, US3)', () => {
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+  let menuService: MenuService;
+
+  const granizadoVariant = { id: 'v-16oz', name: '16 oz', price: 8000, available: true, option_groups: [] } as never;
+  const granizado = {
+    id: 'granizado', name: 'Granizado de mora', description: null, image_url: null,
+    available: true, sold_out: false, variants: [granizadoVariant], option_groups: [],
+  } as never;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+    menuService = TestBed.inject(MenuService);
+    menuService.categories.set([{ id: 'c1', name: 'Cat', products: [granizado] }]);
+    // El store solo delega en `AvailabilitySyncService.applyLocal`; quien parcha
+    // `MenuService` es el destino registrado (igual que `DashboardLayoutComponent`
+    // en producción) -- sin este registro `applyLocal` no tendría destinos.
+    TestBed.inject(AvailabilitySyncService).registerTarget(menuService);
+    vi.spyOn(store, 'reload').mockResolvedValue(undefined);
+  });
+
+  afterEach(() => http.verify());
+
+  it('motivo manual: el carrito se conserva, se marca la línea y el error es el texto de FR-024', async () => {
+    store.selectedTableId.set('t1');
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant, options: [], quantity: 1, notes: null } as never);
+    const promise = store.createManualOrderFromDraft();
+
+    const req = http.expectOne(`${API}/orders`);
+    req.flush(
+      {
+        detail: {
+          error: 'Se agotó: Granizado de mora. Quítalo para continuar',
+          productos_agotados: ['Granizado de mora'],
+          agotados: [{ id: 'granizado', tipo: 'producto', nombre: 'Granizado de mora', producto_id: 'granizado', motivo: 'manual' }],
+        },
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+
+    expect(await promise).toBe(false);
+    expect(store.draftLines()).toHaveLength(1); // nunca se vacía
+    expect(store.hasAffectedLines()).toBe(true);
+    expect(store.error()).toBe('Se agotó: Granizado de mora. Quítalo para continuar');
+  });
+
+  it('motivo inventario: marca el producto como no pedible sin tocar la marca manual', async () => {
+    store.selectedTableId.set('t1');
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant, options: [], quantity: 1, notes: null } as never);
+    const promise = store.createManualOrderFromDraft();
+
+    const req = http.expectOne(`${API}/orders`);
+    req.flush(
+      {
+        detail: {
+          error: 'Se agotó: Granizado de mora. Quítalo para continuar',
+          productos_agotados: ['Granizado de mora'],
+          agotados: [{ id: 'granizado', tipo: 'producto', nombre: 'Granizado de mora', producto_id: 'granizado', motivo: 'inventario' }],
+        },
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await promise;
+
+    expect(menuService.categories()[0].products[0].available).toBe(false);
+    expect(menuService.categories()[0].products[0].sold_out).toBe(false);
+  });
+
+  it('motivo cantidad: no marca el catálogo, solo la línea (quantityConflicts) y el envío sigue bloqueado', async () => {
+    store.selectedTableId.set('t1');
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant, options: [], quantity: 5, notes: null } as never);
+    const key = store.draftLines()[0].key;
+    const promise = store.createManualOrderFromDraft();
+
+    const req = http.expectOne(`${API}/orders`);
+    req.flush(
+      {
+        detail: {
+          error: 'Se agotó: Granizado de mora · 16 oz. Quítalo para continuar',
+          productos_agotados: ['Granizado de mora · 16 oz'],
+          agotados: [{ id: 'v-16oz', tipo: 'presentacion', nombre: 'Granizado de mora · 16 oz', producto_id: 'granizado', motivo: 'cantidad' }],
+        },
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await promise;
+
+    // El catálogo no se tocó por un conflicto de cantidad (el producto sigue pedible en 1).
+    expect(menuService.categories()[0].products[0].available).toBe(true);
+    expect(store.affectedDraftKeys().has(key)).toBe(true);
+    expect(store.hasAffectedLines()).toBe(true);
+  });
+
+  it('saveOrder(): un 409 unificado marca lo afectado sin vaciar el carrito', async () => {
+    store.selectedOrderId.set('o1');
+    store.addDraftFromSelection({ product: granizado, variant: granizadoVariant, options: [], quantity: 1, notes: null } as never);
+    const promise = store.saveOrder();
+
+    const req = http.expectOne(`${API}/orders/o1/items`);
+    req.flush(
+      {
+        detail: {
+          error: 'Se agotó: Granizado de mora. Quítalo para continuar',
+          productos_agotados: ['Granizado de mora'],
+          agotados: [{ id: 'granizado', tipo: 'producto', nombre: 'Granizado de mora', producto_id: 'granizado', motivo: 'manual' }],
+        },
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+
+    expect(await promise).toBe(false);
+    expect(store.draftLines()).toHaveLength(1);
+    expect(store.error()).toBe('Se agotó: Granizado de mora. Quítalo para continuar');
   });
 });
