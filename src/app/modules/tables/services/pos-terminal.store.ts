@@ -1098,29 +1098,33 @@ export class PosTerminalStore {
         const oldest = list.length
           ? Math.min(...list.map((o) => new Date(o.created_at).getTime()))
           : null;
-        // spec 146 (FR-002/FR-008, A-150): con exactamente una orden, la
-        // tarjeta muestra el status/payment_status crudos de esa orden en
-        // vez del badge sintético de ocupación -- mismo criterio que
-        // `selectedSingleOrder()`. Con cero o varias, se conserva tal cual
-        // `statusLabel`/`chipClass` (también usados por
-        // `manual-order-page.component.ts` para "Libre"/deshabilitar mesas).
-        const single = list.length === 1 ? list[0] : null;
-        const attendedBy = single ? orderAttendedBy(single) : undefined;
+        // spec 146 (FR-002/FR-008, A-150), ampliado a pedido del usuario: la
+        // tarjeta muestra el status/payment_status crudos del último pedido
+        // (el más reciente) en vez del badge sintético de ocupación -- mismo
+        // criterio que `selectedSingleOrder()`. `list[0]` ya es el más
+        // reciente porque `tableOrders()` hereda el orden descendente por
+        // `created_at` de `GET /orders` (ver nota en `orderTabs()`). Con cero
+        // pedidos se conserva tal cual `statusLabel`/`chipClass` (también
+        // usados por `manual-order-page.component.ts` para "Libre"/
+        // deshabilitar mesas); con varios, `ordersCount` sigue marcando el
+        // badge "N pedidos" para no confundirlo con el único pedido vivo.
+        const latest = list.length > 0 ? list[0] : null;
+        const attendedBy = latest ? orderAttendedBy(latest) : undefined;
         return {
           id: t.id,
           number: t.number,
           name: t.name,
           statusLabel: meta.label,
-          statusLabelShort: single ? orderStatusLabel(single.status) : SHORT_STATUS_LABEL[status],
-          chipClass: single ? orderStatusClass(single.status) : meta.chip,
-          paymentStatusLabel: single?.payment_status ? paymentStatusLabel(single.payment_status) : undefined,
-          paymentStatusClass: single?.payment_status ? paymentStatusClass(single.payment_status) : undefined,
-          // spec 147: igual que paymentStatusLabel, solo con una orden única
-          // en la tarjeta -- con varias, a quién atendió no aplica a la mesa
-          // como un todo.
+          statusLabelShort: latest ? orderStatusLabel(latest.status) : SHORT_STATUS_LABEL[status],
+          chipClass: latest ? orderStatusClass(latest.status) : meta.chip,
+          paymentStatusLabel: latest?.payment_status ? paymentStatusLabel(latest.payment_status) : undefined,
+          paymentStatusClass: latest?.payment_status ? paymentStatusClass(latest.payment_status) : undefined,
+          // spec 147: igual que paymentStatusLabel, del último pedido de la
+          // mesa -- con varios, a quién atendió el pedido más reciente sigue
+          // siendo un dato útil en la tarjeta.
           attendedByLabel: attendedBy?.label,
           attendedByValue: attendedBy?.value,
-          channelLabel: single ? orderChannelLabel(single.channel) : undefined,
+          channelLabel: latest ? orderChannelLabel(latest.channel) : undefined,
           itemsLabel: `${items} ${items === 1 ? 'producto' : 'productos'}`,
           elapsedLabel: this.sinceLabel(oldest),
           // Mockup de referencia (terminal-de-mesas/code.html): una mesa sin
