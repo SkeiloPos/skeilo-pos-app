@@ -14,25 +14,22 @@ export type OrderChannel = 'POS' | 'QR_MENU' | 'WHATSAPP' | 'API';
 export type OrderType = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
 
 /**
- * Ciclo de vida del **pedido** (facturación), independiente del de cocina.
+ * Ciclo de vida del **pedido**, independiente del de pago (spec 147: colapso
+ * de 5 estados a 3).
  *
- * `pendiente` es el estado inicial de toda orden nueva, de cualquier canal
- * (spec 146, A-150): el personal aún no la ha confirmado y **no ha
- * descontado inventario**. El stock se compromete al confirmar
- * (`pendiente` → `abierta`).
+ * `pendiente` es el estado inicial de toda orden nueva, de cualquier canal; la
+ * única acción "Entregar" (`POST /orders/{id}/deliver`) la pasa a `entregada`
+ * junto con todos sus ítems. No hay paso intermedio por ítem.
  */
-export type DiningOrderStatus =
-  | 'pendiente'
-  | 'abierta'
-  | 'bloqueada'
-  | 'pagada'
-  | 'cancelada';
+export type DiningOrderStatus = 'pendiente' | 'entregada' | 'cancelada';
 
 /**
- * Estado de preparación por ítem (`KitchenStatus`), que mueve la terminal de
- * mesas. El backend admite el salto directo `pendiente → listo`.
+ * Estado de preparación por ítem (spec 147: colapso de 4 a 3). Sin acción
+ * propia: siempre sigue el de su pedido (FR-022), salvo un ítem agregado
+ * después de que el pedido ya está `entregada` (FR-002a), que nace
+ * `pendiente` hasta la siguiente "Entregar".
  */
-export type KitchenStatus = 'pendiente' | 'en_preparacion' | 'listo' | 'anulado';
+export type KitchenStatus = 'pendiente' | 'entregado' | 'cancelado';
 
 /**
  * Una opción elegida junto con cuántas unidades de ella (spec 065,
@@ -407,8 +404,9 @@ export interface OrderBilling {
   sin_detalle_de_precios: boolean;
 }
 
-/** Estado de pago de la orden (spec 146, A-150), independiente de `status`. */
-export type OrderPaymentStatus = 'UNPAID' | 'PAID' | 'PARTIAL';
+/** Estado de pago de la orden (spec 146, A-150; spec 147: colapso de 3 a 2
+ * valores), independiente de `status`. */
+export type OrderPaymentStatus = 'UNPAID' | 'PAID';
 
 /** Response of `POST /orders` and `GET /orders` (`OrderResponse`). */
 export interface DiningOrder {

@@ -344,8 +344,10 @@ export class AdminDashboardComponent implements OnInit {
    *  negocio. */
   readonly orders = signal<DiningOrder[]>([]);
 
+  /** Spec 147: ya no existen 'abierta'/'bloqueada' -- el equivalente de
+   *  "comprometida, todavía sin cerrar" es entregada y sin cobrar (FR-006). */
   readonly activeOrdersCount = computed(
-    () => this.orders().filter((o) => o.status === 'abierta' || o.status === 'bloqueada').length,
+    () => this.orders().filter((o) => o.status === 'entregada' && o.payment_status === 'UNPAID').length,
   );
 
   // ── Saludo (spec 122, FR-001/FR-010) ────────────────────────────────────

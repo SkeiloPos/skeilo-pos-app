@@ -32,12 +32,10 @@ import { DinerPaymentAttempt, DinerPaymentMethod } from '../interfaces/diner.int
 import { VisibleInterval, startVisibleInterval } from '../../../core/realtime/visible-interval';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import {
-  esperaConfirmacion,
   kitchenStatusClass,
   kitchenStatusLabel,
   orderStatusClass,
   orderStatusLabel,
-  pedidoAceptadoSinCobrar,
   puedeCancelarComensal,
 } from '../../orders/order-status.util';
 import { CartComponent } from '../components/cart.component';
@@ -358,11 +356,7 @@ const REFRESH_DEBOUNCE_MS = 250;
                       <span class="text-sm text-gray-400 tabular-nums">{{ orderTime(order) }}</span>
                     </div>
 
-                    @if (aceptadoSinCobrar(order)) {
-                      <p class="text-sm text-blue-600">
-                        Tu pedido está en preparación.
-                      </p>
-                    } @else if (esperaConfirmacion(order)) {
+                    @if (order.status === 'pendiente') {
                       <p class="text-sm text-violet-600">
                         Esperando a que el personal lo acepte.
                       </p>
@@ -429,7 +423,7 @@ const REFRESH_DEBOUNCE_MS = 250;
                               </div>
                             }
                             <app-cart-item-options [options]="itemOptionLines(item)" [notes]="item.notes ?? null" />
-                            @if ((!esperaConfirmacion(order) || aceptadoSinCobrar(order)) && item.estado_cocina !== 'anulado') {
+                            @if (item.estado_cocina !== 'cancelado') {
                               <span class="inline-block px-2 py-0.5 rounded-full text-xs" [class]="kitchenClass(item)">
                                 {{ kitchenLabel(item) }}
                               </span>
@@ -1453,23 +1447,14 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     return puedeCancelarComensal(order);
   }
 
-  esperaConfirmacion(order: DiningOrder): boolean {
-    return esperaConfirmacion(order);
-  }
-
-  /** El personal ya aceptó el pedido para cocina sin cobrarlo todavía --
-   *  `status` sigue en 'pendiente' a propósito (ver util). */
-  aceptadoSinCobrar(order: DiningOrder): boolean {
-    return pedidoAceptadoSinCobrar(order);
-  }
+  // Spec 147: ya no existe un paso intermedio "aceptado para cocina sin
+  // cobrar" -- `status` ('pendiente'/'entregada') es la única señal.
 
   statusLabel(order: DiningOrder): string {
-    if (this.aceptadoSinCobrar(order)) return kitchenStatusLabel('en_preparacion');
     return orderStatusLabel(order.status);
   }
 
   statusClass(order: DiningOrder): string {
-    if (this.aceptadoSinCobrar(order)) return kitchenStatusClass('en_preparacion');
     return orderStatusClass(order.status);
   }
 
@@ -1743,6 +1728,8 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     this.rtOff.push(
       this.realtime.on('order.created', refrescar),
       this.realtime.on('order.confirmed', refrescar),
+      // Spec 147 (FR-020): el comensal ve "Entregado" sin recargar.
+      this.realtime.on('order.delivered', refrescar),
       this.realtime.on('order.item_kitchen_changed', refrescar),
       this.realtime.on('order.item_voided', refrescar),
       this.realtime.on('order.cancelled', refrescar),

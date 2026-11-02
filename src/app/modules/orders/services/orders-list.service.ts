@@ -6,8 +6,9 @@ import { Page } from '../../../core/interfaces/page.interface';
 import { injectPagedQuery } from '../../../core/query/paged-query';
 import { DiningOrder } from '../../tables/interfaces/dining.interface';
 
-/** Los 6 valores del filtro de estado de "Órdenes" (spec 079, FR-008). `''` = Todos. */
-export type OrdersStatusFilter = '' | 'pendiente' | 'abierta' | 'bloqueada' | 'pagada' | 'cancelada';
+/** Los 4 valores del filtro de estado de "Órdenes" (spec 079, FR-008; spec
+ *  147: colapsado de 6 a 4). `''` = Todos. */
+export type OrdersStatusFilter = '' | 'pendiente' | 'entregada' | 'cancelada';
 /** Los 4 valores del filtro de tipo de orden (spec 079, FR-009). `''` = Todos. */
 export type OrdersTypeFilter = '' | 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
 
@@ -35,6 +36,8 @@ export class OrdersListService {
   /** Filtro de fecha (spec 120, FR-005), inclusive en ambos extremos — mismo patrón que `SalesService`. */
   readonly dateFrom = signal('');
   readonly dateTo = signal('');
+  /** Spec 147 (FR-014/SC-003): "Entregadas sin cobrar" -- independiente del filtro `status`. */
+  readonly entregadasSinCobrar = signal(false);
   private readonly wantsPage = signal(false);
 
   private readonly ordersQuery = injectPagedQuery<DiningOrder>({
@@ -49,12 +52,13 @@ export class OrdersListService {
         search: this.search().trim(),
         dateFrom: this.dateFrom(),
         dateTo: this.dateTo(),
+        entregadasSinCobrar: this.entregadasSinCobrar(),
       },
     ],
     queryFn: () =>
       this.fetchOrdersPage(
         this.page(), this.size(), this.status(), this.orderType(),
-        this.search().trim(), this.dateFrom(), this.dateTo(),
+        this.search().trim(), this.dateFrom(), this.dateTo(), this.entregadasSinCobrar(),
       ),
     enabled: () => this.wantsPage(),
   });
@@ -77,6 +81,7 @@ export class OrdersListService {
     search: string,
     dateFrom: string,
     dateTo: string,
+    entregadasSinCobrar: boolean,
   ): Promise<Page<DiningOrder>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (status) params = params.set('status', status);
@@ -84,6 +89,7 @@ export class OrdersListService {
     if (search) params = params.set('q', search);
     if (dateFrom) params = params.set('date_from', dateFrom);
     if (dateTo) params = params.set('date_to', dateTo);
+    if (entregadasSinCobrar) params = params.set('entregadas_sin_cobrar', 'true');
     return firstValueFrom(this.http.get<Page<DiningOrder>>(this.baseUrl, { params }));
   }
 
@@ -125,6 +131,12 @@ export class OrdersListService {
   setDate(value: string): void {
     this.dateFrom.set(value);
     this.dateTo.set(value);
+    this.list(1);
+  }
+
+  /** Spec 147 (FR-014/SC-003): alterna el filtro "Entregadas sin cobrar". */
+  setEntregadasSinCobrar(value: boolean): void {
+    this.entregadasSinCobrar.set(value);
     this.list(1);
   }
 

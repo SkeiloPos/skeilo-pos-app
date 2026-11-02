@@ -34,13 +34,11 @@ import {
   SessionBill,
 } from '../interfaces/dining.interface';
 import {
-  KITCHEN_NOT_READY,
   hasPendingKitchenWork,
   orderStatusClass,
   orderStatusLabel,
   paymentStatusClass,
   paymentStatusLabel,
-  pedidoAceptadoSinCobrar,
 } from '../../orders/order-status.util';
 import { ChosenMenuOption, ChosenMenuTopping, ProductSelection } from '../components/product-select.component';
 import { buildMenuLookup, formatQuantifiedLabel, MenuLookup } from './menu-lookup';
@@ -221,7 +219,7 @@ const NEEDS_STAFF: TableDisplayStatus[] = ['por_confirmar', 'listo', 'pago_pendi
  * mostrarlo listo mientras a uno le falta prepararse mentiría al cajero.
  */
 function leastAdvanced(items: DiningOrderItem[]): KitchenStatus | null {
-  const orden: KitchenStatus[] = ['pendiente', 'en_preparacion', 'listo'];
+  const orden: KitchenStatus[] = ['pendiente', 'entregado'];
   const estados = items.map((i) => i.estado_cocina);
   return orden.find((e) => estados.includes(e)) ?? null;
 }
@@ -270,51 +268,37 @@ export function deriveTableStatus(
   // se arma, y ese no es un pago por confirmar — es el cajero armando su
   // propio pedido, y mostrarlo como "Por confirmar" sería una falsa alarma.
   if (orders.some((o) => o.status === 'pendiente' && o.channel === 'QR_MENU')) return 'por_confirmar';
-  if (orders.some((o) => o.status === 'bloqueada')) return 'pago_pendiente';
 
-  // A-150 (spec 146): toda orden nueva, de cualquier canal, nace 'pendiente'
-  // con sus ítems ya en estado_cocina='pendiente' por defecto (FR-003) -- ese
-  // default NO significa "cocina lo tiene en cola", significa "todavía ni se
-  // confirmó la orden". Antes de A-150 un pedido de mostrador nacía 'abierta'
-  // (ya confirmado) o, con hold_for_payment, se trataba igual que un QR en
-  // camino de pago (el chequeo de arriba). Ahora que TODO canal pausa en
-  // 'pendiente', solo cuentan para "en preparación"/"listo" los ítems de
-  // órdenes ya confirmadas (`status !== 'pendiente'`) o de una orden
-  // 'pendiente' ya aceptada explícitamente para cocina
-  // (`pedidoAceptadoSinCobrar` -- `POST /orders/{id}/start-preparation`); si
-  // no, una mesa con un pedido recién creado y sin confirmar se ve 'ocupada',
-  // no "En preparación".
-  const ordenesEnCocina = orders.filter(
-    (o) => o.status !== 'pendiente' || pedidoAceptadoSinCobrar(o),
-  );
-  const items = ordenesEnCocina.flatMap((o) => (o.items ?? []).filter((i) => i.estado_cocina !== 'anulado'));
-  if (items.some((i) => KITCHEN_NOT_READY.includes(i.estado_cocina))) {
-    // Ya pagado pero cocina todavía en curso (p. ej. "Aceptar pedido" sin
-    // cobrar seguido de "Confirmar efectivo"/"Aprobar comprobante", o
-    // cualquier pedido cobrado antes de que cocina termine, spec 028): sin
-    // este chequeo se veía igual que uno sin pagar todavía.
+  // Spec 147: ya no existe 'bloqueada' (la entrega es la única acción de
+  // pedido completo, `POST /orders/{id}/deliver`, y el cobro ya no depende de
+  // un status intermedio) -- "cocina" ahora solo aplica a pedidos ya
+  // `entregada`; uno `pendiente` nunca tiene ítems fuera de `pendiente`
+  // (salvo los que ya se anularon, excluidos abajo) porque la entrega mueve
+  // pedido e ítems juntos, de una vez. Los ítems `pendiente` que puede tener
+  // un pedido YA `entregada` son los agregados después (FR-002a) -- esperan
+  // la siguiente "Entregar".
+  const ordenesEnCocina = orders.filter((o) => o.status === 'entregada');
+  const items = ordenesEnCocina.flatMap((o) => (o.items ?? []).filter((i) => i.estado_cocina !== 'cancelado'));
+  if (items.some((i) => i.estado_cocina === 'pendiente')) {
+    // Ya entregada (al menos en su primera ronda) pero con ítems nuevos
+    // todavía sin la siguiente entrega: sin este chequeo se veía igual que
+    // un pedido recién creado.
     const conConsumo = ordenesEnCocina.filter((o) =>
-      (o.items ?? []).some((i) => i.estado_cocina !== 'anulado'),
+      (o.items ?? []).some((i) => i.estado_cocina !== 'cancelado'),
     );
     if (conConsumo.length > 0 && conConsumo.every((o) => o.paid === true)) return 'pagado';
     return 'en_preparacion';
   }
-  if (items.length > 0 && items.every((i) => i.estado_cocina === 'listo')) {
+  if (items.length > 0 && items.every((i) => i.estado_cocina === 'entregado')) {
     // Spec 029, Historia 3: "Listo" exige pago Y cocina, las dos a la vez —
     // no basta con que cocina termine. La señal real sigue siendo
-    // `order.paid` (D2 de research.md), no `status`: aunque desde spec 035
-    // (A-52) los caminos QR/mostrador sí llegan a `status === 'pagada'` en
-    // cuanto se cobra, `tableOrders()` incluye cualquier orden `'pagada'`
-    // sin importar en qué vaya su cocina (spec 047, gap de A-52) — así que
-    // acá puede llegar una orden `'pagada'` con ítems todavía sin todos
-    // `'listo'` (la rama de arriba ya la habría mandado a `'en_preparacion'`)
-    // o con todos `'listo'` — `paid` es la comprobación explícita y no
-    // depende de en qué momento cambió `status`. Mientras falte el pago, se
-    // muestra "Pago pendiente" — el mismo estado que ya usa la rama
-    // 'bloqueada' de arriba, para no inventar una insignia nueva casi
-    // idéntica.
+    // `order.paid` (D2 de research.md), no `status`/`payment_status`
+    // directamente: `tableOrders()` incluye cualquier orden `'entregada'`
+    // sin importar si ya se cobró, y `paid` es la comprobación explícita que
+    // no depende de en qué momento cambió. Mientras falte el pago, se
+    // muestra "Pago pendiente".
     const conConsumo = ordenesEnCocina.filter((o) =>
-      (o.items ?? []).some((i) => i.estado_cocina !== 'anulado'),
+      (o.items ?? []).some((i) => i.estado_cocina !== 'cancelado'),
     );
     return conConsumo.every((o) => o.paid === true) ? 'listo' : 'pago_pendiente';
   }
@@ -970,14 +954,6 @@ export class PosTerminalStore {
     }));
   });
 
-  /**
-   * Todas las líneas persistidas de la mesa seleccionada, cada una con el id
-   * de su pedido de origen — usado por `avanzarItem` para encontrar un ítem
-   * aunque su tarjeta no sea la del pedido seleccionado (spec 049, D6).
-   */
-  private readonly tableItemsView = computed(() =>
-    this.ordersView().flatMap((card) => card.items.map((item) => ({ ...item, orderId: card.order.id }))),
-  );
 
   /**
    * Chip de estado de la mesa seleccionada (spec 049, D7) — mismo par
@@ -1036,7 +1012,7 @@ export class PosTerminalStore {
           (n, o) =>
             n +
             (o.items ?? [])
-              .filter((i) => i.estado_cocina !== 'anulado')
+              .filter((i) => i.estado_cocina !== 'cancelado')
               .reduce((x, i) => x + i.quantity, 0),
           0,
         );
@@ -1185,7 +1161,7 @@ export class PosTerminalStore {
     // sin tocar `now` (el placeholder nunca se evalúa contra ninguna promo).
     const now = syncedNow ?? new Date(0);
     const promos = syncedNow === null ? [] : this.promotionService.activePromotions();
-    const items = (order?.items ?? []).filter((i) => i.estado_cocina !== 'anulado');
+    const items = (order?.items ?? []).filter((i) => i.estado_cocina !== 'cancelado');
 
     // spec 118 (research.md D4, FR-005): varias filas de la misma
     // presentación+opciones+notas, agregadas en momentos distintos, se
@@ -1245,10 +1221,10 @@ export class PosTerminalStore {
         unitPrice: this.itemUnitPrice(first),
         addonsTotal: rows.reduce((s, r) => s + Number(r.addons_total ?? 0), 0),
         subtotal: rows.reduce((s, r) => s + this.itemLineTotal(r), 0),
-        ready: rows.every((r) => !KITCHEN_NOT_READY.includes(r.estado_cocina)),
+        ready: rows.every((r) => r.estado_cocina !== 'pendiente'),
         kitchenStatus: leastAdvanced(rows),
         pendingItemIds: rows
-          .filter((r) => KITCHEN_NOT_READY.includes(r.estado_cocina))
+          .filter((r) => r.estado_cocina === 'pendiente')
           .map((r) => r.id),
         promo: this.persistedLinePromo(rows, lk.variantPromotion(first.product_variant_id)),
       };
@@ -1282,10 +1258,10 @@ export class PosTerminalStore {
         unitPrice: units > 0 ? subtotal / units : subtotal,
         addonsTotal: 0,
         subtotal,
-        ready: its.every((it) => !KITCHEN_NOT_READY.includes(it.estado_cocina)),
+        ready: its.every((it) => it.estado_cocina !== 'pendiente'),
         kitchenStatus: leastAdvanced(its),
         pendingItemIds: its
-          .filter((it) => KITCHEN_NOT_READY.includes(it.estado_cocina))
+          .filter((it) => it.estado_cocina === 'pendiente')
           .map((it) => it.id),
         promo: null as CartLinePromo | null,
       };
@@ -1415,7 +1391,7 @@ export class PosTerminalStore {
    */
   readonly toppingsSubtotal = computed(() => {
     const guardadas = (this.selectedOrder()?.items ?? [])
-      .filter((i) => i.estado_cocina !== 'anulado' && !i.combo_id)
+      .filter((i) => i.estado_cocina !== 'cancelado' && !i.combo_id)
       .reduce(
         (s, i) => s + (i.toppings ?? []).reduce((ss, t) => ss + Number(t.unit_price) * t.quantity, 0),
         0,
@@ -1462,8 +1438,8 @@ export class PosTerminalStore {
   /** ¿Todos los ítems persistidos están listos para cobrar? */
   readonly kitchenReady = computed(() => {
     const order = this.selectedOrder();
-    const items = (order?.items ?? []).filter((i) => i.estado_cocina !== 'anulado');
-    return items.length > 0 && items.every((i) => !KITCHEN_NOT_READY.includes(i.estado_cocina));
+    const items = (order?.items ?? []).filter((i) => i.estado_cocina !== 'cancelado');
+    return items.length > 0 && items.every((i) => i.estado_cocina !== 'pendiente');
   });
 
   readonly catalogProducts = computed<MenuProduct[]>(() => {
@@ -1639,6 +1615,8 @@ export class PosTerminalStore {
     this.rtOff.push(
       this.realtime.on('order.created', recargar),
       this.realtime.on('order.confirmed', recargar),
+      // Spec 147 (FR-020, R8): la acción única "Entregar" emite este evento.
+      this.realtime.on('order.delivered', recargar),
       this.realtime.on('order.cancelled', recargar),
       this.realtime.on('order.item_kitchen_changed', recargar),
       this.realtime.on('order.item_voided', recargar),
@@ -2494,7 +2472,7 @@ export class PosTerminalStore {
     const order = this.orders().find((o) => (o.items ?? []).some((i) => i.combo_id === comboId));
     if (!order) return;
     const ids = (order.items ?? [])
-      .filter((i) => i.combo_id === comboId && i.estado_cocina !== 'anulado')
+      .filter((i) => i.combo_id === comboId && i.estado_cocina !== 'cancelado')
       .map((i) => i.id);
     if (ids.length === 0) return;
     const ok = await this.confirm.ask({
@@ -2740,113 +2718,51 @@ export class PosTerminalStore {
     }
   }
 
-  /**
-   * Marca listo todo lo que le falte por preparar al pedido entero.
-   *
-   * PATCH por ítem (`updateItemKitchen`), igual que el botón "✓ Listo" de
-   * cada línea (`avanzarItem`) — no `POST /orders/{id}/ready`
-   * (`markOrderReady`): ese endpoint rechaza con 409 en cuanto
-   * `order.status === 'pagada'` (registro-de-anomalias.md, A-16), que es
-   * justo el caso normal de un pedido de mostrador cobrado por adelantado
-   * (`hold_for_payment`, spec 028) cuya cocina todavía no termina — el mismo
-   * pedido donde este botón hace más falta. El PATCH por ítem no mira el
-   * status del pedido, así que no choca con esa restricción.
-   *
-   * `orderId` opcional (spec 049, D6): sin argumento preserva el
-   * comportamiento actual (`selectedOrder()`); con un id, opera sobre ese
-   * pedido — lo usa el botón "Marcar pedido listo" de cada tarjeta en la
-   * vista "Todos los pedidos", que no depende de cuál esté seleccionada.
-   */
-  async marcarListo(orderId?: string): Promise<void> {
-    const order = orderId ? this.orders().find((o) => o.id === orderId) : this.selectedOrder();
-    if (!order) return;
-    const pendingIds = (order.items ?? [])
-      .filter((i) => i.estado_cocina !== 'anulado' && KITCHEN_NOT_READY.includes(i.estado_cocina))
-      .map((i) => i.id);
-    if (pendingIds.length === 0) return;
-    this.submitting.set(true);
-    try {
-      for (const id of pendingIds) {
-        await this.api.updateItemKitchen(id, 'listo');
-      }
-      await this.reload();
-    } catch (err) {
-      this.toast.error(this.api.extractError(err, 'No se pudo marcar como listo.'));
-    } finally {
-      this.submitting.set(false);
-    }
-  }
-
-  /**
-   * Marca listo lo que hay detrás de **una línea** del carrito.
-   *
-   * Una línea de combo son varios `order_items`, de ahí que sea una lista. Solo
-   * se tocan los que siguen en curso: mandar un PATCH sobre uno ya `listo` lo
-   * rechazaría el backend con un `409` y tumbaría el combo entero. El salto
-   * directo desde `pendiente` es legal, así que es un PATCH por ítem y no dos.
-   *
-   * Busca la línea en `tableItemsView` (todos los pedidos de la mesa, spec
-   * 049, D6), no solo en `cartView()` (limitado al pedido seleccionado): en
-   * la vista "Todos los pedidos" el ítem puede pertenecer a una tarjeta
-   * distinta de la seleccionada.
-   */
-  async avanzarItem(key: string): Promise<void> {
-    const linea = this.tableItemsView().find((l) => l.key === key);
-    if (!linea || linea.kind !== 'persisted') return;
-    if (linea.pendingItemIds.length === 0) return;
-    this.submitting.set(true);
-    try {
-      for (const id of linea.pendingItemIds) {
-        await this.api.updateItemKitchen(id, 'listo');
-      }
-      await this.reload();
-    } catch (err) {
-      this.toast.error(this.api.extractError(err, 'No se pudo marcar el producto como listo.'));
-    } finally {
-      this.submitting.set(false);
-    }
-  }
+  // `marcarListo`/`avanzarItem` (PATCH por ítem/línea) se retiraron junto con
+  // `updateItemKitchen` (spec 147, FR-002): ya no hay entrega por ítem ni por
+  // línea, solo la acción única `deliverOrder` sobre el pedido completo.
 
   /**
    * Deja la mesa en condiciones de cobrarse. Devuelve `false` si el cajero
    * decide no cobrar todavía.
    *
-   * El backend rechaza cerrar una sesión con ítems sin terminar. Mandar al
-   * cajero a marcarlos uno a uno para poder cobrar era justo la fricción que
-   * obligaba a tener una pantalla de cocina aparte: aquí se le pregunta una vez
-   * y se resuelven todos de golpe.
+   * Spec 147 (FR-004): cobrar ya no exige que el pedido esté entregado --
+   * `pay_order`/`checkout_and_send` aceptan cualquier status salvo
+   * `cancelada`, sin mirar `estado_cocina`. Este paso sigue existiendo solo
+   * como ayuda operativa: entrega de una vez, con la acción única
+   * `deliverOrder`, lo que el cajero vaya a cobrar y todavía no marcó.
    *
    * Refresca **solo los pedidos**, nunca la cuenta: llega con el efectivo ya
    * tecleado, y un `bill` nuevo se lo borraría justo antes de cobrar.
    */
   readonly ensureReadyToCharge = async (): Promise<boolean> => {
     const pedidos = this.ordersToCharge().filter((o) =>
-      (o.items ?? []).some((i) => KITCHEN_NOT_READY.includes(i.estado_cocina)),
+      (o.items ?? []).some((i) => i.estado_cocina === 'pendiente'),
     );
     const n = pedidos.reduce(
       (total, o) =>
-        total + (o.items ?? []).filter((i) => KITCHEN_NOT_READY.includes(i.estado_cocina)).length,
+        total + (o.items ?? []).filter((i) => i.estado_cocina === 'pendiente').length,
       0,
     );
     if (n === 0) return true;
 
     const ok = await this.confirm.ask({
-      title: 'Quedan productos sin marcar',
+      title: 'Quedan productos sin entregar',
       message:
-        `${n} ${n === 1 ? 'producto sigue' : 'productos siguen'} sin marcar como ` +
-        `${n === 1 ? 'listo' : 'listos'}. Se ${n === 1 ? 'marcará' : 'marcarán'} y se cobrará la mesa.`,
-      confirmText: 'Marcar y cobrar',
+        `${n} ${n === 1 ? 'producto sigue' : 'productos siguen'} sin entregar. Se ` +
+        `${n === 1 ? 'entregará' : 'entregarán'} y se cobrará la mesa.`,
+      confirmText: 'Entregar y cobrar',
     });
     if (!ok) return false;
 
     try {
       for (const o of pedidos) {
-        await this.api.markOrderReady(o.id);
+        await this.api.deliverOrder(o.id);
       }
       await this.reloadOrders();
       return true;
     } catch (err) {
-      this.toast.error(this.api.extractError(err, 'No se pudieron marcar los productos.'));
+      this.toast.error(this.api.extractError(err, 'No se pudieron entregar los productos.'));
       return false;
     }
   };
@@ -3047,7 +2963,7 @@ export class PosTerminalStore {
     // combo), luego el borrador — el backend reevalúa las promociones sobre el
     // conjunto completo (una promoción `min_qty` depende de la cantidad conjunta).
     const guardados = (this.selectedOrder()?.items ?? [])
-      .filter((i) => i.estado_cocina !== 'anulado' && !i.combo_id)
+      .filter((i) => i.estado_cocina !== 'cancelado' && !i.combo_id)
       .map((i) => ({
         product_variant_id: i.product_variant_id,
         quantity: i.quantity,
@@ -3244,22 +3160,42 @@ export class PosTerminalStore {
   }
 
   /**
-   * "Aceptar pedido" sin cobrar: pasa sus ítems `pendiente` a
-   * `en_preparacion` para que cocina empiece, sin esperar a que el pago se
-   * confirme. No genera venta ni toca inventario -- eso sigue pasando
-   * únicamente al cobrar (`confirmCashPaymentAttempt`/`approvePaymentAttempt`).
-   * Reversible solo en el sentido de que no compromete nada: el pedido sigue
-   * pudiendo rechazarse o cobrarse después igual que antes.
+   * Spec 147 (US4, FR-007/FR-008/FR-009): cancela un pedido ya `entregada`
+   * sin cobrar (`payment_status === 'UNPAID'`), con `motivo` obligatorio que
+   * escribe el cajero -- distinto de `rejectOrder()` (motivo fijo, para un
+   * pedido todavía sin enviar). Si el pedido ya está `PAID`, el backend
+   * rechaza con 409 ("requiere proceso de reembolso"); ese mensaje llega tal
+   * cual al toast, sin traducirlo aquí.
    */
-  async acceptOrderForKitchen(): Promise<void> {
-    const order = this.selectedOrder();
+  async cancelDeliveredOrder(orderId: string, motivo: string): Promise<void> {
+    if (!motivo.trim()) return;
+    this.submitting.set(true);
+    try {
+      await this.api.cancelOrder(orderId, motivo.trim());
+      await this.reload();
+    } catch (err) {
+      this.toast.error(this.api.extractError(err, 'No se pudo cancelar el pedido.'));
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /**
+   * Spec 147 (FR-001/FR-002/FR-002a/FR-011): entrega el pedido completo con
+   * una sola acción, idempotente -- reemplaza `acceptOrderForKitchen`
+   * ("aceptar sin cobrar") y el "marcar listo" por ítem/línea, retirados
+   * junto con sus endpoints. No toca `payment_status`: cobrar y entregar son
+   * ejes independientes.
+   */
+  async deliverOrder(orderId?: string): Promise<void> {
+    const order = orderId ? this.orders().find((o) => o.id === orderId) : this.selectedOrder();
     if (!order) return;
     this.submitting.set(true);
     try {
-      await this.api.acceptOrderForKitchen(order.id);
+      await this.api.deliverOrder(order.id);
       await this.reload();
     } catch (err) {
-      this.toast.error(this.api.extractError(err, 'No se pudo aceptar el pedido.'));
+      this.toast.error(this.api.extractError(err, 'No se pudo entregar el pedido.'));
     } finally {
       this.submitting.set(false);
     }
@@ -3288,7 +3224,18 @@ export class PosTerminalStore {
       await this.reload();
       this.cancelSelection();
     } catch (err) {
-      this.toast.error(this.tableSessions.extractError(err, 'No se pudo liberar la mesa.'));
+      // Spec 147 (FR-017/SC-004): si el 409 trae la lista de órdenes
+      // abiertas, se nombran una por una -- el cajero no tiene que ir a
+      // buscarlas aparte para saber qué cobrar o cancelar.
+      const blocked = this.tableSessions.releaseBlocked(err);
+      if (blocked) {
+        const detalle = blocked.orders
+          .map((o) => `#${o.id.slice(-6).toUpperCase()} (${o.status}/${o.payment_status})`)
+          .join(', ');
+        this.toast.error(`${blocked.error}: ${detalle}`);
+      } else {
+        this.toast.error(this.tableSessions.extractError(err, 'No se pudo liberar la mesa.'));
+      }
     } finally {
       this.submitting.set(false);
     }
@@ -3382,7 +3329,7 @@ export class PosTerminalStore {
     // A-09: mismo criterio que cartView — sin sync, sin descuento de previsualización.
     const now = syncedNow ?? new Date(0);
     const promos = syncedNow === null ? [] : this.promotionService.activePromotions();
-    const items = (o.items ?? []).filter((i) => i.estado_cocina !== 'anulado');
+    const items = (o.items ?? []).filter((i) => i.estado_cocina !== 'cancelado');
     const plain = items.filter((i) => !i.combo_id);
     // spec 078 (US1, research.md D1 riesgo 3): cuando el backend persiste el
     // total de línea post-descuento (`discounted_line_total`), es la cifra

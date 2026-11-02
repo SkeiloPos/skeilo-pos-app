@@ -20,9 +20,7 @@ import {
 
 export const KNOWN_ORDER_STATUSES: readonly DiningOrderStatus[] = [
   'pendiente',
-  'abierta',
-  'bloqueada',
-  'pagada',
+  'entregada',
   'cancelada',
 ];
 
@@ -44,9 +42,7 @@ export function orderStatusLabel(status: string): string {
 // solo se presenta en mayúsculas a pedido del usuario.
 const ORDER_STATUS_CLASSES: Record<DiningOrderStatus, string> = {
   pendiente: 'bg-violet-100 text-violet-700 uppercase',
-  abierta: 'bg-amber-100 text-amber-700 uppercase',
-  bloqueada: 'bg-orange-100 text-orange-700 uppercase',
-  pagada: 'bg-green-100 text-green-700 uppercase',
+  entregada: 'bg-green-100 text-green-700 uppercase',
   cancelada: 'bg-gray-100 text-gray-500 uppercase',
 };
 
@@ -62,12 +58,11 @@ export function orderStatusClass(status: string): string {
 // pero ningún FR exige mostrarlo tal cual. A pedido del usuario, se traduce a
 // una etiqueta corta en español, en mayúsculas.
 
-export const KNOWN_PAYMENT_STATUSES: readonly OrderPaymentStatus[] = ['UNPAID', 'PAID', 'PARTIAL'];
+export const KNOWN_PAYMENT_STATUSES: readonly OrderPaymentStatus[] = ['UNPAID', 'PAID'];
 
 const PAYMENT_STATUS_LABELS: Record<OrderPaymentStatus, string> = {
   UNPAID: 'NO PAGADO',
   PAID: 'PAGADO',
-  PARTIAL: 'PAGO PARCIAL',
 };
 
 /**
@@ -87,7 +82,6 @@ export function paymentStatusLabel(paymentStatus: string): string {
 const PAYMENT_STATUS_CLASSES: Record<OrderPaymentStatus, string> = {
   UNPAID: 'bg-amber-100 text-amber-700',
   PAID: 'bg-green-100 text-green-700',
-  PARTIAL: 'bg-orange-100 text-orange-700',
 };
 
 export function paymentStatusClass(paymentStatus: string): string {
@@ -148,8 +142,13 @@ export function orderLocationLabel(
   return 'Mostrador';
 }
 
-/** Estados en los que el pedido ya no admite cambios. */
-export const TERMINAL_ORDER_STATUSES: readonly DiningOrderStatus[] = ['pagada', 'cancelada'];
+/**
+ * Único status realmente terminal (spec 147: ya no existe `'pagada'`, el
+ * pago es independiente de `status`). Un pedido "cerrado" (`'entregada'`+
+ * `'PAID'`) no es terminal por `status` solo — ver `payment_status` por
+ * separado (FR-012).
+ */
+export const TERMINAL_ORDER_STATUSES: readonly DiningOrderStatus[] = ['cancelada'];
 
 export function isTerminalOrder(status: DiningOrderStatus): boolean {
   return TERMINAL_ORDER_STATUSES.includes(status);
@@ -159,9 +158,8 @@ export function isTerminalOrder(status: DiningOrderStatus): boolean {
 
 export const KNOWN_KITCHEN_STATUSES: readonly KitchenStatus[] = [
   'pendiente',
-  'en_preparacion',
-  'listo',
-  'anulado',
+  'entregado',
+  'cancelado',
 ];
 
 /** Valor crudo de `estado_cocina`; loguea si no está en `KNOWN_KITCHEN_STATUSES` (FR-009). */
@@ -174,70 +172,41 @@ export function kitchenStatusLabel(status: string): string {
 
 const KITCHEN_STATUS_CLASSES: Record<KitchenStatus, string> = {
   pendiente: 'bg-amber-100 text-amber-700',
-  en_preparacion: 'bg-blue-100 text-blue-700',
-  listo: 'bg-green-100 text-green-700',
-  anulado: 'bg-gray-100 text-gray-400',
+  entregado: 'bg-green-100 text-green-700',
+  cancelado: 'bg-gray-100 text-gray-400',
 };
 
 export function kitchenStatusClass(status: string): string {
   return KITCHEN_STATUS_CLASSES[status as KitchenStatus] ?? 'bg-gray-100 text-gray-500';
 }
 
-/** Estados que impiden bloquear/cobrar: la comida aún está en curso. */
-export const KITCHEN_NOT_READY: readonly KitchenStatus[] = ['pendiente', 'en_preparacion'];
+// ── Reglas que la UI necesita (spec 147) ───────────────────────────────────
+//
+// Con solo 3 estados de ítem, "no terminado" es simplemente `'pendiente'` --
+// ya no hace falta un conjunto `KITCHEN_NOT_READY` ni distinguir un paso
+// intermedio "aceptado para cocina sin cobrar" (`pedidoAceptadoSinCobrar`,
+// retirado junto con `POST /orders/{id}/start-preparation`): la única acción
+// es "Entregar" (`POST /orders/{id}/deliver`), de una vez, para todo el
+// pedido.
 
-// ── Reglas que la UI necesita ──────────────────────────────────────────────
-
-/** Un pedido `pendiente` espera que el personal lo acepte para entrar a cocina. */
-export function esperaConfirmacion(order: Pick<DiningOrder, 'status'>): boolean {
-  return order.status === 'pendiente';
-}
-
-/**
- * El personal ya "aceptó" el pedido para que cocina empiece
- * (`POST /orders/{id}/start-preparation`), aunque el pago siga sin
- * confirmarse. `status` sigue en `pendiente` a propósito -- aceptar para
- * cocina y cobrar son decisiones separadas (no se descuenta inventario ni se
- * genera venta solo por esto). La señal es que ya hay algún ítem fuera de
- * `pendiente`/`anulado` mientras el pedido sigue `pendiente`.
- */
-export function pedidoAceptadoSinCobrar(order: Pick<DiningOrder, 'status' | 'items'>): boolean {
-  if (order.status !== 'pendiente') return false;
-  const items = order.items ?? [];
-  return items.some((it) => it.estado_cocina !== 'pendiente' && it.estado_cocina !== 'anulado');
+/** ¿Le queda a esta orden algún ítem sin entregar? */
+export function hasPendingKitchenWork(order: Pick<DiningOrder, 'items'>): boolean {
+  return (order.items ?? []).some((it) => it.estado_cocina === 'pendiente');
 }
 
 /**
  * ¿Puede el **comensal** cancelar este pedido?
  *
- * Solo si nada se ha empezado a preparar: en `pendiente` (nunca tocó inventario)
- * o en `abierta` con todos sus ítems aún `pendiente`. En cuanto cocina arranca
- * -- incluido el caso de `pedidoAceptadoSinCobrar` arriba, donde `status`
- * sigue en `pendiente` pero ya hay ítems en curso -- el insumo ya se consumió
- * (o está a punto de) y la cancelación es pérdida: decisión del personal, no
- * del cliente.
- *
- * Es la misma regla que aplica el backend; la UI la replica para ocultar el
- * botón en vez de dejar que el usuario choque con un `409`.
+ * Mismo criterio que aplica el backend (`cart/service.py`, guard de
+ * auto-cancelación del comensal): solo si el pedido sigue `'pendiente'` y
+ * ningún ítem salió de `'pendiente'` todavía (nada se entregó ni se
+ * canceló). En cuanto algo avanza, el insumo ya se consumió (o está a punto
+ * de) y la cancelación es pérdida: decisión del personal, no del cliente.
+ * La UI replica la regla para ocultar el botón en vez de dejar que el
+ * usuario choque con un `409`.
  */
 export function puedeCancelarComensal(order: Pick<DiningOrder, 'status' | 'items'>): boolean {
+  if (order.status !== 'pendiente') return false;
   const items = order.items ?? [];
-  const enCocina = items.some((it) => it.estado_cocina !== 'pendiente' && it.estado_cocina !== 'anulado');
-  if (enCocina) return false;
-  if (order.status === 'pendiente') return true;
-  return order.status === 'abierta';
-}
-
-/**
- * ¿Le queda a esta orden algún ítem sin terminar de preparar? (spec 035,
- * A-52 de `registro-de-anomalias.md`). Desde esa spec, `checkout_and_send`/
- * `approve_payment_attempt`/`confirm_cash_payment_attempt` dejan la orden en
- * `'pagada'` en cuanto se cobra — antes de eso, `status` bastaba para saber
- * si una mesa seguía ocupada; ahora una orden `'pagada'` todavía puede tener
- * comida en preparación (se cobra antes de enviar a cocina, spec 028), así
- * que quien necesite saber si la mesa "todavía tiene algo pendiente" debe
- * mirar esto, no solo `status !== 'pagada'`.
- */
-export function hasPendingKitchenWork(order: Pick<DiningOrder, 'items'>): boolean {
-  return (order.items ?? []).some((it) => KITCHEN_NOT_READY.includes(it.estado_cocina));
+  return !items.some((it) => it.estado_cocina !== 'pendiente' && it.estado_cocina !== 'cancelado');
 }

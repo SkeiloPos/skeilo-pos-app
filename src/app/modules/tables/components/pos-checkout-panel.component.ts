@@ -10,7 +10,6 @@ import {
 import { Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { DiningOrder, getSidebarMode } from '../interfaces/dining.interface';
-import { pedidoAceptadoSinCobrar } from '../../orders/order-status.util';
 import { SessionBillPanelComponent } from './session-bill-panel.component';
 import { PaymentInputComponent } from './payment-input.component';
 import { BillSummaryComponent } from './bill-summary.component';
@@ -149,14 +148,18 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                     Actualizar
                   </button>
                 </div>
-                @if (!alreadyAcceptedForKitchen(pending)) {
+                @if (canDeliver(pending)) {
+                  <!-- Spec 147 (FR-001/FR-004): entregar no depende de que
+                       el pago ya se haya revisado -- reemplaza al botón
+                       "Aceptar pedido sin cobrar" retirado junto con
+                       start-preparation. -->
                   <button
-                    (click)="store.acceptOrderForKitchen()"
+                    (click)="store.deliverOrder(pending.id)"
                     [disabled]="store.submitting()"
                     class="w-full h-10 mb-3 text-[13px] font-semibold text-white rounded-xl transition-colors disabled:opacity-40"
                     style="background:var(--terminal-color-info,#2563eb)"
                   >
-                    Aceptar pedido (cocina ya puede empezar, sin cobrar)
+                    Entregar pedido
                   </button>
                 }
                 <app-payment-attempt-review-panel
@@ -519,11 +522,11 @@ export class PosCheckoutPanelComponent {
   /** T004: qué panel de cobro va según el origen del pedido activo. */
   readonly sidebarMode = computed(() => getSidebarMode(this.store.selectedOrder()));
 
-  /** ¿Ya se aceptó este pedido para cocina sin cobrar? Oculta el botón para
-   *  no ofrecer una acción que ya no tiene efecto (`accept_order_for_kitchen`
-   *  es idempotente en el backend, pero no tiene sentido mostrarla dos veces). */
-  alreadyAcceptedForKitchen(order: DiningOrder): boolean {
-    return pedidoAceptadoSinCobrar(order);
+  /** Spec 147 (FR-001/FR-002a): ¿tiene este pedido algún ítem sin entregar?
+   *  Oculta el botón "Entregar pedido" cuando no hace falta (ya se entregó y
+   *  no hay ítems nuevos que promover). */
+  canDeliver(order: DiningOrder): boolean {
+    return (order.items ?? []).some((it) => it.estado_cocina === 'pendiente');
   }
 
   /**

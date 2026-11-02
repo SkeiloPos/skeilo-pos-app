@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
-import { KitchenStatus, getSidebarMode } from '../interfaces/dining.interface';
+import { DiningOrder, KitchenStatus, getSidebarMode } from '../interfaces/dining.interface';
 import {
   kitchenStatusLabel,
   orderStatusClass,
@@ -26,7 +27,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
 @Component({
   selector: 'app-pos-order-panel',
   standalone: true,
-  imports: [PosCatalogDrawerComponent, CartItemOptionsComponent, IconLucideComponent],
+  imports: [PosCatalogDrawerComponent, CartItemOptionsComponent, IconLucideComponent, FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   // El host es `inline` por defecto: sin esto no se ve como una columna.
   // shrink-0 (no flex-1 min-h-0): a pedido del usuario, el carrito ya no
@@ -105,6 +106,22 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                         >{{ paymentStatusLabel(o.payment_status) }}</span
                       >
                     }
+                    <!-- Spec 147 (FR-001/FR-002a/FR-011): única acción de
+                         entrega para todo el pedido, de un clic, sin paso por
+                         ítem. Idempotente -- también sirve como "re-entregar"
+                         cuando se agregaron ítems nuevos tras una primera
+                         entrega. -->
+                    @if (o.status !== 'cancelada' && canDeliver(o)) {
+                      <button
+                        type="button"
+                        (click)="store.deliverOrder(o.id)"
+                        [disabled]="store.submitting()"
+                        class="px-2.5 py-1 rounded-[6px] text-white text-[11px] font-semibold transition-colors disabled:opacity-40"
+                        style="background:var(--terminal-color-success,#16a34a)"
+                      >
+                        Entregar
+                      </button>
+                    }
                   } @else if (store.selectedTableStatusMeta(); as meta) {
                     <span
                       class="px-2 py-0.5 rounded-[6px] text-[11px] font-medium"
@@ -117,6 +134,36 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                   <app-lucide-icon name="user" [size]="14" style="color:var(--terminal-color-primary)" />
                   {{ displayCustomerName() }}
                 </span>
+                <!-- Spec 147 (US4, FR-007/FR-008/FR-009): cancelar un pedido
+                     ya entregado y sin cobrar, con motivo obligatorio. Si ya
+                     está pagado, no se ofrece el formulario -- se avisa que
+                     requiere reembolso, fuera de alcance de esta acción. -->
+                @if (store.selectedSingleOrder(); as o) {
+                  @if (o.status === 'entregada' && o.payment_status === 'UNPAID') {
+                    <div class="flex items-center gap-2 pt-1 flex-wrap">
+                      <input
+                        type="text"
+                        [(ngModel)]="cancelMotivo"
+                        placeholder="Motivo de la cancelación (obligatorio)"
+                        class="flex-1 min-h-9 px-2 py-1 text-[12px] border rounded-[6px]"
+                        style="border-color:var(--terminal-color-border-strong)"
+                      />
+                      <button
+                        type="button"
+                        (click)="confirmCancelDelivered(o.id)"
+                        [disabled]="store.submitting() || !cancelMotivo().trim()"
+                        class="min-h-9 px-3 rounded-[6px] text-white text-[11px] font-semibold disabled:opacity-40 transition-colors"
+                        style="background:var(--terminal-color-error,#dc2626)"
+                      >
+                        Cancelar pedido
+                      </button>
+                    </div>
+                  } @else if (o.status === 'entregada' && o.payment_status === 'PAID') {
+                    <p class="text-[11px]" style="color:var(--terminal-color-text-muted)">
+                      Este pedido ya está pagado: cancelarlo requiere un proceso de reembolso, fuera de alcance aquí.
+                    </p>
+                  }
+                }
               </div>
             </div>
           </div>
@@ -344,27 +391,12 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                         }
                       </div>
                       <div class="flex items-center gap-2">
-                        <!-- Marcar listo desde aquí es lo que sustituye al tablero de
-                           cocina: quien toma el pedido lo prepara y lo marca sin
-                           cambiar de pantalla. Botón outline (borde, sin
-                           relleno), 44px de alto -- mismo tratamiento/tamaño que
-                           "Anular" (mockup de referencia, tDetOn): antes eran
-                           dos botones de distinto peso/tamaño. -->
-                        @if (!it.ready) {
-                          <button
-                            (click)="store.avanzarItem(it.key)"
-                            [disabled]="store.submitting()"
-                            class="min-h-11 px-3.5 rounded-[8px] border text-[13px] font-semibold disabled:opacity-50 transition-colors"
-                            style="border-color:var(--terminal-color-success);color:var(--terminal-color-success);background:var(--terminal-color-surface)"
-                          >
-                            Marcar listo
-                          </button>
-                        }
+                        <!-- Spec 147 (FR-002): ya no hay "Marcar listo" por
+                           línea/ítem -- la entrega es una sola acción para
+                           todo el pedido (botón "Entregar" del header). -->
                         @if (it.ready) {
-                          <!-- FR-003: texto de ayuda cuando la acción no está
-                             disponible por el estado de la línea. -->
-                          <span class="text-[11px]" style="color:var(--terminal-color-text-muted)" title="Producto ya preparado: agrega un producto nuevo">
-                            Producto ya preparado
+                          <span class="text-[11px]" style="color:var(--terminal-color-text-muted)" title="Producto ya entregado: agrega un producto nuevo">
+                            Producto ya entregado
                           </span>
                         }
                         <!-- Un pedido ya pagado se asume entregado: no se anula
@@ -470,6 +502,23 @@ export class PosOrderPanelComponent {
     this.router.navigate(['/dashboard/mesas-sesiones', tableId, 'orden-manual']);
   }
 
+  /** Spec 147 (FR-001/FR-002a): ¿tiene este pedido algún ítem sin entregar?
+   *  Muestra el botón "Entregar" tanto para la primera entrega como para una
+   *  re-entrega (ítems agregados después de la primera). */
+  canDeliver(order: DiningOrder): boolean {
+    return (order.items ?? []).some((it) => it.estado_cocina === 'pendiente');
+  }
+
+  /** Spec 147 (US4): motivo obligatorio para cancelar un pedido entregado sin cobrar. */
+  readonly cancelMotivo = signal('');
+
+  async confirmCancelDelivered(orderId: string): Promise<void> {
+    const motivo = this.cancelMotivo();
+    if (!motivo.trim()) return;
+    await this.store.cancelDeliveredOrder(orderId, motivo);
+    this.cancelMotivo.set('');
+  }
+
   /**
    * Ítems del pedido seleccionado -- incluido un pago QR por confirmar,
    * ahora que `selectTable()`/`orderTabs()` ya lo seleccionan como cualquier
@@ -544,11 +593,9 @@ export class PosOrderPanelComponent {
     switch (status) {
       case 'pendiente':
         return 'background:var(--terminal-color-warning-soft);color:var(--terminal-color-warning)';
-      case 'en_preparacion':
-        return 'background:var(--terminal-color-info-soft);color:var(--terminal-color-info)';
-      case 'listo':
+      case 'entregado':
         return 'background:var(--terminal-color-success-soft);color:var(--terminal-color-success)';
-      case 'anulado':
+      case 'cancelado':
         return 'background:var(--terminal-color-surface-elevated);color:var(--terminal-color-text-muted)';
     }
   }

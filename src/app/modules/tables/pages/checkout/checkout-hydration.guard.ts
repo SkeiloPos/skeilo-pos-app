@@ -6,8 +6,9 @@ import { DiningCartService } from '../../services/dining-cart.service';
 import { CheckoutProgressStore } from './checkout-progress.store';
 
 /** Pedidos que todavía no llegaron a un estado final (mismo criterio que
- *  `_NON_TERMINAL_ORDER_STATUSES` en `cart/service.py:63`). */
-const NON_TERMINAL_STATUSES = new Set(['pendiente', 'abierta', 'bloqueada']);
+ *  `_NON_TERMINAL_ORDER_STATUSES` en `cart/service.py`, spec 147: colapsado a
+ *  2 valores). */
+const NON_TERMINAL_STATUSES = new Set(['pendiente', 'entregada']);
 
 /**
  * Se ejecuta una sola vez por entrada a `menu/t/:token/checkout/**` (Angular

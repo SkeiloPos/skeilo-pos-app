@@ -17,13 +17,11 @@ import { OrderDateFilterComponent } from '../components/order-date-filter.compon
 import { To12HourTimePipe } from '../pipes/to-12-hour-time.pipe';
 import { MoneyPipe } from '../../../shared/money.pipe';
 
-/** Opciones del selector de estado (spec 120, FR-002) — mismos 5 valores reales ya existentes. */
+/** Opciones del selector de estado (spec 120, FR-002; spec 147: colapsado a 3 valores reales). */
 const ESTADOS: { value: OrdersStatusFilter; label: string }[] = [
   { value: '', label: 'Todos' },
-  { value: 'pendiente', label: 'Por confirmar' },
-  { value: 'abierta', label: 'Abierta' },
-  { value: 'bloqueada', label: 'Bloqueada' },
-  { value: 'pagada', label: 'Pagada' },
+  { value: 'pendiente', label: 'Pendiente' },
+  { value: 'entregada', label: 'Entregada' },
   { value: 'cancelada', label: 'Cancelada' },
 ];
 
@@ -122,6 +120,18 @@ const TYPE_ICON: Record<string, string> = {
           <app-order-date-filter [value]="svc.dateFrom()" (valueChange)="svc.setDate($event)" />
         </div>
       </div>
+
+      <!-- Spec 147 (FR-014/SC-003): independiente del selector ESTADO -- acota a
+           entregada + sin cobrar, el mismo criterio que bloquea liberar la mesa (FR-016). -->
+      <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
+        <input
+          type="checkbox"
+          [checked]="svc.entregadasSinCobrar()"
+          (change)="svc.setEntregadasSinCobrar($any($event.target).checked)"
+          class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
+        >
+        Entregadas sin cobrar
+      </label>
 
       <div aria-live="polite" class="text-sm text-gray-500">{{ ordCount() }}</div>
 

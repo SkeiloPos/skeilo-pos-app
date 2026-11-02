@@ -199,7 +199,7 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
                             }
                             <!-- FR-004: con adicionales por línea, el monto se muestra para que
                                  "unitario × cantidad" no parezca contradecir el importe. -->
-                            @if (muestraImportes() && item.estado_cocina !== 'anulado' && tieneAdicionales(item)) {
+                            @if (muestraImportes() && item.estado_cocina !== 'cancelado' && tieneAdicionales(item)) {
                               <p class="text-xs text-gray-400">Adicionales: {{ item.addons_total | money }}</p>
                             }
                           </div>
@@ -210,12 +210,12 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
                            lleva el distintivo EN LUGAR del importe. No se pinta un importe
                            tachado: un número tachado sigue leyéndose como dinero al ojear la
                            columna, y ensucia la suma a mano que SC-007 pide verificar. -->
-                      @if (item.estado_cocina === 'anulado') {
+                      @if (item.estado_cocina === 'cancelado') {
                         <td class="px-4 py-3 text-right" colspan="2">
                           <span
                             class="text-[11px] px-2 py-0.5 rounded-full font-semibold"
-                            [class]="kitchenClass('anulado')"
-                          >{{ kitchenLabel('anulado') }}</span>
+                            [class]="kitchenClass('cancelado')"
+                          >{{ kitchenLabel('cancelado') }}</span>
                         </td>
                       } @else if (muestraImportes()) {
                         <td class="px-4 py-3 text-right tabular-nums text-sm text-gray-600">{{ item.unit_price | money }}</td>
