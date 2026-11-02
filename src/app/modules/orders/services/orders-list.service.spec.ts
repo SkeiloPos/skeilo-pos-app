@@ -16,7 +16,7 @@ function order(partial: Partial<DiningOrder> = {}): DiningOrder {
     id: 'o1',
     channel: 'POS',
     order_type: 'DINE_IN',
-    status: 'abierta',
+    status: 'pendiente',
     created_at: '2026-09-01T12:00:00',
     dining_table_id: null,
     customer_name: null,
@@ -94,10 +94,10 @@ describe('OrdersListService', () => {
     http.expectOne((r) => r.url === base).flush(page([], { page: 3 }));
     await tick();
 
-    service.setStatus('bloqueada');
+    service.setStatus('entregada');
     await tick();
     let req = http.expectOne((r) => r.url === base);
-    expect(req.request.params.get('status')).toBe('bloqueada');
+    expect(req.request.params.get('status')).toBe('entregada');
     expect(req.request.params.get('page')).toBe('1');
     req.flush(page([]));
     await tick();
@@ -106,7 +106,7 @@ describe('OrdersListService', () => {
     await tick();
     req = http.expectOne((r) => r.url === base);
     expect(req.request.params.get('order_type')).toBe('TAKEAWAY');
-    expect(req.request.params.get('status')).toBe('bloqueada');
+    expect(req.request.params.get('status')).toBe('entregada');
     expect(req.request.params.get('page')).toBe('1');
     req.flush(page([]));
     await tick();
@@ -156,12 +156,12 @@ describe('OrdersListService', () => {
     req.flush(page([]));
     await tick();
 
-    service.setStatus('pagada');
+    service.setStatus('cancelada');
     await tick();
     req = http.expectOne((r) => r.url === base);
     expect(req.request.params.get('date_from')).toBe('2026-10-14');
     expect(req.request.params.get('date_to')).toBe('2026-10-15');
-    expect(req.request.params.get('status')).toBe('pagada');
+    expect(req.request.params.get('status')).toBe('cancelada');
     req.flush(page([]));
     await tick();
   });

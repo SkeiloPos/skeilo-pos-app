@@ -14,25 +14,26 @@ export type OrderChannel = 'POS' | 'QR_MENU' | 'WHATSAPP' | 'API';
 export type OrderType = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY';
 
 /**
- * Ciclo de vida del **pedido** (facturación), independiente del de cocina.
+ * Ciclo de vida del **pedido**, independiente del de pago (spec 147: colapso
+ * de 5 estados a 3; `confirmado` reintroducido después, a pedido del
+ * usuario, como paso explícito de recepción).
  *
- * `pendiente` es el estado inicial de toda orden nueva, de cualquier canal
- * (spec 146, A-150): el personal aún no la ha confirmado y **no ha
- * descontado inventario**. El stock se compromete al confirmar
- * (`pendiente` → `abierta`).
+ * `pendiente` es el estado inicial de toda orden nueva, de cualquier canal;
+ * "Recibir" (`POST /orders/{id}/confirm`, idempotente) la pasa a
+ * `confirmado` -- el cajero la vio, sin tocar cocina ni pago. La única
+ * acción "Entregar" (`POST /orders/{id}/deliver`) la pasa a `entregada`
+ * junto con todos sus ítems (acepta tanto `pendiente` como `confirmado` como
+ * origen). No hay paso intermedio por ítem.
  */
-export type DiningOrderStatus =
-  | 'pendiente'
-  | 'abierta'
-  | 'bloqueada'
-  | 'pagada'
-  | 'cancelada';
+export type DiningOrderStatus = 'pendiente' | 'confirmado' | 'entregada' | 'cancelada';
 
 /**
- * Estado de preparación por ítem (`KitchenStatus`), que mueve la terminal de
- * mesas. El backend admite el salto directo `pendiente → listo`.
+ * Estado de preparación por ítem (spec 147: colapso de 4 a 3). Sin acción
+ * propia: siempre sigue el de su pedido (FR-022), salvo un ítem agregado
+ * después de que el pedido ya está `entregada` (FR-002a), que nace
+ * `pendiente` hasta la siguiente "Entregar".
  */
-export type KitchenStatus = 'pendiente' | 'en_preparacion' | 'listo' | 'anulado';
+export type KitchenStatus = 'pendiente' | 'entregado' | 'cancelado';
 
 /**
  * Una opción elegida junto con cuántas unidades de ella (spec 065,
@@ -407,8 +408,9 @@ export interface OrderBilling {
   sin_detalle_de_precios: boolean;
 }
 
-/** Estado de pago de la orden (spec 146, A-150), independiente de `status`. */
-export type OrderPaymentStatus = 'UNPAID' | 'PAID' | 'PARTIAL';
+/** Estado de pago de la orden (spec 146, A-150; spec 147: colapso de 3 a 2
+ * valores), independiente de `status`. */
+export type OrderPaymentStatus = 'UNPAID' | 'PAID';
 
 /** Response of `POST /orders` and `GET /orders` (`OrderResponse`). */
 export interface DiningOrder {
@@ -428,6 +430,10 @@ export interface DiningOrder {
   participant_id?: string | null;
   dining_table_id?: string | null;
   customer_name?: string | null;
+  /** spec 076, Historia 4: nombre para mostrar del usuario de staff (Cajero o
+   *  Mesero, sin distinción de rol) que creó el pedido. `null` si lo envió el
+   *  comensal por QR (`user_id` nulo en el backend). */
+  staff_user_name?: string | null;
   /** Solo presentes cuando `order_type === 'DELIVERY'` (spec 056). */
   delivery_address?: string | null;
   delivery_phone?: string | null;
@@ -517,10 +523,17 @@ export type SidebarMode = 'resumen' | 'terminal-pos';
  * mostrador (research.md D2), así que sin este chequeo un pedido de
  * mostrador cobrado se quedaba editable para siempre (dividir cuenta,
  * selector de método de pago, "Rechazar pedido" sobre algo ya cobrado).
+ *
+ * A pedido del usuario (segunda vuelta): la pantalla de cobro ya no espera a
+ * "Entregar" para aparecer -- un pedido QR sin pagar cae en `'terminal-pos'`
+ * desde que llega (`'pendiente'`), no solo una vez `'entregada'`. Cobrar de
+ * verdad sigue dependiendo del backend (`_assert_closable`,
+ * `table_sessions/service.py`, que sigue exigiendo el pedido entregado); el
+ * botón "Cobrar" puede estar visible antes de eso y fallar con su mensaje
+ * propio si se intenta demasiado pronto.
  */
 export function getSidebarMode(order: DiningOrder | null | undefined): SidebarMode {
-  if (order?.paid) return 'resumen';
-  return order?.channel === 'QR_MENU' ? 'resumen' : 'terminal-pos';
+  return order?.paid ? 'resumen' : 'terminal-pos';
 }
 
 /** Body de `POST /orders/{id}/checkout-and-send` (feature 028). Paga un pedido

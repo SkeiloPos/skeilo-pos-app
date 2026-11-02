@@ -9,12 +9,14 @@ import {
   emptyPaymentDraft,
   emptyPaymentLineDraft,
   missingAmount,
+  paymentDraftFromAttempt,
   paymentIssue,
   paymentLines,
   pendingBalanceExcluding,
   roundingSuggestions,
 } from './payment-draft.util';
 import { PaymentMethod } from '../../sales/interfaces/sales.interface';
+import { PaymentAttempt } from '../interfaces/dining.interface';
 
 const methods = [
   { id: 'efectivo', name: 'Efectivo', type: 'cash', is_cash: true, active: true },
@@ -279,5 +281,82 @@ describe('roundingSuggestions (spec 124, FR-001 a FR-004: montos sugeridos de pa
     expect(roundingSuggestions(1, ROUNDING_DENOMINATIONS_BY_CURRENCY.COP).length).toBeLessThanOrEqual(
       ROUNDING_DENOMINATIONS_BY_CURRENCY.COP.length,
     );
+  });
+});
+
+describe('paymentDraftFromAttempt (spec 147 ciclo 2, a pedido del usuario)', () => {
+  function attempt(patch: Partial<PaymentAttempt> = {}): PaymentAttempt {
+    return {
+      id: 'a1',
+      order_id: 'o1',
+      payment_method_id: 'tarjeta',
+      payment_method_name: 'Tarjeta',
+      is_cash: false,
+      status: 'pendiente',
+      amount_received: null,
+      change_amount: null,
+      receipt_file_url: null,
+      rejection_reason: null,
+      resolved_by_user_id: null,
+      resolved_at: null,
+      created_at: '2026-08-20T10:00:00',
+      cash_amount: null,
+      transfer_amount: null,
+      transfer_method_id: null,
+      cash_confirmed_at: null,
+      ...patch,
+    };
+  }
+
+  it('método único: una sola línea con ese método y el total del pedido (no amount_received, que llena el cajero)', () => {
+    expect(paymentDraftFromAttempt(attempt({ payment_method_id: 'tarjeta' }), methods, 35000)).toEqual([
+      { methodId: 'tarjeta', amount: 35000, reference: null },
+    ]);
+  });
+
+  it('mixto: dos líneas con los montos que el comensal ya repartió desde el QR (cash_amount/transfer_amount)', () => {
+    const mixto = attempt({
+      payment_method_name: 'Pago mixto',
+      cash_amount: '12000',
+      transfer_amount: '23000',
+      transfer_method_id: 'transferencia',
+    });
+
+    expect(paymentDraftFromAttempt(mixto, methods, 35000)).toEqual([
+      { methodId: 'efectivo', amount: 12000, reference: null },
+      { methodId: 'transferencia', amount: 23000, reference: null },
+    ]);
+  });
+
+  it('mixto con la pata en efectivo en cero: solo la línea de transferencia', () => {
+    const mixto = attempt({
+      cash_amount: '0',
+      transfer_amount: '35000',
+      transfer_method_id: 'transferencia',
+    });
+
+    expect(paymentDraftFromAttempt(mixto, methods, 35000)).toEqual([
+      { methodId: 'transferencia', amount: 35000, reference: null },
+    ]);
+  });
+
+  it('mixto sin ningún método del catálogo marcado is_cash ni transfer_method_id: cae a borrador vacío en vez de una línea sin método', () => {
+    const sinEfectivo = [
+      { id: 'tarjeta', name: 'Tarjeta', type: 'card', is_cash: false, active: true },
+    ] as PaymentMethod[];
+    const mixto = attempt({ cash_amount: '12000', transfer_amount: '0', transfer_method_id: null });
+
+    expect(paymentDraftFromAttempt(mixto, sinEfectivo, 35000)).toEqual(emptyPaymentDraft());
+  });
+
+  it('mixto con la pata en efectivo sin método is_cash en el catálogo: solo la línea de transferencia (no se descarta por completo)', () => {
+    const sinEfectivo = [
+      { id: 'transferencia', name: 'Transferencia', type: 'transfer', is_cash: false, active: true },
+    ] as PaymentMethod[];
+    const mixto = attempt({ cash_amount: '12000', transfer_amount: '23000', transfer_method_id: 'transferencia' });
+
+    expect(paymentDraftFromAttempt(mixto, sinEfectivo, 35000)).toEqual([
+      { methodId: 'transferencia', amount: 23000, reference: null },
+    ]);
   });
 });

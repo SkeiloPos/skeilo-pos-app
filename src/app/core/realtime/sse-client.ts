@@ -148,6 +148,7 @@ export class SseClient {
 export const KNOWN_EVENT_TYPES = [
   'order.created',
   'order.confirmed',
+  'order.delivered',
   'order.item_kitchen_changed',
   'order.item_addon_added',
   'order.item_voided',

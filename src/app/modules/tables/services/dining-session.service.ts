@@ -9,10 +9,8 @@ import {
   CheckoutPreview,
   ComplementaryPaymentPayload,
   DiningOrder,
-  DiningOrderItem,
   DiningOrderStatus,
   DraftPreviewPayload,
-  KitchenStatus,
   OrderCreatePayload,
   OrderItemPayload,
   PaymentAttempt,
@@ -145,39 +143,29 @@ export class DiningSessionService {
   }
 
   /**
-   * Avanza la preparación de un ítem (`pendiente`→`en_preparacion`→`listo`).
-   *
-   * El backend admite el salto directo `pendiente → listo`, que es el que usa
-   * el botón de un toque de la terminal.
+   * A pedido del usuario: "Recibe" un pedido recién llegado (`pendiente` →
+   * `confirmado`), idempotente, sin tocar cocina ni pago -- paso previo a
+   * `deliverOrder`. Ruta propia, `/receive`: distinta de `confirmOrder`
+   * (arriba), que es `/confirm` y hace algo totalmente distinto (descuenta
+   * inventario, exige un pago ya confirmado).
    */
-  async updateItemKitchen(itemId: string, estado: KitchenStatus): Promise<DiningOrderItem> {
+  async receiveOrder(orderId: string): Promise<DiningOrder> {
     return firstValueFrom(
-      this.http.patch<DiningOrderItem>(`${this.api}/orders/items/${itemId}/kitchen`, {
-        estado_cocina: estado,
-      }),
+      this.http.post<DiningOrder>(`${this.api}/orders/${orderId}/receive`, {}),
     );
   }
 
   /**
-   * Marca `listo` todo lo que quede en curso del pedido, en una sola petición.
-   *
-   * Existe para no encadenar un PATCH por ítem —y por transición— cada vez que
-   * el cajero cobra una mesa que aún no ha marcado.
+   * Spec 147 (FR-001/FR-002/FR-002a/FR-011): entrega el pedido completo con
+   * una sola acción, idempotente. Reemplaza a `updateItemKitchen` (PATCH
+   * `/items/{id}/kitchen`), `markOrderReady` (`/ready`) y
+   * `acceptOrderForKitchen` (`/start-preparation`) — los tres retirados, ya
+   * no existe un paso intermedio por ítem ni "aceptar para cocina sin
+   * cobrar".
    */
-  async markOrderReady(orderId: string): Promise<DiningOrder> {
-    return firstValueFrom(this.http.post<DiningOrder>(`${this.api}/orders/${orderId}/ready`, {}));
-  }
-
-  /**
-   * "Aceptar pedido" sin cobrar: pasa a `en_preparacion` todos los ítems
-   * `pendiente` de la orden, en una sola petición. NO toca el `status` del
-   * pedido ni descuenta inventario — sigue pudiendo cobrarse después por el
-   * camino normal (`confirmCashPaymentAttempt`/`approvePaymentAttempt`). Deja
-   * que cocina empiece mientras el pago sigue pendiente de revisión.
-   */
-  async acceptOrderForKitchen(orderId: string): Promise<DiningOrder> {
+  async deliverOrder(orderId: string): Promise<DiningOrder> {
     return firstValueFrom(
-      this.http.post<DiningOrder>(`${this.api}/orders/${orderId}/start-preparation`, {}),
+      this.http.post<DiningOrder>(`${this.api}/orders/${orderId}/deliver`, {}),
     );
   }
 

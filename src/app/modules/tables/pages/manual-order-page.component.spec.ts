@@ -2111,7 +2111,7 @@ describe('ManualOrderPageComponent — TOTAL ORDEN con ítems guardados (spec 08
     await asentar();
     expect(texto()).toContain('16.000');
 
-    store.orders.set([pedido([{}, { id: 'o1-i1', estado_cocina: 'anulado' }])]);
+    store.orders.set([pedido([{}, { id: 'o1-i1', estado_cocina: 'cancelado' }])]);
     await asentar();
 
     expect(texto()).not.toContain('16.000');
@@ -2126,7 +2126,7 @@ describe('ManualOrderPageComponent — TOTAL ORDEN con ítems guardados (spec 08
     await asentar();
     expect(texto()).toContain('8.000');
 
-    store.orders.set([pedido([{ estado_cocina: 'anulado' }])]);
+    store.orders.set([pedido([{ estado_cocina: 'cancelado' }])]);
     await asentar();
 
     expect(store.draftPreview()).toBeNull();

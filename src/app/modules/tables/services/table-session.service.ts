@@ -17,6 +17,23 @@ export interface CloseBlockedDetail {
 }
 
 /**
+ * Spec 147 (FR-016/FR-017, SC-004): detalle del `409` al liberar -- la mesa
+ * tiene alguna orden "abierta" (`status='pendiente'`, o `'entregada'` con
+ * `payment_status='UNPAID'`). El backend manda la lista completa para que el
+ * cajero no tenga que buscarlas por separado.
+ */
+export interface ReleaseBlockedOrder {
+  id: string;
+  status: string;
+  payment_status: string;
+}
+
+export interface ReleaseBlockedDetail {
+  error: string;
+  orders: ReleaseBlockedOrder[];
+}
+
+/**
  * Sesión de mesa (staff): agrupa a todos los comensales de una mesa y es la
  * unidad de cobro.
  *
@@ -56,6 +73,17 @@ export class TableSessionService {
   }
 
   /**
+   * Cobra la sesión SIN liberar la mesa (a diferencia de `close`): un pedido
+   * entregado no implica que el cliente se vaya al instante. Libera la mesa
+   * después con `release()`, cuando el cajero confirme que ya se fue.
+   */
+  charge(id: string, payload: CloseSessionPayload): Promise<CloseSessionResponse> {
+    return firstValueFrom(
+      this.http.post<CloseSessionResponse>(`${this.api}/table-sessions/${id}/charge`, payload),
+    );
+  }
+
+  /**
    * Libera una mesa ya cobrada por completo, sin cobrar nada (feature 028).
    *
    * `409` si queda algo sin pagar o cocina no ha terminado algún ítem —
@@ -73,6 +101,16 @@ export class TableSessionService {
     const detail = (err.error as { detail?: unknown } | null)?.detail;
     if (detail && typeof detail === 'object' && 'error' in detail) {
       return detail as CloseBlockedDetail;
+    }
+    return null;
+  }
+
+  /** Spec 147 (FR-017): órdenes abiertas que impiden liberar la mesa (`409`). */
+  releaseBlocked(err: unknown): ReleaseBlockedDetail | null {
+    if (!(err instanceof HttpErrorResponse) || err.status !== 409) return null;
+    const detail = (err.error as { detail?: unknown } | null)?.detail;
+    if (detail && typeof detail === 'object' && 'orders' in detail) {
+      return detail as ReleaseBlockedDetail;
     }
     return null;
   }

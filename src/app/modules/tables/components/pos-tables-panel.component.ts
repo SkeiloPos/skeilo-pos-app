@@ -46,6 +46,9 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                 [elapsedLabel]="t.elapsedLabel"
                 [totalLabel]="t.totalLabel"
                 [ordersCount]="t.ordersCount"
+                [attendedByLabel]="t.attendedByLabel"
+                [attendedByValue]="t.attendedByValue"
+                [channelLabel]="t.channelLabel"
                 [selected]="t.selected"
                 (select)="store.selectTable(t.id)"
               />
@@ -73,6 +76,9 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                 [secondaryLabel]="o.secondaryLabel"
                 [elapsedLabel]="o.elapsedLabel"
                 [totalLabel]="o.totalLabel"
+                [attendedByLabel]="o.attendedByLabel"
+                [attendedByValue]="o.attendedByValue"
+                [channelLabel]="o.channelLabel"
                 [selected]="o.id === store.selectedOrderId() && !store.selectedTableId()"
                 (select)="store.selectStandaloneOrder(o.id)"
               />
