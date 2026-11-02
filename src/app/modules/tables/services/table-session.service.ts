@@ -73,6 +73,17 @@ export class TableSessionService {
   }
 
   /**
+   * Cobra la sesión SIN liberar la mesa (a diferencia de `close`): un pedido
+   * entregado no implica que el cliente se vaya al instante. Libera la mesa
+   * después con `release()`, cuando el cajero confirme que ya se fue.
+   */
+  charge(id: string, payload: CloseSessionPayload): Promise<CloseSessionResponse> {
+    return firstValueFrom(
+      this.http.post<CloseSessionResponse>(`${this.api}/table-sessions/${id}/charge`, payload),
+    );
+  }
+
+  /**
    * Libera una mesa ya cobrada por completo, sin cobrar nada (feature 028).
    *
    * `409` si queda algo sin pagar o cocina no ha terminado algún ítem —

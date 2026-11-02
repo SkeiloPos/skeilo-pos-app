@@ -5,6 +5,7 @@ import {
   Input,
   OnChanges,
   Output,
+  SimpleChanges,
   computed,
   signal,
 } from '@angular/core';
@@ -156,6 +157,13 @@ export class PaymentInputComponent implements OnChanges {
   /** Lo que hay que cubrir con este cobro. */
   @Input() total = 0;
   @Input() methods: PaymentMethodCheckoutOption[] = [];
+  /**
+   * A pedido del usuario (spec 147 ciclo 2): con qué arrancar en vez de un
+   * selector vacío -- típicamente lo que el comensal ya eligió desde el
+   * Menú QR (`paymentDraftFromAttempt`). Llega de forma asíncrona y puede
+   * resolver después de que ya se vea el panel (ver `ngOnChanges`).
+   */
+  @Input() initialDraft: PaymentDraft | null = null;
   /** Estado del pago cada vez que cambia; el padre lo usa para validar y cobrar. */
   @Output() changed = new EventEmitter<PaymentDraft>();
 
@@ -164,10 +172,25 @@ export class PaymentInputComponent implements OnChanges {
 
   readonly issue = computed(() => paymentIssue(this.draft(), this.total, this.methods));
 
-  ngOnChanges(): void {
-    // Cambió la cuenta (otra mesa, otro importe): el pago anterior ya no vale.
-    this.draft.set(emptyPaymentDraft());
-    this.changed.emit(this.draft());
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['total'] || changes['methods']) {
+      // Cambió la cuenta (otra mesa, otro importe): el pago anterior ya no vale.
+      this.draft.set(this.initialDraft ?? emptyPaymentDraft());
+      this.changed.emit(this.draft());
+      return;
+    }
+    // `initialDraft` suele resolver DESPUÉS de `total` (requiere su propia
+    // llamada al backend) -- si llega mientras el cajero no ha tocado nada
+    // todavía, se aplica igual; si ya empezó a escribir, no se le pisa.
+    if (changes['initialDraft'] && this.initialDraft && this.isUntouched()) {
+      this.draft.set(this.initialDraft);
+      this.changed.emit(this.draft());
+    }
+  }
+
+  private isUntouched(): boolean {
+    const d = this.draft();
+    return d.length === 1 && d[0].methodId === '' && d[0].amount === 0;
   }
 
   money(n: number): string {

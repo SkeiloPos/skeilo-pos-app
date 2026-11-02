@@ -143,6 +143,19 @@ export class DiningSessionService {
   }
 
   /**
+   * A pedido del usuario: "Recibe" un pedido recién llegado (`pendiente` →
+   * `confirmado`), idempotente, sin tocar cocina ni pago -- paso previo a
+   * `deliverOrder`. Ruta propia, `/receive`: distinta de `confirmOrder`
+   * (arriba), que es `/confirm` y hace algo totalmente distinto (descuenta
+   * inventario, exige un pago ya confirmado).
+   */
+  async receiveOrder(orderId: string): Promise<DiningOrder> {
+    return firstValueFrom(
+      this.http.post<DiningOrder>(`${this.api}/orders/${orderId}/receive`, {}),
+    );
+  }
+
+  /**
    * Spec 147 (FR-001/FR-002/FR-002a/FR-011): entrega el pedido completo con
    * una sola acción, idempotente. Reemplaza a `updateItemKitchen` (PATCH
    * `/items/{id}/kitchen`), `markOrderReady` (`/ready`) y

@@ -27,8 +27,19 @@ describe('getSidebarMode', () => {
     expect(getSidebarMode(order({ channel: 'POS', paid: false }))).toBe('terminal-pos');
   });
 
-  it('un pedido QR sin pagar sigue en "resumen" (comportamiento existente)', () => {
-    expect(getSidebarMode(order({ channel: 'QR_MENU', paid: false }))).toBe('resumen');
+  it('un pedido QR sin pagar y todavía "pendiente" cae en "terminal-pos" (a pedido del usuario, segunda vuelta)', () => {
+    // El panel de cobro ya no espera a "Entregar" para aparecer -- se ve desde que
+    // el pedido llega, aunque cobrar de verdad siga dependiendo de lo que decida el
+    // backend (`_assert_closable`).
+    expect(getSidebarMode(order({ channel: 'QR_MENU', paid: false, status: 'pendiente' }))).toBe('terminal-pos');
+  });
+
+  it('un pedido QR entregado sin pagar cae en "terminal-pos" para poder cobrarlo (spec 147 ciclo 2)', () => {
+    // Reporte del usuario: "Entregar" ya es independiente del pago -- un pedido QR
+    // entregado sin que el comensal completara el pago a distancia debe seguir
+    // ofreciendo cómo cobrarlo, no quedarse en un resumen de solo lectura sin
+    // ninguna acción.
+    expect(getSidebarMode(order({ channel: 'QR_MENU', paid: false, status: 'entregada' }))).toBe('terminal-pos');
   });
 
   it('sin pedido seleccionado, cae en "terminal-pos"', () => {

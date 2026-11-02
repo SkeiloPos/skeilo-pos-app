@@ -35,6 +35,8 @@ import {
 } from '../interfaces/dining.interface';
 import {
   hasPendingKitchenWork,
+  orderAttendedBy,
+  orderChannelLabel,
   orderStatusClass,
   orderStatusLabel,
   paymentStatusClass,
@@ -165,6 +167,12 @@ export interface OrderSummaryCardView {
   secondaryLabel: string;
   elapsedLabel: string;
   totalLabel: string;
+  /** spec 147: quién generó el pedido (mesero/cajero de staff, o comensal si
+   *  lo envió por QR) y el canal por el que entró — ver `order-status.util.ts`.
+   *  `attendedByLabel` ya es "Atendido por"/"Cliente" según el origen. */
+  attendedByLabel?: string;
+  attendedByValue?: string;
+  channelLabel?: string;
 }
 
 const STATUS_META: Record<TableDisplayStatus, { label: string; chip: string }> = {
@@ -976,21 +984,6 @@ export class PosTerminalStore {
     return STATUS_META[deriveTableStatus([order], 'ocupada')];
   });
 
-  /**
-   * La única orden de la mesa/selección actual, o `null` si hay cero o más
-   * de una (spec 146, A-150: con exactamente una orden, el header deja de
-   * mostrar el badge sintético de ocupación de `selectedTableStatusMeta` y
-   * muestra el `status`/`payment_status` crudos de esa orden específica,
-   * sin inferencia — con varias órdenes, el badge de ocupación se conserva
-   * tal cual, el estado de cada una ya se ve en sus pestañas "Pedido N").
-   */
-  readonly selectedSingleOrder = computed(() => {
-    const table = this.selectedTable();
-    const list = table ? this.tableOrders(table.id) : null;
-    if (list) return list.length === 1 ? list[0] : null;
-    return this.selectedOrder();
-  });
-
   readonly tablesView = computed(() => {
     this.nowTick();
     const term = this.search().trim();
@@ -1027,6 +1020,7 @@ export class PosTerminalStore {
         // `statusLabel`/`chipClass` (también usados por
         // `manual-order-page.component.ts` para "Libre"/deshabilitar mesas).
         const single = list.length === 1 ? list[0] : null;
+        const attendedBy = single ? orderAttendedBy(single) : undefined;
         return {
           id: t.id,
           number: t.number,
@@ -1036,6 +1030,12 @@ export class PosTerminalStore {
           chipClass: single ? orderStatusClass(single.status) : meta.chip,
           paymentStatusLabel: single?.payment_status ? paymentStatusLabel(single.payment_status) : undefined,
           paymentStatusClass: single?.payment_status ? paymentStatusClass(single.payment_status) : undefined,
+          // spec 147: igual que paymentStatusLabel, solo con una orden única
+          // en la tarjeta -- con varias, a quién atendió no aplica a la mesa
+          // como un todo.
+          attendedByLabel: attendedBy?.label,
+          attendedByValue: attendedBy?.value,
+          channelLabel: single ? orderChannelLabel(single.channel) : undefined,
           itemsLabel: `${items} ${items === 1 ? 'producto' : 'productos'}`,
           elapsedLabel: this.sinceLabel(oldest),
           // Mockup de referencia (terminal-de-mesas/code.html): una mesa sin
@@ -1108,6 +1108,7 @@ export class PosTerminalStore {
    * crudo de esa orden específica, sin pasar por `deriveTableStatus`.
    */
   private toOrderCardView(o: DiningOrder): OrderSummaryCardView {
+    const attendedBy = orderAttendedBy(o);
     return {
       id: o.id,
       title: o.order_type === 'DELIVERY' ? 'Domicilio' : 'Para llevar',
@@ -1119,6 +1120,9 @@ export class PosTerminalStore {
       paymentStatusClass: o.payment_status ? paymentStatusClass(o.payment_status) : undefined,
       secondaryLabel: o.customer_name || 'Consumidor final',
       elapsedLabel: this.sinceLabel(new Date(o.created_at).getTime()),
+      attendedByLabel: attendedBy?.label,
+      attendedByValue: attendedBy?.value,
+      channelLabel: orderChannelLabel(o.channel),
       // spec 078 (US1, FR-001/FR-002; research.md D1; A-71 punto 2): la tarjeta
       // muestra el total **real a cobrar** = subtotal de productos post-descuento
       // + valor del domicilio, el mismo importe que `GET /orders/{id}/checkout-preview`
@@ -3035,7 +3039,14 @@ export class PosTerminalStore {
     this.successOpen.set(true);
     this.sessionBill.set(null);
     const tableId = this.selectedTableId();
-    await Promise.all([this.loadReceipts(closed), this.reload()]);
+    // Spec 147 ciclo 2 (bugfix): con `keepTableOpen`, cobrar ya no cierra la
+    // sesión -- la mesa se queda seleccionada y "Liberar Mesa" (footer de
+    // `pos-checkout-panel.component.ts`) depende de `sessionBill()`. Antes
+    // de esta spec bastaba con `reload()` porque cobrar SIEMPRE cerraba la
+    // sesión (quedaba `null` para siempre, pero nadie lo necesitaba leer: la
+    // mesa ya no estaba seleccionada). Sin este refresh, el panel se quedaba
+    // completamente en blanco -- sin "Liberar Mesa" ni ningún otro botón.
+    await Promise.all([this.loadReceipts(closed), this.reload(), this.loadSessionBill(tableId)]);
     // No se toca `selectedOrderId`: si el pedido seleccionado seguía
     // existiendo tras el cierre (p. ej. la mesa tenía otro pedido en
     // paralelo sin incluir en este cobro, A-138), `selectedOrder()` lo sigue
@@ -3160,21 +3171,21 @@ export class PosTerminalStore {
   }
 
   /**
-   * Spec 147 (US4, FR-007/FR-008/FR-009): cancela un pedido ya `entregada`
-   * sin cobrar (`payment_status === 'UNPAID'`), con `motivo` obligatorio que
-   * escribe el cajero -- distinto de `rejectOrder()` (motivo fijo, para un
-   * pedido todavía sin enviar). Si el pedido ya está `PAID`, el backend
-   * rechaza con 409 ("requiere proceso de reembolso"); ese mensaje llega tal
-   * cual al toast, sin traducirlo aquí.
+   * A pedido del usuario: "Recibe" el pedido QR apenas llega (`pendiente` →
+   * `confirmado`), idempotente -- informativo, no toca cocina ni pago. Paso
+   * previo a `deliverOrder`. Distinto del `confirmOrder` de
+   * `DiningSessionService` (descuenta inventario, exige un pago ya
+   * confirmado) -- este llama a `receiveOrder`, su propio endpoint.
    */
-  async cancelDeliveredOrder(orderId: string, motivo: string): Promise<void> {
-    if (!motivo.trim()) return;
+  async receiveOrder(orderId?: string): Promise<void> {
+    const order = orderId ? this.orders().find((o) => o.id === orderId) : this.selectedOrder();
+    if (!order) return;
     this.submitting.set(true);
     try {
-      await this.api.cancelOrder(orderId, motivo.trim());
+      await this.api.receiveOrder(order.id);
       await this.reload();
     } catch (err) {
-      this.toast.error(this.api.extractError(err, 'No se pudo cancelar el pedido.'));
+      this.toast.error(this.api.extractError(err, 'No se pudo recibir el pedido.'));
     } finally {
       this.submitting.set(false);
     }

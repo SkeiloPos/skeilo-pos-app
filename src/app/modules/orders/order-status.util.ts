@@ -20,6 +20,7 @@ import {
 
 export const KNOWN_ORDER_STATUSES: readonly DiningOrderStatus[] = [
   'pendiente',
+  'confirmado',
   'entregada',
   'cancelada',
 ];
@@ -42,6 +43,7 @@ export function orderStatusLabel(status: string): string {
 // solo se presenta en mayúsculas a pedido del usuario.
 const ORDER_STATUS_CLASSES: Record<DiningOrderStatus, string> = {
   pendiente: 'bg-violet-100 text-violet-700 uppercase',
+  confirmado: 'bg-sky-100 text-sky-700 uppercase',
   entregada: 'bg-green-100 text-green-700 uppercase',
   cancelada: 'bg-gray-100 text-gray-500 uppercase',
 };
@@ -86,6 +88,39 @@ const PAYMENT_STATUS_CLASSES: Record<OrderPaymentStatus, string> = {
 
 export function paymentStatusClass(paymentStatus: string): string {
   return PAYMENT_STATUS_CLASSES[paymentStatus as OrderPaymentStatus] ?? 'bg-gray-100 text-gray-500';
+}
+
+// ── Canal de origen del pedido ─────────────────────────────────────────────
+
+/**
+ * Canal por el que entró el pedido (`DiningOrder.channel`). Un valor no
+ * reconocido se muestra crudo, mismo criterio que `orderStatusLabel`.
+ */
+const CHANNEL_LABELS: Record<string, string> = {
+  POS: 'Pedido desde caja',
+  QR_MENU: 'Pedido desde QR',
+  WHATSAPP: 'Pedido por WhatsApp',
+  API: 'Pedido por API',
+};
+
+export function orderChannelLabel(channel: string | null | undefined): string | undefined {
+  if (!channel) return undefined;
+  return CHANNEL_LABELS[channel] ?? channel;
+}
+
+/**
+ * Quién generó el pedido: "Atendido por: {mesero/cajero}" si lo creó el
+ * staff, o "Cliente: {comensal}" si lo envió él mismo por QR
+ * (`staff_user_name` nulo en ese caso) -- la etiqueta cambia según el
+ * origen, no solo el valor. `undefined` si ninguno de los dos datos llegó
+ * (pedido histórico sin ningún rastro de origen).
+ */
+export function orderAttendedBy(
+  order: Pick<DiningOrder, 'staff_user_name' | 'customer_name'>,
+): { label: string; value: string } | undefined {
+  if (order.staff_user_name) return { label: 'Atendido por', value: order.staff_user_name };
+  if (order.customer_name) return { label: 'Cliente', value: order.customer_name };
+  return undefined;
 }
 
 // ── Tipo de orden (cómo se atiende) ───────────────────────────────────────

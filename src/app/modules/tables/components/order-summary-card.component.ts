@@ -57,6 +57,18 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
             <span style="color:var(--terminal-color-text-muted)">Estado de pago:</span>
             <span class="px-1.5 py-0.5 rounded-[6px] font-medium" [class]="paymentStatusClass">{{ paymentStatusLabel }}</span>
           </div>
+          @if (attendedByLabel && attendedByValue) {
+            <div class="flex items-center gap-1.5 truncate">
+              <span style="color:var(--terminal-color-text-muted)">{{ attendedByLabel }}:</span>
+              <span class="truncate" style="color:var(--terminal-color-text-secondary)">{{ attendedByValue }}</span>
+            </div>
+          }
+          @if (channelLabel) {
+            <div class="flex items-center gap-1.5 truncate">
+              <span style="color:var(--terminal-color-text-muted)">Canal:</span>
+              <span class="truncate" style="color:var(--terminal-color-text-secondary)">{{ channelLabel }}</span>
+            </div>
+          }
         </div>
       }
       <div
@@ -103,6 +115,13 @@ export class OrderSummaryCardComponent {
    *  una orden única (no un agregado de varias) — ver nota en el template. */
   @Input() paymentStatusLabel?: string;
   @Input() paymentStatusClass?: string;
+  /** Quién generó el pedido (mesero/cajero, o comensal si lo envió por QR) y
+   *  canal de origen — ausentes si no aplica (p. ej. mesa con varias órdenes,
+   *  o pedido histórico sin el dato). `attendedByLabel` es la etiqueta
+   *  ("Atendido por" o "Cliente") y `attendedByValue` el nombre. */
+  @Input() attendedByLabel?: string;
+  @Input() attendedByValue?: string;
+  @Input() channelLabel?: string;
 
   @Output() select = new EventEmitter<void>();
 }

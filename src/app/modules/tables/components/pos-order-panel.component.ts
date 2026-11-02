@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { DiningOrder, KitchenStatus, getSidebarMode } from '../interfaces/dining.interface';
@@ -27,7 +26,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
 @Component({
   selector: 'app-pos-order-panel',
   standalone: true,
-  imports: [PosCatalogDrawerComponent, CartItemOptionsComponent, IconLucideComponent, FormsModule],
+  imports: [PosCatalogDrawerComponent, CartItemOptionsComponent, IconLucideComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   // El host es `inline` por defecto: sin esto no se ve como una columna.
   // shrink-0 (no flex-1 min-h-0): a pedido del usuario, el carrito ya no
@@ -88,12 +87,18 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                     class="truncate"
                     style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-size:16px;font-weight:700;color:var(--terminal-color-text-primary)"
                   >{{ headerTitle() }}</h3>
-                  @if (store.selectedSingleOrder(); as o) {
-                    <!-- spec 146 (FR-002/FR-008, A-150): con una sola orden en
-                         contexto, el header muestra sus dos ejes reales y
-                         crudos -- status y payment_status -- en vez del badge
+                  @if (store.selectedOrder(); as o) {
+                    <!-- spec 146 (FR-002/FR-008, A-150): el header muestra los
+                         dos ejes reales y crudos del pedido de la pestaña
+                         activa -- status y payment_status -- en vez del badge
                          sintético de ocupación de mesa, que mezcla señales de
-                         varias órdenes y no es "el estado de la orden". -->
+                         varias órdenes y no es "el estado de la orden". Antes
+                         usaba selectedSingleOrder() (solo con exactamente 1
+                         orden en la mesa): con 2+ pestañas "Pedido N" caía
+                         siempre al badge de ocupación y el botón "Entregar" de
+                         abajo desaparecía para cualquiera de los pedidos --
+                         bug reportado, sin forma de entregar/cobrar un
+                         segundo pedido en la misma mesa. -->
                     <span
                       class="px-2 py-0.5 rounded-[6px] text-[11px] font-medium"
                       [class]="orderStatusClass(o.status)"
@@ -105,22 +110,6 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                         [class]="paymentStatusClass(o.payment_status)"
                         >{{ paymentStatusLabel(o.payment_status) }}</span
                       >
-                    }
-                    <!-- Spec 147 (FR-001/FR-002a/FR-011): única acción de
-                         entrega para todo el pedido, de un clic, sin paso por
-                         ítem. Idempotente -- también sirve como "re-entregar"
-                         cuando se agregaron ítems nuevos tras una primera
-                         entrega. -->
-                    @if (o.status !== 'cancelada' && canDeliver(o)) {
-                      <button
-                        type="button"
-                        (click)="store.deliverOrder(o.id)"
-                        [disabled]="store.submitting()"
-                        class="px-2.5 py-1 rounded-[6px] text-white text-[11px] font-semibold transition-colors disabled:opacity-40"
-                        style="background:var(--terminal-color-success,#16a34a)"
-                      >
-                        Entregar
-                      </button>
                     }
                   } @else if (store.selectedTableStatusMeta(); as meta) {
                     <span
@@ -134,38 +123,40 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                   <app-lucide-icon name="user" [size]="14" style="color:var(--terminal-color-primary)" />
                   {{ displayCustomerName() }}
                 </span>
-                <!-- Spec 147 (US4, FR-007/FR-008/FR-009): cancelar un pedido
-                     ya entregado y sin cobrar, con motivo obligatorio. Si ya
-                     está pagado, no se ofrece el formulario -- se avisa que
-                     requiere reembolso, fuera de alcance de esta acción. -->
-                @if (store.selectedSingleOrder(); as o) {
-                  @if (o.status === 'entregada' && o.payment_status === 'UNPAID') {
-                    <div class="flex items-center gap-2 pt-1 flex-wrap">
-                      <input
-                        type="text"
-                        [(ngModel)]="cancelMotivo"
-                        placeholder="Motivo de la cancelación (obligatorio)"
-                        class="flex-1 min-h-9 px-2 py-1 text-[12px] border rounded-[6px]"
-                        style="border-color:var(--terminal-color-border-strong)"
-                      />
-                      <button
-                        type="button"
-                        (click)="confirmCancelDelivered(o.id)"
-                        [disabled]="store.submitting() || !cancelMotivo().trim()"
-                        class="min-h-9 px-3 rounded-[6px] text-white text-[11px] font-semibold disabled:opacity-40 transition-colors"
-                        style="background:var(--terminal-color-error,#dc2626)"
-                      >
-                        Cancelar pedido
-                      </button>
-                    </div>
-                  } @else if (o.status === 'entregada' && o.payment_status === 'PAID') {
-                    <p class="text-[11px]" style="color:var(--terminal-color-text-muted)">
-                      Este pedido ya está pagado: cancelarlo requiere un proceso de reembolso, fuera de alcance aquí.
-                    </p>
-                  }
-                }
               </div>
             </div>
+            <!-- A pedido del usuario: "Recibir" es el primer paso para un
+                 pedido recién llegado (pendiente -> confirmado) --
+                 informativo, no toca cocina ni pago. "Entregar" (spec 147,
+                 FR-001/FR-002a/FR-011, única acción de entrega para todo el
+                 pedido, idempotente -- también sirve como "re-entregar" con
+                 ítems nuevos tras una primera entrega) solo se habilita
+                 después de recibir, nunca directo desde pendiente. A su
+                 propia columna a la derecha (no junto a los chips de
+                 estado): ahí se confundía visualmente con ellos. -->
+            @if (store.selectedOrder(); as o) {
+              @if (o.status === 'pendiente' && o.channel === 'QR_MENU') {
+                <button
+                  type="button"
+                  (click)="store.receiveOrder(o.id)"
+                  [disabled]="store.submitting()"
+                  class="shrink-0 px-4 py-2 rounded-[8px] text-white text-[13px] font-semibold transition-colors disabled:opacity-40"
+                  style="background:var(--terminal-color-primary,#7c3aed)"
+                >
+                  Recibir
+                </button>
+              } @else if (o.status !== 'cancelada' && canDeliver(o)) {
+                <button
+                  type="button"
+                  (click)="store.deliverOrder(o.id)"
+                  [disabled]="store.submitting()"
+                  class="shrink-0 px-4 py-2 rounded-[8px] text-white text-[13px] font-semibold transition-colors disabled:opacity-40"
+                  style="background:var(--terminal-color-success,#16a34a)"
+                >
+                  Entregar
+                </button>
+              }
+            }
           </div>
 
           <!-- Spec 059, Historia 3 (FR-012): datos propios de un pedido de
@@ -504,19 +495,13 @@ export class PosOrderPanelComponent {
 
   /** Spec 147 (FR-001/FR-002a): ¿tiene este pedido algún ítem sin entregar?
    *  Muestra el botón "Entregar" tanto para la primera entrega como para una
-   *  re-entrega (ítems agregados después de la primera). */
+   *  re-entrega (ítems agregados después de la primera). Solo aplica a
+   *  pedidos de mesa (`dining_table_id`, manual o QR) -- a pedido del
+   *  usuario: mostrador, Domicilio y Para llevar quedan `entregada`+`PAID`
+   *  de una vez al cobrar (`checkout_and_send`, `orders/checkout.py`
+   *  backend), no tienen un paso de entrega propio que mostrar aquí. */
   canDeliver(order: DiningOrder): boolean {
-    return (order.items ?? []).some((it) => it.estado_cocina === 'pendiente');
-  }
-
-  /** Spec 147 (US4): motivo obligatorio para cancelar un pedido entregado sin cobrar. */
-  readonly cancelMotivo = signal('');
-
-  async confirmCancelDelivered(orderId: string): Promise<void> {
-    const motivo = this.cancelMotivo();
-    if (!motivo.trim()) return;
-    await this.store.cancelDeliveredOrder(orderId, motivo);
-    this.cancelMotivo.set('');
+    return !!order.dining_table_id && (order.items ?? []).some((it) => it.estado_cocina === 'pendiente');
   }
 
   /**
@@ -578,7 +563,7 @@ export class PosOrderPanelComponent {
   }
 
   /** spec 146 (FR-002/FR-008, A-150): status/payment_status crudos de la
-   *  orden única seleccionada, sin traducir — ver `selectedSingleOrder()`. */
+   *  orden de la pestaña activa, sin traducir — ver `store.selectedOrder()`. */
   readonly orderStatusLabel = orderStatusLabel;
   readonly orderStatusClass = orderStatusClass;
   readonly paymentStatusLabel = paymentStatusLabel;

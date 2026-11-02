@@ -690,6 +690,57 @@ describe('PosTerminalStore.loadSessionBill — billOrphan (hotfix spec 029)', ()
 });
 
 /**
+ * Reporte del usuario (spec 147 ciclo 2): con `keepTableOpen`, cobrar ya no
+ * cierra la sesión de mesa -- el cajero se queda en la misma mesa, viendo
+ * `sessionBill()` para que el footer ("Liberar Mesa") tenga algo que leer.
+ * `onCharged()` lo ponía en `null` y nunca lo volvía a cargar (antes era
+ * inofensivo: cobrar SIEMPRE cerraba la sesión, así que nadie necesitaba
+ * leerlo después) -- el panel se quedaba completamente en blanco, sin
+ * "Liberar Mesa" ni ninguna otra acción.
+ */
+describe('PosTerminalStore.onCharged — refresca sessionBill tras cobrar (bugfix)', () => {
+  let store: PosTerminalStore;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+    store = TestBed.inject(PosTerminalStore);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('deja sessionBill recargado (no null) para la mesa seleccionada', async () => {
+    store.selectedTableId.set('t1');
+    vi.spyOn(store, 'reload').mockResolvedValue(undefined);
+
+    const promise = store.onCharged({ table_session: {} as never, sale_ids: [] });
+
+    const sessionsReq = http.expectOne(`${API}/table-sessions`);
+    sessionsReq.flush([{ id: 'ts1', dining_table_id: 't1', status: 'active' } as never]);
+    // `loadSessionBill` pide .../bill recién después de resolver la lista de
+    // sesiones -- hace falta un tick de microtarea antes de que exista.
+    await new Promise((r) => setTimeout(r));
+    const billReq = http.expectOne(`${API}/table-sessions/ts1/bill`);
+    billReq.flush({ table_session_id: 'ts1', dining_table_id: 't1', total: '0', order_ids: [], split: [] });
+
+    await promise;
+
+    expect(store.sessionBill()).not.toBeNull();
+    expect(store.sessionBill()?.table_session_id).toBe('ts1');
+  });
+});
+
+/**
  * Reporte del usuario: crear un pedido de mostrador, recargar la página y
  * volver a seleccionar la mesa dejaba el panel central como "Pedido nuevo
  * sin guardar" aunque el pedido ya existía con productos. Causa raíz:

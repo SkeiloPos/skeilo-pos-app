@@ -358,7 +358,11 @@ const REFRESH_DEBOUNCE_MS = 250;
 
                     @if (order.status === 'pendiente') {
                       <p class="text-sm text-violet-600">
-                        Esperando a que el personal lo acepte.
+                        Esperando a que el personal lo reciba.
+                      </p>
+                    } @else if (order.status === 'confirmado') {
+                      <p class="text-sm text-sky-600">
+                        El personal ya recibió tu pedido y pronto empieza a prepararlo.
                       </p>
                     }
 
@@ -1447,8 +1451,11 @@ export class PublicMenuComponent implements OnInit, OnDestroy {
     return puedeCancelarComensal(order);
   }
 
-  // Spec 147: ya no existe un paso intermedio "aceptado para cocina sin
-  // cobrar" -- `status` ('pendiente'/'entregada') es la única señal.
+  // Spec 147: ya no existe el paso intermedio "aceptado para cocina sin
+  // cobrar" del modelo viejo. A pedido del usuario se reintrodujo
+  // `'confirmado'` como paso de recepción explícito, sin tocar cocina ni
+  // pago -- `status` ('pendiente'/'confirmado'/'entregada') sigue siendo la
+  // única señal mostrada aquí.
 
   statusLabel(order: DiningOrder): string {
     return orderStatusLabel(order.status);

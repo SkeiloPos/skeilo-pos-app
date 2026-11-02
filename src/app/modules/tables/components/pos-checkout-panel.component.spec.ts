@@ -352,11 +352,11 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
     expect(button).toBeDefined();
   });
 
-  /** Spec 147 (FR-001/FR-002a): "Entregar pedido" (`POST /orders/{id}/deliver`)
-   *  se ofrece junto al panel de revisión de un pago QR pendiente mientras
-   *  tenga algún ítem `'pendiente'`, y desaparece en cuanto ya se entregó
-   *  (sin ítems nuevos que promover, no tiene sentido ofrecerlo otra vez). */
-  it('ofrece "Entregar pedido" sobre un pago QR pendiente, y lo oculta una vez ya entregado', async () => {
+  /** Spec 147 ciclo 2 (a pedido del usuario): ya no hay un botón "Entregar
+   *  pedido" propio junto a una revisión de pago QR -- esa pantalla se
+   *  retiró entera (`app-payment-attempt-review-panel` ya no se monta
+   *  aquí). "Entregar" sigue viviendo solo en la cabecera del pedido. */
+  it('no ofrece "Entregar pedido" sobre un pago QR pendiente (retirado, spec 147 ciclo 2: ya se entrega desde la cabecera del pedido)', async () => {
     const qrPending = {
       ...manualOrder(),
       id: 'o2',
@@ -366,32 +366,23 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
     store.orders.set([qrPending]);
     store.selectedOrderId.set('o2');
     await flushPreview();
-    // `app-payment-attempt-review-panel` pide su propio historial de intentos.
-    for (const req of http.match((r) => r.url.endsWith('/payment-attempts'))) {
-      req.flush([]);
-    }
     await fixture.whenStable();
     fixture.detectChanges();
-
-    const findButton = () =>
-      Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-        (b as HTMLButtonElement).textContent?.includes('Entregar pedido'),
-      );
-    expect(findButton()).toBeDefined();
-
-    // Ya entregado (ítem 'entregado', status sigue 'pendiente' hasta que se
-    // confirme/cobre -- entregar y cobrar son ejes independientes).
-    store.orders.set([
-      { ...qrPending, items: [{ ...qrPending.items![0], estado_cocina: 'entregado' }] } as DiningOrder,
-    ]);
+    // Un segundo round de `checkout-preview` puede quedar en vuelo (mismo
+    // comportamiento preexistente, ajeno a este test).
     await flushPreview();
-    await flushPreview();
-    for (const req of http.match((r) => r.url.endsWith('/payment-attempts'))) {
-      req.flush([]);
-    }
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expect(findButton()).toBeUndefined();
+
+    // Segunda vuelta (a pedido del usuario): este pedido QR 'pendiente' ya
+    // cae en showSessionCharge() (editable), que dispara la búsqueda de su
+    // intento de pago para precargar el panel -- ajeno a lo que este test
+    // verifica, solo se drena para no dejar la petición sin responder.
+    const pending = http.match((x) => x.url === `${API}/orders/o2/payment-attempts`);
+    for (const r of pending) r.flush([]);
+
+    const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Entregar pedido'),
+    );
+    expect(button).toBeUndefined();
   });
 
   // ── spec 078 (US3/US4, FR-025; research.md D5) ──────────────────────────────
@@ -831,16 +822,30 @@ describe('PosCheckoutPanelComponent — pedido ya en cocina, cobro por sesión d
 
   afterEach(() => http.verify());
 
-  it('muestra el panel de cobro por sesión ("Cobrar y cerrar mesa"), no el de checkout-and-send', () => {
+  it('muestra el panel de cobro por sesión ("Cobrar", sin cerrar la mesa), no el de checkout-and-send', () => {
+    // spec 147 ciclo 2, a pedido del usuario: un pedido entregado se cobra sin
+    // liberar la mesa de inmediato -- "Cobrar y cerrar mesa" ya no aplica aquí.
     const texto = fixture.nativeElement.textContent as string;
-    expect(texto).toContain('Cobrar y cerrar mesa');
+    expect(texto).toContain('Cobrar');
+    expect(texto).not.toContain('Cobrar y cerrar mesa');
     expect(texto).not.toContain('Cobrar, Facturar y Enviar a Cocina');
   });
 
-  it('spec 058, FR-008: "Imprimir Factura" y "Liberar Mesa" siguen apareciendo en el cobro por sesión de mesa, sin cambios', () => {
+  it('spec 058, FR-008: "Imprimir Factura" y "Liberar Mesa" aparecen una vez cobrado el pedido entregado (spec 147 ciclo 2)', () => {
+    // Nada pendiente por cobrar (bill.total en 0) -- antes de cobrar, el
+    // footer post-cobro no debe mostrarse (ver nota del template).
+    store.sessionBill.set({ ...bill, total: '0' });
+    fixture.detectChanges();
+
     const texto = fixture.nativeElement.textContent as string;
     expect(texto).toContain('Imprimir Factura');
     expect(texto).toContain('Liberar Mesa');
+  });
+
+  it('no muestra "Imprimir Factura" ni "Liberar Mesa" mientras el pedido entregado sigue sin cobrar (spec 147 ciclo 2)', () => {
+    const texto = fixture.nativeElement.textContent as string;
+    expect(texto).not.toContain('Imprimir Factura');
+    expect(texto).not.toContain('Liberar Mesa');
   });
 
   // Reescrito para el rediseño visual (spec 131): los íconos pasan de
@@ -848,6 +853,9 @@ describe('PosCheckoutPanelComponent — pedido ya en cocina, cobro por sesión d
   // research.md punto 3) — el SVG en sí ya no está prohibido, el emoji sigue
   // sin aparecer.
   it('"Imprimir Factura" y "Liberar Mesa" ya no usan emoji ni íconos Material (spec 131)', () => {
+    store.sessionBill.set({ ...bill, total: '0' });
+    fixture.detectChanges();
+
     const el = fixture.nativeElement as HTMLElement;
     expect(el.textContent).not.toContain('🧾');
     expect(el.textContent).not.toContain('🔓');
@@ -855,6 +863,9 @@ describe('PosCheckoutPanelComponent — pedido ya en cocina, cobro por sesión d
   });
 
   it('T035: "Liberar Mesa" pide confirmación y muestra el motivo del 409 si falla', async () => {
+    store.sessionBill.set({ ...bill, total: '0' });
+    fixture.detectChanges();
+
     const confirm = TestBed.inject(ConfirmService);
     const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
       (b as HTMLButtonElement).textContent?.includes('Liberar Mesa'),
@@ -893,7 +904,7 @@ describe('PosCheckoutPanelComponent — pedido ya en cocina, cobro por sesión d
     fixture.detectChanges();
 
     const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.includes('Cobrar y cerrar mesa'),
+      (b as HTMLButtonElement).textContent?.trim() === 'Cobrar',
     ) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
 
@@ -902,10 +913,11 @@ describe('PosCheckoutPanelComponent — pedido ya en cocina, cobro por sesión d
     expect(spy).toHaveBeenCalled();
 
     // Se prueba con un 409 (igual que "Liberar Mesa", T035 arriba) para
-    // aislar la conexión beforeCharge → close() sin encadenar todo el
-    // reload posterior a un cierre exitoso (`onCharged`), que no es lo que
-    // este test verifica.
-    const req = http.expectOne(`${API}/table-sessions/ts1/close`);
+    // aislar la conexión beforeCharge → charge() sin encadenar todo el
+    // reload posterior a un cobro exitoso (`onCharged`), que no es lo que
+    // este test verifica. spec 147 ciclo 2: este panel usa keepTableOpen, así
+    // que cobra con /charge, no con /close (que sí libera la mesa).
+    const req = http.expectOne(`${API}/table-sessions/ts1/charge`);
     expect(req.request.body.cash_shift_id).toBe('shift-1');
     req.flush({ detail: { error: 'Quedan ítems sin terminar en cocina' } }, { status: 409, statusText: 'Conflict' });
     await fixture.whenStable();
@@ -926,12 +938,12 @@ describe('PosCheckoutPanelComponent — pedido ya en cocina, cobro por sesión d
     fixture.detectChanges();
 
     const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.includes('Cobrar y cerrar mesa'),
+      (b as HTMLButtonElement).textContent?.trim() === 'Cobrar',
     ) as HTMLButtonElement;
     button.click();
     await fixture.whenStable();
 
-    http.expectNone(`${API}/table-sessions/ts1/close`);
+    http.expectNone(`${API}/table-sessions/ts1/charge`);
   });
 
   it('spec 029 hotfix #4: también ofrece "Rechazar pedido" junto al cobro por sesión de mesa', async () => {
@@ -966,6 +978,65 @@ describe('PosCheckoutPanelComponent — pedido ya en cocina, cobro por sesión d
       (b as HTMLButtonElement).textContent?.includes('Rechazar pedido'),
     );
     expect(button).toBeUndefined();
+  });
+
+  // ── prefillPayment (spec 147 ciclo 2, a pedido del usuario) ──────────────
+  it('un pedido QR todavía "pendiente" precarga "Cuenta de la mesa" con el método que el comensal eligió', async () => {
+    // Segunda vuelta (a pedido del usuario): showSessionCharge() ya no espera
+    // a 'entregada' para un pedido QR -- se dispara desde que llega
+    // 'pendiente', así que la búsqueda del intento también arranca ahí, sin
+    // esperar a que se entregue. Se selecciona un pedido con otro id (no
+    // 'o1', ya elegido en el beforeEach) para que `selectedOrderId()` SÍ
+    // cambie de valor y el `effect` que dispara `loadQrAttempt` se vuelva a
+    // evaluar.
+    store.orders.set([
+      abiertaOrder(),
+      { ...abiertaOrder('pendiente'), id: 'o2', channel: 'QR_MENU', status: 'pendiente' },
+    ]);
+    store.selectedOrderId.set('o2');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const req = http.expectOne(`${API}/orders/o2/payment-attempts`);
+    req.flush([
+      {
+        id: 'a1',
+        order_id: 'o2',
+        payment_method_id: 'pm-cash',
+        payment_method_name: 'Efectivo',
+        is_cash: true,
+        status: 'pendiente',
+        amount_received: null,
+        change_amount: null,
+        receipt_file_url: null,
+        rejection_reason: null,
+        resolved_by_user_id: null,
+        resolved_at: null,
+        created_at: '2026-08-21T10:00:00',
+        cash_amount: null,
+        transfer_amount: null,
+        transfer_method_id: null,
+        cash_confirmed_at: null,
+      },
+    ]);
+    // Mismo motivo que `flushPreview()` arriba: el `effect` resuelve en
+    // fire-and-forget, `whenStable()` solo no basta para su continuación async.
+    await new Promise((r) => setTimeout(r));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+    expect(select.value).toBe('pm-cash');
+    const amount = fixture.nativeElement.querySelector('input[inputmode="decimal"]') as HTMLInputElement;
+    expect(amount.value).toBe('10.000');
+
+    // Mismo "segundo round" de checkout-preview en vuelo que otros tests de
+    // este describe drenan al final (preexistente, ajeno a este test).
+    for (const r of http.match((x) => x.url.endsWith('/checkout-preview'))) {
+      r.flush({ subtotal: '10000.00', discount: '0.00', delivery_fee: '0.00', total: '10000.00' });
+    }
   });
 });
 

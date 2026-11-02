@@ -340,7 +340,7 @@ describe('PublicMenuComponent', () => {
   // sin importar el `estado_cocina` de los ítems (el caso "aceptado para
   // cocina sin cobrar" que distinguía un mensaje aparte ya no existe).
 
-  it('"pendiente": badge crudo "pendiente" y "Esperando a que el personal lo acepte." (spec 146/147, FR-008)', async () => {
+  it('"pendiente": badge crudo "pendiente" y "Esperando a que el personal lo reciba." (spec 146/147, FR-008)', async () => {
     const order: DiningOrder = {
       id: 'o1',
       channel: 'QR_MENU',
@@ -355,7 +355,7 @@ describe('PublicMenuComponent', () => {
 
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(texto).toContain('pendiente');
-    expect(texto).toContain('Esperando a que el personal lo acepte.');
+    expect(texto).toContain('Esperando a que el personal lo reciba.');
   });
 
   // ── Precio, promoción y total del pedido en "Mis pedidos" ─────────────────
