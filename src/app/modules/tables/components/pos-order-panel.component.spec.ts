@@ -24,7 +24,7 @@ function orderConItemListo(paid: boolean): DiningOrder {
   return {
     id: 'o1',
     channel: 'POS',
-    status: 'abierta',
+    status: 'pendiente',
     version: 1,
     dining_table_id: 't1',
     customer_name: null,
@@ -86,7 +86,7 @@ describe('PosOrderPanelComponent — anulación bloqueada tras pago', () => {
 
   it('no muestra "Anular" en una línea ya lista, aunque el pedido todavía no esté pagado', () => {
     const order = orderConItemListo(false);
-    order.items![0].estado_cocina = 'listo';
+    order.items![0].estado_cocina = 'entregado';
     store.orders.set([order]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
@@ -456,7 +456,7 @@ function orderVacio(channel: DiningOrder['channel'] = 'POS', paid = false): Dini
   return {
     id: 'o1',
     channel,
-    status: 'abierta',
+    status: 'pendiente',
     version: 1,
     dining_table_id: 't1',
     customer_name: null,
@@ -600,13 +600,13 @@ describe('PosOrderPanelComponent — sin catálogo para una orden QR de solo lec
     return {
       id: 'o1',
       channel: 'QR_MENU',
-      status: 'pagada',
+      status: 'entregada',
       version: 1,
       dining_table_id: 't1',
       customer_name: 'Ana',
       created_at: '2026-08-21T10:00:00',
       paid: true,
-      items: [{ id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '10000', estado_cocina: 'en_preparacion' }],
+      items: [{ id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '10000', estado_cocina: 'pendiente' }],
     } as DiningOrder;
   }
 
@@ -704,7 +704,7 @@ describe('PosOrderPanelComponent — placeholder cuando no hay mesa seleccionada
       {
         id: 'o2',
         channel: 'POS',
-        status: 'abierta',
+        status: 'pendiente',
         dining_table_id: 't1',
         customer_name: null,
         created_at: '2026-08-21T10:00:00',
@@ -730,13 +730,13 @@ describe('PosOrderPanelComponent — cabecera y pestañas (spec 049)', () => {
 
   function ordenSimple(
     id: string,
-    estado: 'pendiente' | 'listo',
+    estado: 'pendiente' | 'entregado',
     customerName: string | null = 'Deimer Hernandez',
   ): DiningOrder {
     return {
       id,
       channel: 'POS',
-      status: 'abierta',
+      status: 'pendiente',
       dining_table_id: 't1',
       customer_name: customerName,
       // spec 087 (FR-006): la pestaña ya no rotula por posición sino por
@@ -790,15 +790,15 @@ describe('PosOrderPanelComponent — cabecera y pestañas (spec 049)', () => {
     const el = fixture.nativeElement as HTMLElement;
     expect(el.textContent).toContain('Mesa 2');
     // spec 146 (FR-002/FR-008, A-150): con una sola orden en contexto, el
-    // chip muestra el status crudo de esa orden ('abierta'), no el badge
+    // chip muestra el status crudo de esa orden ('pendiente'), no el badge
     // sintético de ocupación de mesa ("En preparación"/"Ocupada").
-    expect(el.textContent).toContain('abierta');
+    expect(el.textContent).toContain('pendiente');
     expect(el.textContent).toContain('Deimer Hernandez');
     expect(el.querySelector('input[type="text"]')).toBeNull();
   });
 
   it('con dos pedidos activos aparecen "Pedido 1" y "Pedido 2", sin la opción "Todos los pedidos"', () => {
-    store.orders.set([ordenSimple('o1', 'listo'), ordenSimple('o2', 'pendiente')]);
+    store.orders.set([ordenSimple('o1', 'entregado'), ordenSimple('o2', 'pendiente')]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
     fixture.detectChanges();
@@ -809,7 +809,7 @@ describe('PosOrderPanelComponent — cabecera y pestañas (spec 049)', () => {
   });
 
   it('elegir "Pedido 2" enfoca esa orden', () => {
-    store.orders.set([ordenSimple('o1', 'listo'), ordenSimple('o2', 'pendiente')]);
+    store.orders.set([ordenSimple('o1', 'entregado'), ordenSimple('o2', 'pendiente')]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
     fixture.detectChanges();
@@ -831,7 +831,7 @@ describe('PosOrderPanelComponent — cabecera y pestañas (spec 049)', () => {
   });
 
   it('spec 049, FR-001: no existe ningún control "+ Nuevo pedido" con varios pedidos activos', () => {
-    store.orders.set([ordenSimple('o1', 'listo'), ordenSimple('o2', 'pendiente')]);
+    store.orders.set([ordenSimple('o1', 'entregado'), ordenSimple('o2', 'pendiente')]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
     fixture.detectChanges();
@@ -846,7 +846,7 @@ function standaloneOrder(orderType: 'TAKEAWAY' | 'DELIVERY', extra: Partial<Dini
     id: 'o1',
     channel: 'POS',
     order_type: orderType,
-    status: 'abierta',
+    status: 'pendiente',
     version: 1,
     dining_table_id: null,
     customer_name: 'María G.',
@@ -1053,7 +1053,7 @@ describe('PosOrderPanelComponent — una sola card para adiciones sucesivas con 
     return {
       id: 'o1',
       channel: 'POS',
-      status: 'abierta',
+      status: 'pendiente',
       dining_table_id: 't1',
       customer_name: null,
       created_at: '2026-08-21T10:00:00',
@@ -1061,11 +1061,11 @@ describe('PosOrderPanelComponent — una sola card para adiciones sucesivas con 
       items: [
         {
           id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '7000',
-          estado_cocina: 'listo', discounted_unit_price: '6000', discounted_line_total: '6000',
+          estado_cocina: 'entregado', discounted_unit_price: '6000', discounted_line_total: '6000',
         },
         {
           id: 'i2', product_variant_id: 'v1', quantity: 1, unit_price: '7000',
-          estado_cocina: 'listo', discounted_unit_price: '6000', discounted_line_total: '6000',
+          estado_cocina: 'entregado', discounted_unit_price: '6000', discounted_line_total: '6000',
         },
       ] as DiningOrderItem[],
     } as DiningOrder;
@@ -1120,7 +1120,7 @@ describe('PosOrderPanelComponent — "Agregar adición" retirado del detalle (sp
     return {
       id: 'o1',
       channel: 'POS',
-      status: 'abierta',
+      status: 'pendiente',
       dining_table_id: 't1',
       customer_name: null,
       created_at: '2026-08-21T10:00:00',

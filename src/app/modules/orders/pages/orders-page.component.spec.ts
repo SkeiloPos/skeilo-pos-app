@@ -14,7 +14,7 @@ function order(id: string, over: Partial<DiningOrder> = {}): DiningOrder {
     id,
     channel: 'POS',
     order_type: 'DINE_IN',
-    status: 'abierta',
+    status: 'pendiente',
     paid: false,
     created_at: '2026-09-01T12:00:00',
     dining_table_id: null,
@@ -39,11 +39,12 @@ class FakeOrdersListService {
   size = signal(20);
   loading = signal(false);
   error = signal<string | null>(null);
-  status = signal<'' | 'pendiente' | 'abierta' | 'bloqueada' | 'pagada' | 'cancelada'>('');
+  status = signal<'' | 'pendiente' | 'entregada' | 'cancelada'>('');
   orderType = signal<'' | 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY'>('');
   search = signal('');
   dateFrom = signal('');
   dateTo = signal('');
+  entregadasSinCobrar = signal(false);
 
   list = vi.fn();
   setStatus = vi.fn((v: string) => this.status.set(v as never));
@@ -53,6 +54,7 @@ class FakeOrdersListService {
     this.dateFrom.set(v);
     this.dateTo.set(v);
   });
+  setEntregadasSinCobrar = vi.fn((v: boolean) => this.entregadasSinCobrar.set(v));
 }
 
 describe('OrdersPageComponent', () => {
@@ -155,12 +157,12 @@ describe('OrdersPageComponent', () => {
   it('el badge de estado muestra el status crudo, sin sustituirlo por paid (spec 146, FR-008)', () => {
     svc.orders.set([
       order('o1', { paid: true, status: 'pendiente' }),
-      order('o2', { paid: false, status: 'abierta' }),
+      order('o2', { paid: false, status: 'entregada' }),
     ]);
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('pendiente'); // status crudo, no "Pagada" aunque paid sea true
-    expect(text).toContain('abierta');
+    expect(text).toContain('entregada');
   });
 
   it('hay <select> de estado, botones segmentados de tipo (ya no <select> de tipo), buscador y filtro de fecha', () => {
@@ -208,9 +210,9 @@ describe('OrdersPageComponent', () => {
   it('cambiar el <select> de estado llama svc.setStatus (que vuelve a la página 1)', () => {
     fixture.detectChanges();
     const estado = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
-    estado.value = 'bloqueada';
+    estado.value = 'entregada';
     estado.dispatchEvent(new Event('change'));
-    expect(svc.setStatus).toHaveBeenCalledWith('bloqueada');
+    expect(svc.setStatus).toHaveBeenCalledWith('entregada');
   });
 
   it('presionar un botón del segmentado de tipo llama svc.setOrderType', () => {
@@ -292,11 +294,11 @@ describe('OrdersPageComponent', () => {
   it('cada tarjeta lleva los filtros vigentes como query params (FR-011)', () => {
     fixture.detectChanges();
     svc.orders.set([order('o1')]);
-    svc.status.set('pagada');
+    svc.status.set('entregada');
     svc.search.set('Deimer');
     fixture.detectChanges();
     const card = fixture.nativeElement.querySelector('a[href^="/dashboard/orders/"]') as HTMLAnchorElement;
-    expect(card.getAttribute('href')).toContain('status=pagada');
+    expect(card.getAttribute('href')).toContain('status=entregada');
     expect(card.getAttribute('href')).toContain('search=Deimer');
   });
 

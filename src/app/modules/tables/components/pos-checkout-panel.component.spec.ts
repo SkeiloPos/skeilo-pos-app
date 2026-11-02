@@ -352,11 +352,11 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
     expect(button).toBeDefined();
   });
 
-  /** "Aceptar pedido" sin cobrar (`POST /orders/{id}/start-preparation`): se
-   *  ofrece junto al panel de revisión de un pago QR pendiente, y desaparece
-   *  en cuanto el pedido ya tiene algún ítem fuera de 'pendiente' (ya se
-   *  aceptó, no tiene sentido ofrecerlo otra vez). */
-  it('ofrece "Aceptar pedido" sobre un pago QR pendiente, y lo oculta una vez ya aceptado', async () => {
+  /** Spec 147 (FR-001/FR-002a): "Entregar pedido" (`POST /orders/{id}/deliver`)
+   *  se ofrece junto al panel de revisión de un pago QR pendiente mientras
+   *  tenga algún ítem `'pendiente'`, y desaparece en cuanto ya se entregó
+   *  (sin ítems nuevos que promover, no tiene sentido ofrecerlo otra vez). */
+  it('ofrece "Entregar pedido" sobre un pago QR pendiente, y lo oculta una vez ya entregado', async () => {
     const qrPending = {
       ...manualOrder(),
       id: 'o2',
@@ -375,13 +375,14 @@ describe('PosCheckoutPanelComponent — modo terminal-pos', () => {
 
     const findButton = () =>
       Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-        (b as HTMLButtonElement).textContent?.includes('Aceptar pedido'),
+        (b as HTMLButtonElement).textContent?.includes('Entregar pedido'),
       );
     expect(findButton()).toBeDefined();
 
-    // Ya aceptado para cocina (ítem en 'en_preparacion', status sigue 'pendiente').
+    // Ya entregado (ítem 'entregado', status sigue 'pendiente' hasta que se
+    // confirme/cobre -- entregar y cobrar son ejes independientes).
     store.orders.set([
-      { ...qrPending, items: [{ ...qrPending.items![0], estado_cocina: 'en_preparacion' }] } as DiningOrder,
+      { ...qrPending, items: [{ ...qrPending.items![0], estado_cocina: 'entregado' }] } as DiningOrder,
     ]);
     await flushPreview();
     await flushPreview();
@@ -771,11 +772,11 @@ describe('PosCheckoutPanelComponent — pedido ya en cocina, cobro por sesión d
   let http: HttpTestingController;
   let toast: ToastService;
 
-  function abiertaOrder(estado: 'listo' | 'pendiente' = 'listo'): DiningOrder {
+  function abiertaOrder(estado: 'entregado' | 'pendiente' = 'entregado'): DiningOrder {
     return {
       id: 'o1',
       channel: 'POS',
-      status: 'abierta',
+      status: 'entregada',
       version: 1,
       dining_table_id: 't1',
       customer_name: null,

@@ -280,13 +280,14 @@ describe('TableSessionsComponent — pago pendiente y pedido pagado a la vez, si
   const pagadaOrder: DiningOrder = {
     id: 'o1',
     channel: 'POS',
-    status: 'pagada',
+    status: 'entregada',
+    payment_status: 'PAID',
     version: 1,
     dining_table_id: 't1',
     customer_name: null,
     created_at: '2026-08-28T10:00:00',
     paid: true,
-    items: [{ id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '4000', estado_cocina: 'listo' }],
+    items: [{ id: 'i1', product_variant_id: 'v1', quantity: 1, unit_price: '4000', estado_cocina: 'entregado' }],
   } as DiningOrder;
 
   const pendienteOrder: DiningOrder = {

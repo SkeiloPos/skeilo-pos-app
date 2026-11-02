@@ -334,9 +334,13 @@ describe('PublicMenuComponent', () => {
     expect(texto.split('sin banana').length - 1).toBe(1);
   });
 
-  // ── "Aceptar pedido" sin cobrar (POST /orders/{id}/start-preparation) ────
+  // ── Spec 147 (FR-001/FR-002): ya no hay "Aceptar pedido" sin cobrar ni paso
+  // intermedio "en preparación" -- la única acción es "Entregar", de una vez,
+  // así que mientras `status === 'pendiente'` el mensaje es siempre el mismo,
+  // sin importar el `estado_cocina` de los ítems (el caso "aceptado para
+  // cocina sin cobrar" que distinguía un mensaje aparte ya no existe).
 
-  it('"pendiente" sin aceptar: badge crudo "pendiente" y "Esperando a que el personal lo acepte." (spec 146, FR-008)', async () => {
+  it('"pendiente": badge crudo "pendiente" y "Esperando a que el personal lo acepte." (spec 146/147, FR-008)', async () => {
     const order: DiningOrder = {
       id: 'o1',
       channel: 'QR_MENU',
@@ -352,26 +356,6 @@ describe('PublicMenuComponent', () => {
     const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(texto).toContain('pendiente');
     expect(texto).toContain('Esperando a que el personal lo acepte.');
-    expect(texto).not.toContain('Tu pedido está en preparación.');
-  });
-
-  it('aceptado para cocina sin cobrar: "Tu pedido está en preparación." (status sigue pendiente, spec 146 FR-008)', async () => {
-    const order: DiningOrder = {
-      id: 'o1',
-      channel: 'QR_MENU',
-      status: 'pendiente',
-      created_at: new Date().toISOString(),
-      items: [{ id: 'it1', product_variant_id: 'v1', quantity: 1, unit_price: '5000', estado_cocina: 'en_preparacion' }],
-    };
-    const { fixture, component } = await createComponent('tok-1', [], { withSession: true });
-    component.myOrders.set([order]);
-    component.section.set('pedidos');
-    fixture.detectChanges();
-
-    const texto = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(texto).toContain('en_preparacion'); // estado_cocina crudo del ítem
-    expect(texto).toContain('Tu pedido está en preparación.');
-    expect(texto).not.toContain('Esperando a que el personal lo acepte.');
   });
 
   // ── Precio, promoción y total del pedido en "Mis pedidos" ─────────────────
