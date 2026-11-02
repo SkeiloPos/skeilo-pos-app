@@ -10,6 +10,7 @@ import { MoneyPipe } from '../../../shared/money.pipe';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { IconComponent } from '../../../shared/icon/icon.component';
 import { DiningCartService } from '../services/dining-cart.service';
+import { soldOutMessage } from '../../../core/availability/availability.util';
 
 @Component({
   selector: 'app-cart',
@@ -34,7 +35,12 @@ import { DiningCartService } from '../services/dining-cart.service';
       } @else {
         <div class="flex-1 overflow-y-auto divide-y divide-gray-200 mb-3">
           @for (line of cart.lines(); track line.id) {
-            <div class="flex flex-col gap-2.5 py-3.5 first:pt-0">
+            <div
+              class="flex flex-col gap-2.5 py-3.5 first:pt-0"
+              [class.bg-red-50]="affectedLineLabel(line.id)"
+              [class.rounded-lg]="affectedLineLabel(line.id)"
+              [class.px-2]="affectedLineLabel(line.id)"
+            >
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0 flex flex-col gap-1">
                   <p class="font-semibold text-gray-900 truncate">
@@ -53,6 +59,18 @@ import { DiningCartService } from '../services/dining-cart.service';
                   }
                   @if (line.notes) {
                     <p class="text-sm text-gray-400 italic truncate">“{{ line.notes }}”</p>
+                  }
+                  @if (affectedLineLabel(line.id); as label) {
+                    <p class="text-sm font-semibold text-red-600">
+                      Agotado: {{ label }}
+                      <button
+                        type="button"
+                        (click)="quantityChanged.emit({ itemId: line.id, quantity: 0 })"
+                        class="underline ml-1"
+                      >
+                        Quitar
+                      </button>
+                    </p>
                   }
                 </div>
                 <span class="font-sora font-semibold text-gray-900 shrink-0 tabular-nums">
@@ -148,9 +166,16 @@ import { DiningCartService } from '../services/dining-cart.service';
         </div>
       }
 
+      <!-- spec 148 (US2, FR-016/FR-018): líneas agotadas bloquean el envío sin vaciar el carrito -->
+      @if (cart.hasAffectedLines()) {
+        <div class="bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3" role="alert">
+          <p class="text-red-600 text-sm font-semibold">{{ affectedLinesMessage() }}</p>
+        </div>
+      }
+
       <button
         (click)="submitOrder.emit()"
-        [disabled]="cart.isEmpty() || submitting"
+        [disabled]="cart.isEmpty() || submitting || cart.hasAffectedLines()"
         class="w-full h-13 py-3 bg-violet-700 text-white text-base font-semibold rounded-2xl hover:bg-violet-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors mt-auto"
       >
         {{ submitting ? 'Enviando...' : 'Revisar pedido' }}
@@ -178,4 +203,13 @@ export class CartComponent {
   }
 
   readonly cart = inject(DiningCartService);
+
+  /** spec 148 (US2): etiqueta del elemento agotado de esta línea, o `null` si sigue pedible. */
+  affectedLineLabel(lineId: string): string | null {
+    return this.cart.affectedLines().get(lineId) ?? null;
+  }
+
+  affectedLinesMessage(): string {
+    return soldOutMessage([...this.cart.affectedLines().values()]);
+  }
 }

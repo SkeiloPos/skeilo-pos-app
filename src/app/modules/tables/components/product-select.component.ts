@@ -3,8 +3,10 @@ import {
   Component,
   EventEmitter,
   Input,
+  OnChanges,
   OnInit,
   Output,
+  SimpleChanges,
   computed,
   effect,
   signal,
@@ -23,6 +25,7 @@ import {
 import { normalizeText } from '../../../shared/normalize-text';
 import { DiscountInfo, discountInfo, effectivePrice, packagePrice } from '../../promotions/services/promotion-pricing.util';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
+import { isProductSoldOut } from '../../../core/availability/availability.util';
 
 /** Una opción elegida junto con cuántas unidades de ella (spec 065). Siempre
  *  `quantity: 1` para una opción de un grupo "conteo". */
@@ -496,7 +499,7 @@ export interface ProductSelection {
     </div>
   `,
 })
-export class ProductSelectComponent implements OnInit {
+export class ProductSelectComponent implements OnInit, OnChanges {
   @Input() product!: MenuProduct;
   /** Cuando viene con valor, precarga variante/opciones/cantidad/notas de una
    *  línea de carrito ya agregada en vez de arrancar desde cero -- modo
@@ -557,7 +560,20 @@ export class ProductSelectComponent implements OnInit {
   /** A partir de cuántas opciones el buscador compensa su propio espacio. */
   private readonly SEARCH_THRESHOLD = 10;
 
+  /** Spec 148 (T103): `product` es un `@Input` plano, no una signal input —
+   *  reasignarlo (parche en vivo del menú) no invalida por sí solo los
+   *  `computed()` que dependen de él. Este espejo reactivo es la única
+   *  dependencia real de esos `computed()`; sin él quedan memoizados con el
+   *  primer valor para siempre, aunque Angular vuelva a renderizar la
+   *  plantilla con un `product` distinto. */
+  private readonly productSig = signal<MenuProduct | null>(null);
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['product']) this.productSig.set(this.product);
+  }
+
   ngOnInit(): void {
+    if (this.productSig() === null) this.productSig.set(this.product);
     const initial = this.initialSelection;
     if (initial) {
       // Modo edición: precarga la variante/opciones/cantidad/notas de la
@@ -592,7 +608,7 @@ export class ProductSelectComponent implements OnInit {
   }
 
   readonly selectedVariant = computed<MenuVariant | null>(
-    () => this.product.variants.find((v) => v.id === this.variantId()) ?? null,
+    () => this.productSig()?.variants.find((v) => v.id === this.variantId()) ?? null,
   );
 
   /** Grupos que ofrece la presentación elegida; son los que gobiernan la selección. */
@@ -660,7 +676,7 @@ export class ProductSelectComponent implements OnInit {
    *  variante). No es `private`: `confirm()` y el footer de total lo leen. */
   readonly selectedToppingsList = computed<ChosenMenuTopping[]>(() => {
     const map = this.selectedToppings();
-    return (this.product.toppings ?? [])
+    return (this.productSig()?.toppings ?? [])
       .map((topping) => ({ topping, quantity: map[topping.id] ?? 0 }))
       .filter((c) => c.quantity > 0);
   });
@@ -765,7 +781,7 @@ export class ProductSelectComponent implements OnInit {
    * pedibles (o entre todas si ninguna tiene stock), con su descuento vigente.
    */
   readonly startingPrice = computed<number>(() => {
-    const variants = this.product.variants;
+    const variants = this.productSig()?.variants ?? [];
     const disponibles = variants.filter((v) => v.available !== false);
     const pool = disponibles.length > 0 ? disponibles : variants;
     const prices = pool.map((v) => effectivePrice(v.price, v.discounted_price));
@@ -984,7 +1000,16 @@ export class ProductSelectComponent implements OnInit {
    * Qué falta para poder agregar, en el propio botón. Antes solo se atenuaba, y con el
    * grupo plegado no había forma de saber por qué.
    */
+  /** Spec 148 (T034): lee `this.product` directamente (no un `computed`
+   *  memoizado por `variantId`) para reflejar el menú vivo aunque el padre
+   *  rebinde `[product]` a una copia más fresca sin que cambie la presentación
+   *  elegida. */
+  productSoldOut(): boolean {
+    return isProductSoldOut(this.product);
+  }
+
   blockingLabel(): string | null {
+    if (this.productSoldOut()) return 'Producto agotado';
     const variant = this.selectedVariant();
     if (!variant) return 'Elige una presentación';
     if (variant.available === false) return 'Presentación agotada';
@@ -1091,6 +1116,7 @@ export class ProductSelectComponent implements OnInit {
   }
 
   canConfirm(): boolean {
+    if (this.productSoldOut()) return false;
     const variant = this.selectedVariant();
     if (!variant || variant.available === false) return false;
     // spec 089: un adicional elegido que dejó de estar disponible bloquea el guardado hasta quitarlo.

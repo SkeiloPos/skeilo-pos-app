@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
@@ -7,6 +8,7 @@ import { ProductsPageComponent } from './products-page.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { UserRole } from '../../../core/interfaces/user.interface';
 import { ToastService } from '../../../shared/feedback/toast.service';
+import { ProductService } from '../services/product.service';
 
 const PRODUCT = {
   id: 'p1',
@@ -166,5 +168,60 @@ describe('ProductsPageComponent — nombre de categoría sin depender de GET /ca
     const pending = http.match(() => true);
     expect(pending.some((r) => r.request.url.includes('/categories'))).toBe(false);
     pending.forEach((req) => req.flush({ items: [PRODUCT], total: 1, page: 1, size: 20, pages: 1 }));
+  });
+});
+
+describe('ProductsPageComponent — sincronizador de disponibilidad (spec 148, T039/T043)', () => {
+  it('un cambio manual de una fila visible llama a refreshOne', async () => {
+    const { fixture } = await crear(UserRole.ADMIN);
+    const productService = fixture.debugElement.injector.get(ProductService);
+    const spy = vi.spyOn(productService, 'refreshOne').mockResolvedValue(undefined);
+
+    fixture.componentInstance.applyAvailability([
+      { kind: 'product', id: 'p1', sold_out: true, available: false },
+    ]);
+
+    expect(spy).toHaveBeenCalledWith('p1');
+  });
+
+  it('un cambio manual de una fila fuera de la página no hace nada', async () => {
+    const { fixture } = await crear(UserRole.ADMIN);
+    const productService = fixture.debugElement.injector.get(ProductService);
+    const spy = vi.spyOn(productService, 'refreshOne').mockResolvedValue(undefined);
+
+    fixture.componentInstance.applyAvailability([
+      { kind: 'product', id: 'no-esta-en-la-pagina', sold_out: true, available: false },
+    ]);
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('un cambio solo de inventario (sin diferencia en sold_out) no toca el interruptor', async () => {
+    const { fixture } = await crear(UserRole.ADMIN);
+    const productService = fixture.debugElement.injector.get(ProductService);
+    const spy = vi.spyOn(productService, 'refreshOne').mockResolvedValue(undefined);
+
+    // row.available=true -> !row.available=false; el cambio trae sold_out:false (igual) con
+    // un `available` derivado distinto: no es un cambio de la marca manual.
+    fixture.componentInstance.applyAvailability([
+      { kind: 'product', id: 'p1', sold_out: false, available: false },
+    ]);
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('un snapshot recarga la página actual', async () => {
+    const { fixture } = await crear(UserRole.ADMIN);
+    const productService = fixture.debugElement.injector.get(ProductService);
+    const spy = vi.spyOn(productService, 'loadProducts');
+
+    fixture.componentInstance.applyAvailabilitySnapshot({
+      as_of: 1,
+      products: [],
+      variants: [],
+      options: [],
+    });
+
+    expect(spy).toHaveBeenCalledWith(productService.page(), productService.size());
   });
 });

@@ -11,6 +11,8 @@ import { ToastContainerComponent } from '../../../../shared/feedback/toast-conta
 import { CheckoutStepIndicatorComponent } from './checkout-step-indicator.component';
 import { CheckoutProgressStore } from './checkout-progress.store';
 import { CheckoutOrderSummaryComponent } from './checkout-order-summary.component';
+import { SoldOutCartAlertComponent } from './sold-out-cart-alert.component';
+import { parseSoldOutConflict } from '../../../../core/availability/availability.util';
 
 /**
  * Paso 3 — datos de pago del método de transferencia (spec 034, US1/US3).
@@ -33,6 +35,7 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
     CheckoutStepIndicatorComponent,
     ToastContainerComponent,
     CheckoutOrderSummaryComponent,
+    SoldOutCartAlertComponent,
   ],
   template: `
     <app-toast-container />
@@ -63,6 +66,9 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
         @if (error()) {
           <p class="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-3">{{ error() }}</p>
         }
+
+        <!-- spec 148 (US2, T060): alerta compartida + bloqueo del envío. -->
+        <app-sold-out-cart-alert />
 
         <!-- spec 092 (FR-001, FR-002) / spec 130 (rediseño) / spec 132 (FR-004) —
              el monto a pagar por este medio, el dato sin el cual esta pantalla
@@ -164,6 +170,7 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
               [count]="cart.count()"
               [savings]="cart.savings()"
               [collapsible]="true"
+              [affectedLines]="cart.affectedLines()"
             />
           </div>
 
@@ -179,10 +186,20 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
             </p>
           </div>
 
+          <!-- spec 148 (US2, T062): pago mixto -- el efectivo ya guardado cubre el nuevo total. -->
+          @if (mixedCashCoversTotal()) {
+            <div class="mt-4 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2" role="alert">
+              <p class="text-sm text-amber-800 font-semibold">El efectivo ya cubre el total; corrige el monto</p>
+              <button type="button" (click)="goToCashStep()" class="text-sm text-amber-800 underline mt-1">
+                Corregir monto en efectivo
+              </button>
+            </div>
+          }
+
           <div class="mt-4 space-y-2">
             <button
               (click)="confirmSend()"
-              [disabled]="submitting()"
+              [disabled]="submitting() || cart.hasAffectedLines() || mixedCashCoversTotal()"
               class="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl transition-colors disabled:bg-gray-200 disabled:text-gray-400"
             >
               @if (submitting()) {
@@ -259,8 +276,16 @@ export class TransferDetailsStepComponent implements OnInit {
     const method = this.method();
     return this.mixedCashAmount() !== null && method ? `Transfiere por ${method.name}` : 'Total a pagar';
   });
+  /** spec 148 (US2, T062): en un pago mixto, el efectivo ya guardado cubre o
+   *  supera el nuevo total (p. ej. tras quitar una línea agotada) -- hay que
+   *  corregir el monto en `cash` antes de poder enviar. */
+  readonly mixedCashCoversTotal = computed(() => {
+    const cash = this.mixedCashAmount();
+    return cash !== null && cash >= this.cart.total();
+  });
 
   async ngOnInit(): Promise<void> {
+    this.cart.seenCheckoutTotalOnce();
     const record = this.progress.read();
     const methodId = record?.payment_method_id;
     if (!methodId) {
@@ -305,7 +330,7 @@ export class TransferDetailsStepComponent implements OnInit {
    *  132 (FR-023) retira la subida de comprobante que antes ocurría aquí. */
   async confirmSend(): Promise<void> {
     const method = this.method();
-    if (!method) return;
+    if (!method || this.cart.hasAffectedLines() || this.mixedCashCoversTotal()) return;
     this.error.set(null);
     this.submitting.set(true);
     try {
@@ -330,6 +355,15 @@ export class TransferDetailsStepComponent implements OnInit {
     } catch (err) {
       if (err instanceof DinerSessionExpiredError) {
         this.expireSession();
+        return;
+      }
+      // Spec 148 (US3, T080): 409 unificado primero -- se queda en este paso
+      // (método, monto y comprobante ya subidos se conservan, `CheckoutProgressStore`
+      // no se toca), marca la línea y deja que `applyConflict` reconcilie.
+      const conflict = parseSoldOutConflict(err);
+      if (conflict) {
+        this.cart.applyConflict(conflict);
+        this.error.set(conflict.error);
         return;
       }
       this.error.set(this.api.extractError(err, 'No se pudo enviar el pedido.'));
@@ -410,6 +444,11 @@ export class TransferDetailsStepComponent implements OnInit {
   /** Salir sin enviar (FR-004): no crea ningún pedido, el carrito no se toca. */
   exit(): void {
     this.router.navigate(['/menu/t', this.token]);
+  }
+
+  /** spec 148 (US2, T062): corregir el monto en efectivo del pago mixto. */
+  goToCashStep(): void {
+    this.router.navigate(['/menu/t', this.token, 'checkout', 'cash']);
   }
 
   private expireSession(): void {

@@ -5,8 +5,11 @@ import { DinerTokenStore } from '../../services/diner-token.store';
 import { DiningCartService } from '../../services/dining-cart.service';
 import { DinerPaymentMethod } from '../../interfaces/diner.interface';
 import { IconComponent } from '../../../../shared/icon/icon.component';
+import { MoneyPipe } from '../../../../shared/money.pipe';
 import { CheckoutStepIndicatorComponent } from './checkout-step-indicator.component';
 import { CheckoutProgressStore } from './checkout-progress.store';
+import { SoldOutCartAlertComponent } from './sold-out-cart-alert.component';
+import { parseSoldOutConflict } from '../../../../core/availability/availability.util';
 
 /**
  * Paso 2 — elegir método de pago (spec 034, US2). Efectivo no tiene paso
@@ -17,7 +20,7 @@ import { CheckoutProgressStore } from './checkout-progress.store';
 @Component({
   selector: 'app-payment-method-step',
   standalone: true,
-  imports: [IconComponent, CheckoutStepIndicatorComponent],
+  imports: [IconComponent, MoneyPipe, CheckoutStepIndicatorComponent, SoldOutCartAlertComponent],
   template: `
     <div class="min-h-screen bg-gray-50 flex flex-col">
       <div class="bg-white border-b border-gray-100 sticky top-0 z-10">
@@ -39,6 +42,13 @@ import { CheckoutProgressStore } from './checkout-progress.store';
           <p class="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-3">{{ error() }}</p>
         }
 
+        <!-- spec 148 (US2, T058): alerta compartida + bloqueo de la elección de método. -->
+        <app-sold-out-cart-alert />
+        <!-- spec 148 (US2, T062): el total cambió desde que este paso lo vio. -->
+        @if (cart.totalChangedTo() !== null) {
+          <p role="status" class="text-xs text-violet-700 mb-3">El total cambió a {{ cart.totalChangedTo() | money }}</p>
+        }
+
         @if (methods().length === 0 && !error()) {
           <p class="text-sm text-gray-400 text-center py-8">Cargando métodos de pago…</p>
         } @else {
@@ -46,7 +56,7 @@ import { CheckoutProgressStore } from './checkout-progress.store';
             @for (m of methods(); track m.id) {
               <button
                 (click)="choose(m)"
-                [disabled]="submitting()"
+                [disabled]="submitting() || cart.hasAffectedLines()"
                 class="w-full flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-40 transition-colors text-left"
               >
                 <span class="w-5 h-5 shrink-0 text-emerald-600">
@@ -70,7 +80,7 @@ export class PaymentMethodStepComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly api = inject(DinerService);
   private readonly tokenStore = inject(DinerTokenStore);
-  private readonly cart = inject(DiningCartService);
+  readonly cart = inject(DiningCartService);
   private readonly progress = inject(CheckoutProgressStore);
 
   private readonly token = this.route.snapshot.paramMap.get('token') ?? '';
@@ -80,6 +90,7 @@ export class PaymentMethodStepComponent implements OnInit {
   readonly submitting = signal(false);
 
   async ngOnInit(): Promise<void> {
+    this.cart.seenCheckoutTotalOnce();
     if (this.methods().length > 0) return;
     try {
       this.progress.paymentMethods.set(await this.api.getPaymentMethods());
@@ -94,6 +105,7 @@ export class PaymentMethodStepComponent implements OnInit {
    * método distinto nunca arrastra el comprobante del anterior (T015).
    */
   async choose(method: DinerPaymentMethod): Promise<void> {
+    if (this.cart.hasAffectedLines()) return;
     this.error.set(null);
     this.progress.write({
       step: method.is_cash ? 'method' : 'transfer',
@@ -129,6 +141,15 @@ export class PaymentMethodStepComponent implements OnInit {
         this.cart.clear();
         this.cart.clearDiner();
         this.router.navigate(['/menu/t', this.token]);
+        return;
+      }
+      // Spec 148 (US3, T080): 409 unificado por agotado primero -- se queda
+      // en este paso (método ya elegido se conserva), marca la línea y deja
+      // que `applyConflict` reconcilie. No es el mismo 409 que la spec 128.
+      const conflict = parseSoldOutConflict(err);
+      if (conflict) {
+        this.cart.applyConflict(conflict);
+        this.error.set(conflict.error);
         return;
       }
       this.error.set(this.api.extractError(err, 'No se pudo enviar el pedido.'));

@@ -8,6 +8,16 @@ import {
 } from '../../products/interfaces/product.interface';
 import { PaymentMethod, Sale } from '../../sales/interfaces/sales.interface';
 import { MenuService } from '../../../core/services/menu.service';
+import {
+  affectedElement,
+  buildAvailabilityIndex,
+  changesFromConflict,
+  isProductSoldOut,
+  parseSoldOutConflict,
+  soldOutMessage,
+} from '../../../core/availability/availability.util';
+import { AvailabilitySyncService } from '../../../core/availability/availability-sync.service';
+import { SoldOutConflict } from '../../../core/availability/availability.model';
 import { Promotion } from '../../promotions/interfaces/promotion.interface';
 import { PromotionService } from '../../promotions/services/promotion.service';
 import { PlanSummaryService } from '../../plan/services/plan-summary.service';
@@ -365,6 +375,7 @@ export class PosTerminalStore {
   private readonly confirm = inject(ConfirmService);
   private readonly printer = inject(PrinterSettingsStore);
   private readonly realtime = inject(RealtimeService);
+  private readonly availabilitySync = inject(AvailabilitySyncService);
   readonly sound = inject(SoundService);
   private readonly updateGate = inject(UpdateGateService);
 
@@ -476,10 +487,84 @@ export class PosTerminalStore {
   readonly catalogOpen = signal(false);
   readonly catalogCategoryId = signal<string | null>(null);
   readonly configuringProduct = signal<MenuProduct | null>(null);
+  /** Spec 148 (D10/H11, T036): el producto que se está configurando resuelto
+   *  por id contra el menú **vivo** (`categories()`), con la copia de
+   *  `configuringProduct()` como respaldo. Igual rol que
+   *  `selectedProductLive` en `public-menu.component.ts`. */
+  readonly configuringProductLive = computed<MenuProduct | null>(() => {
+    const base = this.configuringProduct();
+    if (!base) return null;
+    for (const cat of this.categories()) {
+      const found = cat.products.find((p) => p.id === base.id);
+      if (found) return found;
+    }
+    return base;
+  });
   /** spec 115 (FR-004): `true` cuando `configuringProduct` se abrió desde la
    *  pestaña "Promociones" — gobierna el `[fromPromotions]` de
    *  `<app-product-select>`, que a su vez decide el paso de cantidad forzado. */
   readonly configuringProductFromPromotions = signal(false);
+
+  /** Spec 148 (US2, T047): índice de disponibilidad del menú vivo, para
+   *  resolver la "línea afectada" de cada borrador por id (nunca contra las
+   *  copias que `DraftLine` guarda de cuando se agregó, research.md H11). */
+  readonly availabilityIndex = computed(() => buildAvailabilityIndex(this.categories()));
+
+  /** Claves de `quantityConflicts`: borradores marcados por el servidor con
+   *  `motivo: 'cantidad'` en un 409 (US3) -- no se derivan del menú vivo como
+   *  el resto, porque "no alcanza para 5" no es un estado del catálogo. Se
+   *  limpian al quitar la línea o al cambiar su cantidad. */
+  readonly quantityConflicts = signal<ReadonlySet<string>>(new Set());
+
+  /** Claves de `draftLines` cuyo producto, presentación, opción o adición ya
+   *  no se puede pedir (o que el servidor marcó por cantidad). Solo mira
+   *  líneas `kind: 'product'` -- los combos no se derivan (brecha conocida,
+   *  tasks.md Notas #5). */
+  readonly affectedDraftKeys = computed<ReadonlySet<string>>(() => {
+    const index = this.availabilityIndex();
+    const conflicts = this.quantityConflicts();
+    const out = new Set<string>();
+    for (const line of this.draftLines()) {
+      if (line.kind !== 'product') continue;
+      const label = affectedElement(
+        {
+          variantId: line.variant.id,
+          optionIds: line.options.map((c) => c.option.id),
+          toppingIds: (line.toppings ?? []).map((c) => c.topping.id),
+        },
+        index,
+        conflicts.has(line.key),
+      );
+      if (label !== null) out.add(line.key);
+    }
+    return out;
+  });
+
+  readonly hasAffectedLines = computed(() => this.affectedDraftKeys().size > 0);
+
+  /** Mensaje de FR-024 para TODAS las líneas de borrador afectadas a la vez
+   *  (bloqueo de envío, T047/T048/T049). */
+  readonly affectedDraftMessage = computed<string | null>(() => {
+    const index = this.availabilityIndex();
+    const conflicts = this.quantityConflicts();
+    const affected = this.affectedDraftKeys();
+    if (affected.size === 0) return null;
+    const labels: string[] = [];
+    for (const line of this.draftLines()) {
+      if (line.kind !== 'product' || !affected.has(line.key)) continue;
+      const label = affectedElement(
+        {
+          variantId: line.variant.id,
+          optionIds: line.options.map((c) => c.option.id),
+          toppingIds: (line.toppings ?? []).map((c) => c.topping.id),
+        },
+        index,
+        conflicts.has(line.key),
+      );
+      if (label) labels.push(label);
+    }
+    return soldOutMessage(labels);
+  });
   /**
    * Contador que sube en cada `openConfig`/`openConfigForEdit` (bugfix: reabrir el
    * modal de selección para el mismo producto quedaba a merced de que Angular
@@ -1298,6 +1383,11 @@ export class PosTerminalStore {
       ? persistedRaw.map((it) => ({ ...it, kind: 'pending-review' as const }))
       : persistedRaw;
 
+    // Spec 148 (US2, T047): índice vivo + conflictos de cantidad, resueltos UNA
+    // vez por línea aquí -- nunca contra las copias que `DraftLine` guarda.
+    const availIndex = this.availabilityIndex();
+    const qtyConflicts = this.quantityConflicts();
+
     const draft = this.draftLines().map((l) => {
       if (l.kind === 'combo') {
         return {
@@ -1315,6 +1405,9 @@ export class PosTerminalStore {
           kitchenStatus: null,
           pendingItemIds: [] as string[],
           promo: null as CartLinePromo | null,
+          // Brecha conocida (tasks.md Notas #5): las líneas de combo no se
+          // derivan contra el índice de disponibilidad.
+          soldOut: null as string | null,
         };
       }
       // spec 063: los draft sin guardar todavía no tienen descuento del backend;
@@ -1369,6 +1462,15 @@ export class PosTerminalStore {
         kitchenStatus: null,
         pendingItemIds: [] as string[],
         promo,
+        soldOut: affectedElement(
+          {
+            variantId: l.variant.id,
+            optionIds: l.options.map((c) => c.option.id),
+            toppingIds: (l.toppings ?? []).map((c) => c.topping.id),
+          },
+          availIndex,
+          qtyConflicts.has(l.key),
+        ),
       };
     });
     return [...persisted, ...draft];
@@ -1888,6 +1990,14 @@ export class PosTerminalStore {
     if (esDomicilio && (
       !this.customerName().trim() || !this.deliveryAddress().trim() || this.deliveryFee() == null
     )) return false;
+    // Spec 148 (US2, T047): defensa en profundidad -- la interfaz ya deshabilita
+    // "Crear pedido" mientras haya líneas agotadas, pero nunca se llama al
+    // servidor con el carrito en ese estado aunque algo más lo dispare.
+    if (this.hasAffectedLines()) {
+      this.error.set(this.affectedDraftMessage());
+      this.toast.error(this.error()!);
+      return false;
+    }
     this.submitting.set(true);
     this.error.set(null);
     try {
@@ -1928,6 +2038,13 @@ export class PosTerminalStore {
       this.toast.success('Pedido creado — cóbralo desde el panel de la derecha.');
       return true;
     } catch (err) {
+      // Spec 148 (US3, T078): un 409 unificado por agotado se trata aparte --
+      // nunca se vacía `draftLines`, solo se marca lo afectado y se reconcilia.
+      const conflict = parseSoldOutConflict(err);
+      if (conflict) {
+        this.applySoldOutConflict(conflict);
+        return false;
+      }
       // spec 111 (FR-004): texto exacto exigido por la spec, no solo "No se pudo crear el pedido."
       this.error.set(this.api.extractError(err, 'No se pudo crear el pedido. Intenta de nuevo.'));
       this.toast.error(this.error()!);
@@ -1988,6 +2105,9 @@ export class PosTerminalStore {
    * configurando si el cajero cambia de pestaña con el modal abierto.
    */
   openConfig(product: MenuProduct, fromPromotions = false): void {
+    // Spec 148 (T035): defensa para cualquier llamador -- la tarjeta ya
+    // deshabilita el click, pero esto cubre otros caminos futuros.
+    if (isProductSoldOut(product)) return;
     this.configuringProduct.set(product);
     this.configuringProductFromPromotions.set(fromPromotions);
     this.configuringToken.update((n) => n + 1);
@@ -2249,7 +2369,47 @@ export class PosTerminalStore {
    *  cajero para una línea puntual, no algo que la unidad nueva deba heredar
    *  en silencio con solo tocar "+" -- si el cajero quiere las mismas
    *  adiciones ahí también, las agrega él mismo con "Editar". */
+  /** Quita `key` de `quantityConflicts` (T047): un 409 por cantidad del
+   *  servidor deja de aplicar en cuanto la cantidad de esa línea cambia. */
+  private clearQuantityConflict(key: string): void {
+    if (!this.quantityConflicts().has(key)) return;
+    this.quantityConflicts.update((s) => {
+      const next = new Set(s);
+      next.delete(key);
+      return next;
+    });
+  }
+
+  /** Spec 148 (US3, T078): un 409 unificado llegó al enviar/guardar. Marca el
+   *  menú en vivo con los elementos `manual`/`inventario` (sin esperar al
+   *  evento), marca por cantidad las líneas de borrador cuya presentación
+   *  coincide con un `motivo: 'cantidad'`, fija el mensaje de FR-024 y
+   *  dispara una reconciliación -- el servidor es la verdad. Nunca toca
+   *  `draftLines` (FR-018: el carrito no se vacía por esto). */
+  private applySoldOutConflict(conflict: SoldOutConflict): void {
+    this.availabilitySync.applyLocal(changesFromConflict(conflict, this.availabilityIndex()));
+
+    const cantidadIds = new Set(
+      conflict.agotados.filter((a) => a.motivo === 'cantidad').map((a) => a.id),
+    );
+    if (cantidadIds.size > 0) {
+      this.quantityConflicts.update((prev) => {
+        const next = new Set(prev);
+        for (const line of this.draftLines()) {
+          if (line.kind !== 'product') continue;
+          if (cantidadIds.has(line.variant.id)) next.add(line.key);
+        }
+        return next;
+      });
+    }
+
+    this.error.set(conflict.error);
+    this.toast.error(conflict.error);
+    void this.availabilitySync.reconcile();
+  }
+
   incDraft(key: string): void {
+    this.clearQuantityConflict(key);
     this.draftLines.update((lines) => {
       const idx = lines.findIndex((x) => x.key === key);
       const target = idx === -1 ? undefined : lines[idx];
@@ -2277,6 +2437,7 @@ export class PosTerminalStore {
     });
   }
   decDraft(key: string): void {
+    this.clearQuantityConflict(key);
     this.draftLines.update((l) =>
       l
         .map((x) => (x.key === key ? this.decProductDraftLine(x) : x))
@@ -2365,6 +2526,7 @@ export class PosTerminalStore {
     return { ...x, quantity, options, addonsTotal };
   }
   removeDraft(key: string): void {
+    this.clearQuantityConflict(key);
     this.draftLines.update((l) => l.filter((x) => x.key !== key));
   }
 
@@ -2395,6 +2557,14 @@ export class PosTerminalStore {
     // Serializa las altas: un segundo guardado no arranca sobre uno en vuelo (su estimado se
     // calcularía sobre un total confirmado que aún no incluye lo primero).
     if (this.submitting()) return false;
+    // Spec 148 (US2, T047): misma defensa en profundidad que
+    // `createManualOrderFromDraft` -- nunca se llama al servidor con líneas
+    // agotadas, aunque la interfaz ya deshabilite "Guardar pedido".
+    if (this.hasAffectedLines()) {
+      this.error.set(this.affectedDraftMessage());
+      this.toast.error(this.error()!);
+      return false;
+    }
     this.submitting.set(true);
     this.error.set(null);
 
@@ -2444,9 +2614,16 @@ export class PosTerminalStore {
       this.toast.success('Pedido guardado');
       return true;
     } catch (err) {
+      // Spec 148 (US3, T078): 409 unificado -- marca lo afectado y reconcilia,
+      // sin tocar las líneas (las que ya se guardaron, abajo, se quitan igual
+      // que siempre: eso es independiente de este caso).
+      const conflict = parseSoldOutConflict(err);
+      if (conflict) this.applySoldOutConflict(conflict);
       // El nombre del producto agotado (backend, spec 089) llega en `detail.error`.
-      this.error.set(this.api.extractError(err, 'No se pudo guardar el pedido.'));
-      this.toast.error(this.error()!);
+      else {
+        this.error.set(this.api.extractError(err, 'No se pudo guardar el pedido.'));
+        this.toast.error(this.error()!);
+      }
       // Las líneas que sí se guardaron antes del fallo ya son del pedido: se quitan del borrador
       // para que reintentar no las duplique, y el total vuelve al confirmado real (incluyéndolas).
       if (savedKeys.size > 0) {

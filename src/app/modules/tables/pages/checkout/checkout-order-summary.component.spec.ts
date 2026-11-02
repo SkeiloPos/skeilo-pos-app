@@ -53,6 +53,7 @@ describe('CheckoutOrderSummaryComponent', () => {
     savings?: number;
     collapsible?: boolean;
     showSavings?: boolean;
+    affectedLines?: ReadonlyMap<string, string>;
   }
 
   function render(inputs: Inputs = {}): void {
@@ -66,6 +67,7 @@ describe('CheckoutOrderSummaryComponent', () => {
     if (inputs.savings != null) c.savings = inputs.savings;
     if (inputs.collapsible != null) c.collapsible = inputs.collapsible;
     if (inputs.showSavings != null) c.showSavings = inputs.showSavings;
+    if (inputs.affectedLines != null) c.affectedLines = inputs.affectedLines;
     fixture.detectChanges();
   }
 
@@ -335,5 +337,25 @@ describe('CheckoutOrderSummaryComponent', () => {
     const icono = fixture.nativeElement.querySelector('app-icon');
     expect(icono.getAttribute('name')).toBe('chevron-down');
     expect((icono.parentElement as HTMLElement).className).toContain('group-open:rotate-180');
+  });
+
+  // ── spec 148 (US2, T057): línea agotada ────────────────────────────────────
+
+  it('marca "Agotado: <elemento>" solo en la línea que aparece en affectedLines', () => {
+    render({
+      lines: [buildLine({ id: 'l1' }), buildLine({ id: 'l2', productName: 'Paleta de coco' })],
+      count: 2,
+      affectedLines: new Map([['l1', 'Granizado del diablo']]),
+    });
+
+    expect(fixture.nativeElement.textContent).toContain('Agotado: Granizado del diablo');
+    const marcas = fixture.nativeElement.querySelectorAll('.text-red-600');
+    expect(marcas.length).toBe(1);
+  });
+
+  it('sin affectedLines no marca ninguna línea', () => {
+    render({ lines: buildLines(2), count: 2 });
+
+    expect(fixture.nativeElement.textContent).not.toContain('Agotado:');
   });
 });

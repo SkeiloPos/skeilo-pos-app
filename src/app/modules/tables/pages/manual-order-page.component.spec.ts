@@ -569,6 +569,76 @@ describe('ManualOrderPageComponent', () => {
     expect(fixture.nativeElement.querySelector('app-product-select-pos img')).toBeNull();
   });
 
+  // ── spec 148 (T041): disponibilidad en vivo en la Terminal ────────────────
+  describe('disponibilidad en vivo (spec 148)', () => {
+    async function montarCon(producto: MenuProduct): Promise<void> {
+      createComponent('t1');
+      tableService.tables.set([table({ id: 't1', number: 3 })]);
+      const menuService = TestBed.inject(MenuService);
+      menuService.categories.set([menuCategory([producto], { id: 'c1', name: 'Categoría Test' })]);
+      store.setCatalogCategory('c1');
+      fixture.detectChanges();
+      await Promise.resolve();
+      http.expectOne(`${API}/table-sessions`).flush([]);
+      fixture.detectChanges();
+    }
+
+    it('la tarjeta de un producto agotado queda deshabilitada y no abre el selector', async () => {
+      await montarCon(menuProduct({ id: 'p1', name: 'Fresa Salvaje', sold_out: true }));
+
+      const card = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+        (b as HTMLButtonElement).textContent?.includes('Fresa Salvaje'),
+      ) as HTMLButtonElement;
+
+      expect(card.disabled).toBe(true);
+      card.click();
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('app-product-select-pos')).toBeNull();
+    });
+
+    it('lo mismo en la pestaña "Todos"', async () => {
+      createComponent('t1');
+      tableService.tables.set([table({ id: 't1', number: 3 })]);
+      const menuService = TestBed.inject(MenuService);
+      menuService.categories.set([
+        menuCategory([menuProduct({ id: 'p1', name: 'Cono Fresa', sold_out: true })], { id: 'c1', name: 'Conos' }),
+      ]);
+      fixture.detectChanges();
+      await Promise.resolve();
+      http.expectOne(`${API}/table-sessions`).flush([]);
+      fixture.detectChanges();
+
+      const card = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+        (b as HTMLButtonElement).textContent?.includes('Cono Fresa'),
+      ) as HTMLButtonElement;
+      expect(card.disabled).toBe(true);
+    });
+
+    it('openConfig ignora un producto agotado aunque se llame directamente', async () => {
+      await montarCon(menuProduct({ id: 'p1', name: 'Fresa Salvaje', sold_out: true }));
+
+      store.openConfig(store.categories()[0].products[0], false);
+
+      expect(store.configuringProduct()).toBeNull();
+    });
+
+    it('configuringProductLive sigue el menú parchado (producto se agota con el selector abierto)', async () => {
+      await montarCon(menuProduct({ id: 'p1', name: 'Fresa Salvaje', sold_out: false }));
+
+      store.openConfig(store.categories()[0].products[0], false);
+      fixture.detectChanges();
+      expect(store.configuringProduct()).not.toBeNull();
+
+      const menuService = TestBed.inject(MenuService);
+      menuService.applyAvailability([{ kind: 'product', id: 'p1', sold_out: true, available: true }]);
+      fixture.detectChanges();
+
+      expect(store.configuringProductLive()?.sold_out).toBe(true);
+      const modal = fixture.nativeElement.querySelector('app-product-select-pos') as HTMLElement;
+      expect(modal.textContent).toContain('Producto agotado');
+    });
+  });
+
   // ── Pestaña "Todos" (rediseño create-order/code.html) ──────────────────────
   it('"Todos" está activa por defecto y junta los productos de todas las categorías', async () => {
     createComponent('t1');

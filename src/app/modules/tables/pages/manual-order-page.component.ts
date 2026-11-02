@@ -22,6 +22,7 @@ import {
   SearchableSelectOption,
 } from '../../../shared/searchable-select/searchable-select.component';
 import { effectivePrice } from '../../promotions/services/promotion-pricing.util';
+import { isProductSoldOut } from '../../../core/availability/availability.util';
 
 /**
  * Vista dedicada para armar un pedido de mostrador nuevo (ajuste posterior a
@@ -215,15 +216,22 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                 <button
                   type="button"
                   (click)="store.openConfig(p, showingPromotions())"
+                  [disabled]="isProductSoldOut(p)"
+                  [attr.aria-disabled]="isProductSoldOut(p) ? 'true' : null"
                   [attr.aria-label]="'Agregar ' + p.name"
-                  class="relative min-h-[76px] p-2.5 border rounded-[12px] flex flex-col text-left transition-colors hover:bg-[var(--terminal-color-surface-elevated,#f1f5f9)]"
+                  class="relative min-h-[76px] p-2.5 border rounded-[12px] flex flex-col text-left transition-colors hover:bg-[var(--terminal-color-surface-elevated,#f1f5f9)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--terminal-color-surface,#fff)]"
                   [style]="
                     store.cardPromotionText(p.variants)
                       ? 'background:var(--terminal-color-surface,#fff);border-color:var(--terminal-color-primary-border,#7c3aed)'
                       : 'background:var(--terminal-color-surface,#fff);border-color:var(--terminal-color-border,#e5e9ef)'
                   "
                 >
-                  @if (store.cardPromotionText(p.variants)) {
+                  @if (isProductSoldOut(p)) {
+                    <span
+                      class="absolute top-1.5 right-1.5 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700"
+                      >Agotado</span
+                    >
+                  } @else if (store.cardPromotionText(p.variants)) {
                     <!-- Insignia genérica (el detalle de la condición, p. ej.
                          "2 x $12.000", ya se lee abajo del nombre en vez de
                          repetirse aquí). En el flujo normal del layout -- no
@@ -632,11 +640,33 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
                      presentación + app-cart-item-options en caja aparte. -->
                 @let parts = splitVariantLabel(it.name);
                 @let detail = cartLineDetail(it.options, parts.variant);
+                @let soldOut = rowSoldOut(it);
                 <div
                   class="py-3 flex flex-col gap-2"
-                  [class]="it.promo ? '-mx-2 px-2' : ''"
-                  [style]="it.promo ? 'background:var(--terminal-color-warning-soft,#fef3e2);border-left:2px solid var(--terminal-color-warning,#b45309)' : ''"
+                  [class]="soldOut ? '-mx-2 px-2' : it.promo ? '-mx-2 px-2' : ''"
+                  [style]="
+                    soldOut
+                      ? 'background:var(--terminal-color-error-soft,#fee2e2);border-left:2px solid var(--terminal-color-error,#e11d48)'
+                      : it.promo
+                        ? 'background:var(--terminal-color-warning-soft,#fef3e2);border-left:2px solid var(--terminal-color-warning,#b45309)'
+                        : ''
+                  "
                 >
+                  @if (soldOut) {
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="text-[12px] font-semibold" style="color:var(--terminal-color-error,#e11d48)"
+                        >Agotado: {{ soldOut }}</span
+                      >
+                      <button
+                        type="button"
+                        (click)="store.removeDraft(it.key)"
+                        class="text-[12px] font-semibold rounded-[8px] px-2.5 py-1 border"
+                        style="border-color:var(--terminal-color-error,#e11d48);color:var(--terminal-color-error,#e11d48)"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  }
                   <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0 flex-1">
                       <span class="text-[14px] font-semibold text-[var(--terminal-color-text-primary,#090d16)] leading-tight">{{
@@ -820,6 +850,18 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
             </div>
 
             <div class="p-2 flex flex-col gap-1.5">
+              @if (store.affectedDraftMessage(); as soldOutMsg) {
+                <!-- Spec 148 (US2, T048, FR-024): mientras haya líneas agotadas, "Crear
+                     pedido" queda deshabilitado y este aviso explica cuáles y qué hacer. -->
+                <div
+                  role="alert"
+                  data-testid="sold-out-cart-alert"
+                  class="rounded-[6px] border border-[var(--terminal-color-error,#e11d48)] bg-[var(--terminal-color-error-soft,#fee2e2)] px-3 py-2 text-[12px]"
+                  style="color:var(--terminal-color-error,#e11d48)"
+                >
+                  {{ soldOutMsg }}
+                </div>
+              }
               @if (totalChangeNotice(); as n) {
                 <!-- spec 089 (A-96, FR-028): el total del pedido cambió al pulsar "Crear pedido".
                      Aviso NO bloqueante, sin diálogo: no se creó; el siguiente clic lo crea por
@@ -852,9 +894,9 @@ import { effectivePrice } from '../../promotions/services/promotion-pricing.util
           </div>
     </ng-template>
 
-    @if (store.configuringProduct(); as product) {
+    @if (store.configuringProduct()) {
       <app-product-select-pos
-        [product]="product"
+        [product]="store.configuringProductLive()!"
         [initialSelection]="store.editingSelection()"
         [fromPromotions]="store.configuringProductFromPromotions()"
         [openToken]="store.configuringToken()"
@@ -873,6 +915,8 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
    *  en `menu-lookup.ts` (spec 113: mismo patrón de pill ya usado en
    *  `pos-order-panel.component.ts`). */
   splitVariantLabel = splitVariantLabel;
+  /** Expuesto para la plantilla (spec 148, T035/FR-012). */
+  readonly isProductSoldOut = isProductSoldOut;
 
   /** Por debajo de `lg`, si la hoja inferior del carrito ("Tu pedido") está
    *  abierta -- el catálogo siempre está visible debajo (rediseño
@@ -933,7 +977,10 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
       (this.store.orderTypeTab() === 'domicilios' &&
         (!this.store.customerName().trim() ||
           !this.store.deliveryAddress().trim() ||
-          this.store.deliveryFee() == null)),
+          this.store.deliveryFee() == null)) ||
+      // Spec 148 (US2, T048): no se puede enviar un carrito con líneas que ya
+      // no se pueden pedir -- se debe quitar o esperar a que vuelvan.
+      this.store.hasAffectedLines(),
   );
 
   /**
@@ -1016,6 +1063,12 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
   cartLineDetail(options: CartOptionLine[], variant: string | null): string {
     const optionsText = options.map((o) => o.text).join(', ');
     return [variant, optionsText].filter((p): p is string => !!p).join(' + ');
+  }
+
+  /** Spec 148 (US2, T048): solo las filas de BORRADOR llevan `soldOut` --
+   *  una línea ya guardada (`persisted`/`pending-review`) no la tiene. */
+  rowSoldOut(it: ReturnType<PosTerminalStore['cartView']>[number]): string | null {
+    return it.kind === 'draft' ? it.soldOut : null;
   }
 
   async ngOnInit(): Promise<void> {

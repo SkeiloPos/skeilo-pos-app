@@ -1,9 +1,10 @@
-import { Component, inject } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DiningCartService } from '../../services/dining-cart.service';
 import { IconComponent } from '../../../../shared/icon/icon.component';
 import { CheckoutStepIndicatorComponent } from './checkout-step-indicator.component';
 import { CheckoutOrderSummaryComponent } from './checkout-order-summary.component';
+import { SoldOutCartAlertComponent } from './sold-out-cart-alert.component';
 
 /**
  * Paso 1 — resumen del pedido (spec 034, US2, FR-001). Sustituye al primer
@@ -14,7 +15,7 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
 @Component({
   selector: 'app-review-step',
   standalone: true,
-  imports: [IconComponent, CheckoutStepIndicatorComponent, CheckoutOrderSummaryComponent],
+  imports: [IconComponent, CheckoutStepIndicatorComponent, CheckoutOrderSummaryComponent, SoldOutCartAlertComponent],
   template: `
     <div class="min-h-screen flex flex-col" style="background:#F4F6F9">
       <div class="bg-white border-b border-gray-200 sticky top-0 z-10">
@@ -42,11 +43,16 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
           [total]="cart.total()"
           [count]="cart.count()"
           [savings]="cart.savings()"
+          [affectedLines]="cart.affectedLines()"
+          [totalChangedTo]="cart.totalChangedTo()"
         />
+
+        <!-- spec 148 (US2, T061): alerta compartida + bloqueo del confirmar. -->
+        <app-sold-out-cart-alert />
 
         <button
           (click)="continue()"
-          [disabled]="cart.isEmpty()"
+          [disabled]="cart.isEmpty() || cart.hasAffectedLines()"
           class="w-full h-14 bg-violet-700 hover:bg-violet-800 text-white font-semibold rounded-2xl transition-colors disabled:opacity-50"
         >
           Elegir método de pago
@@ -55,15 +61,19 @@ import { CheckoutOrderSummaryComponent } from './checkout-order-summary.componen
     </div>
   `,
 })
-export class ReviewStepComponent {
+export class ReviewStepComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   readonly cart = inject(DiningCartService);
 
   private readonly token = this.route.snapshot.paramMap.get('token') ?? '';
 
+  ngOnInit(): void {
+    this.cart.seenCheckoutTotalOnce();
+  }
+
   continue(): void {
-    if (this.cart.isEmpty()) return;
+    if (this.cart.isEmpty() || this.cart.hasAffectedLines()) return;
     this.router.navigate(['/menu/t', this.token, 'checkout', 'method']);
   }
 

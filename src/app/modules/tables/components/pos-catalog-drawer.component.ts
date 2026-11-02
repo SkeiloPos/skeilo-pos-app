@@ -4,6 +4,8 @@ import { PosTerminalStore } from '../services/pos-terminal.store';
 import { ProductSelectComponent } from './product-select.component';
 import { effectivePrice } from '../../promotions/services/promotion-pricing.util';
 import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.component';
+import { isProductSoldOut } from '../../../core/availability/availability.util';
+import { LiveStatusIndicatorComponent } from '../../../core/availability/live-status-indicator.component';
 
 /**
  * Catálogo del "+ Agregar producto": buscador por nombre + categorías + grid de
@@ -20,12 +22,15 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
 @Component({
   selector: 'app-pos-catalog-drawer',
   standalone: true,
-  imports: [DecimalPipe, ProductSelectComponent, IconLucideComponent],
+  imports: [DecimalPipe, ProductSelectComponent, IconLucideComponent, LiveStatusIndicatorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex-1 flex flex-col min-h-0">
       <div class="flex items-center justify-between px-4 py-3 border-b shrink-0" style="border-color:var(--terminal-color-border)">
-        <h3 style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-size:16px;font-weight:700;color:var(--terminal-color-text-primary)">Catálogo de productos</h3>
+        <div class="flex items-center gap-2 min-w-0">
+          <h3 style="font-family:Sora,ui-sans-serif,system-ui,sans-serif;font-size:16px;font-weight:700;color:var(--terminal-color-text-primary)">Catálogo de productos</h3>
+          <app-live-status-indicator />
+        </div>
         <button
           (click)="store.closeCatalog()"
           class="h-9 px-3 text-[13px] font-semibold border rounded-[8px] flex items-center gap-1.5 transition-colors"
@@ -89,11 +94,12 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
             @for (p of catalogProducts(); track p.id) {
               <button
                 (click)="store.openConfig(p, showingPromotions())"
-                [disabled]="p.sold_out"
+                [disabled]="isProductSoldOut(p)"
+                [attr.aria-disabled]="isProductSoldOut(p) ? 'true' : null"
                 class="relative text-left rounded-[12px] border p-4 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 style="background:var(--terminal-color-surface);border-color:var(--terminal-color-border)"
               >
-                @if (p.sold_out) {
+                @if (isProductSoldOut(p)) {
                   <!-- spec 093 (escenario 5): sigue visible, atenuado, sin poder agregarse. -->
                   <span
                     class="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
@@ -122,9 +128,9 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
       </div>
     </div>
 
-    @if (store.configuringProduct(); as product) {
+    @if (store.configuringProduct()) {
       <app-product-select
-        [product]="product"
+        [product]="store.configuringProductLive()!"
         [fromPromotions]="store.configuringProductFromPromotions()"
         (added)="store.addDraftFromSelection($event)"
         (cancelled)="store.closeConfig()"
@@ -134,6 +140,8 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
 })
 export class PosCatalogDrawerComponent {
   readonly store = inject(PosTerminalStore);
+  /** Expuesto para la plantilla (spec 148, T037/FR-012). */
+  readonly isProductSoldOut = isProductSoldOut;
 
   /** spec 115 (FR-001/FR-014): mismo tratamiento que
    *  `ManualOrderPageComponent.showingPromotions`, aplicado a este segundo

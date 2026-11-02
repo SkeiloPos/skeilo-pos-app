@@ -100,6 +100,10 @@ export const UMBRAL_EXPANDIDO_POR_DEFECTO = 3;
             @if (line.notes) {
               <p class="text-xs text-gray-400 italic truncate">"{{ line.notes }}"</p>
             }
+            <!-- spec 148 (US2, T057): línea agotada marcada con el elemento afectado. -->
+            @if (affectedLines.get(line.id); as label) {
+              <p class="text-xs font-semibold text-red-600">Agotado: {{ label }}</p>
+            }
           </div>
           <span class="font-sora text-[15px] font-semibold text-gray-900 shrink-0 tabular-nums">{{ line.lineTotal | money }}</span>
         </div>
@@ -118,6 +122,10 @@ export const UMBRAL_EXPANDIDO_POR_DEFECTO = 3;
           <span class="font-semibold text-gray-900">Total</span>
           <span class="font-sora text-xl font-bold text-gray-900 tabular-nums">{{ total | money }}</span>
         </div>
+        <!-- spec 148 (US2, T062): el total cambió desde que este paso lo vio (p. ej. se quitó una línea agotada). -->
+        @if (totalChangedTo !== null) {
+          <p role="status" class="text-xs text-violet-700">El total cambió a {{ totalChangedTo | money }}</p>
+        }
       </div>
       <!-- Ninguna fila de impuestos ni de subtotal, en ningún modo y bajo
            ninguna condición: el sistema no los calcula, y una fila derivada o en
@@ -138,6 +146,12 @@ export class CheckoutOrderSummaryComponent implements OnInit {
   @Input() collapsible = false;
   /** Válvula de escape de research.md D6, hoy en `true` por decisión de negocio. */
   @Input() showSavings = true;
+  /** spec 148 (US2, T057): `id de línea → elemento agotado`, de `DiningCartService.affectedLines()`.
+   *  Puramente informativo: no retira ni modifica ninguna línea. */
+  @Input() affectedLines: ReadonlyMap<string, string> = new Map();
+  /** spec 148 (US2, T062): `DiningCartService.totalChangedTo()` -- `null` si el
+   *  total no cambió desde que el paso lo vio por última vez. */
+  @Input() totalChangedTo: number | null = null;
 
   /**
    * Estado inicial del `<details>`, **congelado** en `ngOnInit` (research.md D2).
