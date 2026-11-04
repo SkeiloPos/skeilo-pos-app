@@ -111,6 +111,9 @@ const QUITAR_INVENTARIO_MENSAJE =
             <label class="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" formControlName="promociones_access" /> Promociones
             </label>
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" formControlName="cocina_access" /> Cocina
+            </label>
           </div>
 
           <div class="grid grid-cols-2 gap-4">
@@ -180,6 +183,7 @@ export class PlanFormComponent implements OnInit {
     metodos_pago_activos_limit: buildLimitGroup(null),
     inventario_access: new FormControl(false, { nonNullable: true }),
     promociones_access: new FormControl(false, { nonNullable: true }),
+    cocina_access: new FormControl(false, { nonNullable: true }),
     precio_mensual: new FormControl<number | null>(null),
     precio_anual: new FormControl<number | null>(null),
   });
@@ -191,6 +195,7 @@ export class PlanFormComponent implements OnInit {
       description: this.plan.description ?? null,
       inventario_access: this.plan.inventario_access,
       promociones_access: this.plan.promociones_access,
+      cocina_access: this.plan.cocina_access,
       precio_mensual: this.plan.precio_mensual !== null ? Number(this.plan.precio_mensual) : null,
       precio_anual: this.plan.precio_anual !== null ? Number(this.plan.precio_anual) : null,
     });
@@ -220,6 +225,7 @@ export class PlanFormComponent implements OnInit {
       description: raw.description,
       inventario_access: raw.inventario_access,
       promociones_access: raw.promociones_access,
+      cocina_access: raw.cocina_access,
       precio_mensual: raw.precio_mensual,
       precio_anual: raw.precio_anual,
       mesas_limit: raw.mesas_limit.unlimited ? null : raw.mesas_limit.value,

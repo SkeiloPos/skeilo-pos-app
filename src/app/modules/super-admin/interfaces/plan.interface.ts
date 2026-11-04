@@ -14,6 +14,7 @@ export interface Plan {
 
   inventario_access: boolean;
   promociones_access: boolean;
+  cocina_access: boolean;
 
   precio_mensual: string | null;
   precio_anual: string | null;
@@ -37,6 +38,7 @@ export interface PlanCreatePayload {
 
   inventario_access?: boolean;
   promociones_access?: boolean;
+  cocina_access?: boolean;
 
   precio_mensual?: number | null;
   precio_anual?: number | null;

@@ -217,7 +217,7 @@ describe('OptionFormComponent — cargas de fondo según el plan (spec 141)', ()
       plan_vence_en: null,
       vencido: false,
       resources: {},
-      modules: { inventario, promociones: false },
+      modules: { inventario, promociones: false, cocina: false },
     };
   }
 

@@ -19,7 +19,7 @@ function planSummary(partial: Partial<PlanSummary> = {}): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: false, promociones: false },
+    modules: { inventario: false, promociones: false, cocina: false },
     ...partial,
   };
 }
@@ -161,20 +161,20 @@ describe('PlanSummaryService', () => {
     });
 
     it('plan vencido → false aunque el módulo figure como incluido', () => {
-      service.summary.set(planSummary({ vencido: true, modules: { inventario: true, promociones: true } }));
+      service.summary.set(planSummary({ vencido: true, modules: { inventario: true, promociones: true, cocina: false } }));
 
       expect(service.includes('inventario')).toBe(false);
     });
 
     it('módulo ausente del plan → false', () => {
-      service.summary.set(planSummary({ modules: { inventario: false, promociones: true } }));
+      service.summary.set(planSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
 
       expect(service.includes('inventario')).toBe(false);
       expect(service.includes('promociones')).toBe(true);
     });
 
     it('módulo incluido y plan no vencido → true', () => {
-      service.summary.set(planSummary({ modules: { inventario: true, promociones: false } }));
+      service.summary.set(planSummary({ modules: { inventario: true, promociones: false, cocina: false } }));
 
       expect(service.includes('inventario')).toBe(true);
     });
@@ -183,17 +183,17 @@ describe('PlanSummaryService', () => {
       const incluido = computed(() => service.includes('inventario'));
       expect(incluido()).toBe(false); // todavía sin resumen
 
-      service.summary.set(planSummary({ modules: { inventario: true, promociones: false } }));
+      service.summary.set(planSummary({ modules: { inventario: true, promociones: false, cocina: false } }));
       expect(incluido()).toBe(true); // llegó el resumen
 
-      service.summary.set(planSummary({ modules: { inventario: false, promociones: false } }));
+      service.summary.set(planSummary({ modules: { inventario: false, promociones: false, cocina: false } }));
       expect(incluido()).toBe(false); // se perdió el módulo
     });
   });
 
   describe('markModuleMissing (spec 141: el menú se corrige en el acto, FR-016)', () => {
     it('pone el módulo en false de inmediato y de forma síncrona, sin ninguna petición', () => {
-      service.summary.set(planSummary({ modules: { inventario: true, promociones: true } }));
+      service.summary.set(planSummary({ modules: { inventario: true, promociones: true, cocina: false } }));
 
       service.markModuleMissing('inventario');
 
@@ -203,7 +203,7 @@ describe('PlanSummaryService', () => {
     });
 
     it('no toca otros módulos ni el resto del resumen', () => {
-      const original = planSummary({ plan_name: 'Pro', modules: { inventario: true, promociones: true } });
+      const original = planSummary({ plan_name: 'Pro', modules: { inventario: true, promociones: true, cocina: false } });
       service.summary.set(original);
 
       service.markModuleMissing('inventario');
@@ -223,11 +223,11 @@ describe('PlanSummaryService', () => {
     });
 
     it('una clave que no es un módulo del resumen no agrega propiedades', () => {
-      service.summary.set(planSummary({ modules: { inventario: true, promociones: true } }));
+      service.summary.set(planSummary({ modules: { inventario: true, promociones: true, cocina: false } }));
 
       service.markModuleMissing('compras' as never);
 
-      expect(Object.keys(service.summary()!.modules)).toEqual(['inventario', 'promociones']);
+      expect(Object.keys(service.summary()!.modules)).toEqual(['inventario', 'promociones', 'cocina']);
     });
   });
 

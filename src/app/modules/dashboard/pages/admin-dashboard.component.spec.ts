@@ -21,7 +21,7 @@ function planConInventario(inventario: boolean): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario, promociones: false },
+    modules: { inventario, promociones: false, cocina: false },
   };
 }
 

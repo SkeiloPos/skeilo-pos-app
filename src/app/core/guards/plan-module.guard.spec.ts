@@ -15,7 +15,7 @@ function makeSummary(partial: Partial<PlanSummary> = {}): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: true, promociones: true },
+    modules: { inventario: true, promociones: true, cocina: false },
     ...partial,
   };
 }
@@ -48,7 +48,7 @@ describe('planModuleGuard (spec 141)', () => {
   }
 
   it('módulo ausente → redirige al inicio Y muestra «Esta funcionalidad no está incluida en tu plan»', async () => {
-    setup(of(makeSummary({ modules: { inventario: false, promociones: true } })));
+    setup(of(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } })));
 
     const result = await run('inventario');
 
@@ -59,7 +59,7 @@ describe('planModuleGuard (spec 141)', () => {
   });
 
   it('el aviso aplica a todos los módulos (Promociones también)', async () => {
-    setup(of(makeSummary({ modules: { inventario: true, promociones: false } })));
+    setup(of(makeSummary({ modules: { inventario: true, promociones: false, cocina: false } })));
 
     const result = await run('promociones');
 
@@ -68,7 +68,7 @@ describe('planModuleGuard (spec 141)', () => {
   });
 
   it('plan vencido → vuelta al inicio SIN el aviso de módulo (FR-017, US4.4)', async () => {
-    setup(of(makeSummary({ vencido: true, modules: { inventario: true, promociones: true } })));
+    setup(of(makeSummary({ vencido: true, modules: { inventario: true, promociones: true, cocina: false } })));
 
     const result = await run('inventario');
 
@@ -77,7 +77,7 @@ describe('planModuleGuard (spec 141)', () => {
   });
 
   it('plan vencido y además sin el módulo → sigue sin aviso: `vencido` gana', async () => {
-    setup(of(makeSummary({ vencido: true, modules: { inventario: false, promociones: false } })));
+    setup(of(makeSummary({ vencido: true, modules: { inventario: false, promociones: false, cocina: false } })));
 
     const result = await run('inventario');
 
@@ -106,7 +106,7 @@ describe('planModuleGuard (spec 141)', () => {
   });
 
   it('hidrata PlanSummaryService con el resumen que acaba de pedir (research D8)', async () => {
-    const resumen = makeSummary({ modules: { inventario: false, promociones: true } });
+    const resumen = makeSummary({ modules: { inventario: false, promociones: true, cocina: false } });
     setup(of(resumen));
 
     await run('inventario');

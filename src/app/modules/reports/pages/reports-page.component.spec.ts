@@ -15,7 +15,7 @@ function makeSummary(partial: Partial<PlanSummary>): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: true, promociones: true },
+    modules: { inventario: true, promociones: true, cocina: false },
     ...partial,
   };
 }
@@ -108,7 +108,7 @@ describe('ReportsPageComponent — sección de insumos con stock bajo (spec 062,
   });
 
   it('no aparece cuando el plan no incluye Inventario', () => {
-    const fixture = crear(makeSummary({ modules: { inventario: false, promociones: true } }));
+    const fixture = crear(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
 
     expect(fixture.nativeElement.textContent).not.toContain('Insumos con stock bajo');
   });
@@ -153,7 +153,7 @@ describe('ReportsPageComponent — tarjeta de Margen (spec 062, FR-007)', () => 
   });
 
   it('no aparece cuando el plan no incluye Inventario', () => {
-    const fixture = crear(makeSummary({ modules: { inventario: false, promociones: true } }));
+    const fixture = crear(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
 
     expect(fixture.nativeElement.textContent).not.toContain('Margen');
   });

@@ -3320,7 +3320,7 @@ describe('PosTerminalStore.init — promociones activas según el plan (spec 141
       plan_vence_en: null,
       vencido: false,
       resources: {},
-      modules: { inventario: false, promociones },
+      modules: { inventario: false, promociones, cocina: false },
     };
   }
 

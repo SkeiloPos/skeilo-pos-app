@@ -11,7 +11,7 @@ function makeSummary(partial: Partial<PlanSummary> = {}): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: true, promociones: false },
+    modules: { inventario: true, promociones: false, cocina: false },
     ...partial,
   };
 }
@@ -45,22 +45,22 @@ describe('PlanSummaryPageComponent — «Mi plan» con dos módulos (spec 141, U
     return titulo!.parentElement as HTMLElement;
   }
 
-  it('lista exactamente 2 módulos, Inventario y Promociones, y ningún «Compras»', () => {
+  it('lista exactamente 3 módulos, Inventario, Promociones y Cocina, y ningún «Compras»', () => {
     const fixture = crear(makeSummary());
     const seccion = seccionDeModulos(fixture);
 
     const etiquetas = Array.from(seccion.querySelectorAll('dt')).map((dt) => dt.textContent?.trim());
 
-    expect(etiquetas).toEqual(['Inventario', 'Promociones']);
+    expect(etiquetas).toEqual(['Inventario', 'Promociones', 'Cocina']);
     expect(seccion.textContent).not.toContain('Compras');
   });
 
   it('marca «Incluido» o «No incluido» según el plan', () => {
-    const fixture = crear(makeSummary({ modules: { inventario: true, promociones: false } }));
+    const fixture = crear(makeSummary({ modules: { inventario: true, promociones: false, cocina: false } }));
     const seccion = seccionDeModulos(fixture);
 
     const estados = Array.from(seccion.querySelectorAll('dd')).map((dd) => dd.textContent?.trim());
 
-    expect(estados).toEqual(['Incluido', 'No incluido']);
+    expect(estados).toEqual(['Incluido', 'No incluido', 'No incluido']);
   });
 });

@@ -32,7 +32,7 @@ function makeSummary(partial: Partial<PlanSummary>): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: true, promociones: true },
+    modules: { inventario: true, promociones: true, cocina: false },
     ...partial,
   };
 }
@@ -165,7 +165,7 @@ describe('TenantSidebarComponent (spec 116)', () => {
     // Antes de la spec 141 "Proveedores" no tenía `moduleKey` y quedaba visible sin el módulo
     // (navigation-grouping-contract.md de la spec 116). Ahora «Inventario» es un solo módulo.
     currentUser.set(makeUser({ role: UserRole.ADMIN }));
-    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
     createComponent();
 
     const routes = fixture.componentInstance.visibleItems().map((i) => i.route);
@@ -175,7 +175,7 @@ describe('TenantSidebarComponent (spec 116)', () => {
 
   it('sin el módulo desaparece también el encabezado de sección «Inventario», sin bloque vacío (spec 141, SC-004)', () => {
     currentUser.set(makeUser({ role: UserRole.ADMIN }));
-    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
     createComponent();
 
     const titulos = fixture.componentInstance.groupedItems().map((g) => g.title);
@@ -186,7 +186,7 @@ describe('TenantSidebarComponent (spec 116)', () => {
 
   it('con el módulo aparecen «Inventario» y «Proveedores» bajo el encabezado «Inventario» (spec 141, US3.2)', () => {
     currentUser.set(makeUser({ role: UserRole.ADMIN }));
-    planSummary.set(makeSummary({ modules: { inventario: true, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: true, promociones: true, cocina: false } }));
     createComponent();
 
     const grupo = fixture.componentInstance.groupedItems().find((g) => g.title === 'Inventario');

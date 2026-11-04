@@ -434,7 +434,7 @@ describe('InventoryPageComponent — pestaña «Compras» sin indicador propio (
     vencido: false,
     resources: {},
     // Ningún indicador de Compras: ya no existe en el contrato (spec 141).
-    modules: { inventario: true, promociones: false },
+    modules: { inventario: true, promociones: false, cocina: false },
   };
 
   function pestanas(fixture: ReturnType<typeof crear>): string[] {

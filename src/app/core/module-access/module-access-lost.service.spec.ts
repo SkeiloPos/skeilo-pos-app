@@ -15,7 +15,7 @@ function makeSummary(partial: Partial<PlanSummary> = {}): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: true, promociones: true },
+    modules: { inventario: true, promociones: true, cocina: false },
     ...partial,
   };
 }
@@ -101,7 +101,7 @@ describe('ModuleAccessLostService (spec 141)', () => {
   });
 
   it('un rechazo tardío con el resumen ya «sin módulo» no avisa ni redirige', async () => {
-    setup(makeSummary({ modules: { inventario: false, promociones: true } }));
+    setup(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
 
     await service.handle('inventario');
 
@@ -166,8 +166,8 @@ describe('ModuleAccessLostService (spec 141)', () => {
       expect(toastError).toHaveBeenCalledTimes(1);
       expect(navigateByUrl).toHaveBeenCalledWith('/dashboard');
       expect(load).toHaveBeenCalledWith({ force: true });
-      expect(summary()!.modules).toEqual({ inventario: true, promociones: true });
-      expect(Object.keys(summary()!.modules)).toEqual(['inventario', 'promociones']);
+      expect(summary()!.modules).toEqual({ inventario: true, promociones: true, cocina: false });
+      expect(Object.keys(summary()!.modules)).toEqual(['inventario', 'promociones', 'cocina']);
     }
   });
 

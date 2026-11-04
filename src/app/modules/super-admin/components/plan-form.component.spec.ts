@@ -18,6 +18,7 @@ function makePlan(partial: Partial<Plan> = {}): Plan {
     metodos_pago_activos_limit: 4,
     inventario_access: true,
     promociones_access: true,
+    cocina_access: false,
     precio_mensual: null,
     precio_anual: null,
     created_at: '2026-10-01T00:00:00+00:00',
@@ -179,5 +180,36 @@ describe('PlanFormComponent — un solo módulo «Inventario» (spec 141, FR-019
     await fixture.componentInstance.onSubmit();
 
     expect(Object.keys(create.mock.calls[0][0])).not.toContain('compras_access');
+  });
+
+  // ── spec 149: checkbox «Cocina» ───────────────────────────────────────────
+
+  it('construye un control `cocina_access` y muestra el checkbox «Cocina»', () => {
+    const { fixture } = crear();
+
+    expect(fixture.componentInstance.form.controls.cocina_access).toBeTruthy();
+    const etiquetas = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('label'))
+      .map((l) => l.textContent?.replace(/\s+/g, ' ').trim() ?? '');
+    expect(etiquetas.some((t) => t.startsWith('Cocina'))).toBe(true);
+    expect((fixture.nativeElement as HTMLElement).querySelector('[formControlName="cocina_access"]')).not.toBeNull();
+  });
+
+  it('incluye cocina_access en el payload de creación', async () => {
+    const { fixture } = crear(null);
+    fixture.componentInstance.form.controls.name.setValue('Nuevo');
+    fixture.componentInstance.form.controls.cocina_access.setValue(true);
+
+    await fixture.componentInstance.onSubmit();
+
+    expect(create.mock.calls[0][0].cocina_access).toBe(true);
+  });
+
+  it('incluye cocina_access en el payload de edición', async () => {
+    const { fixture } = crear(makePlan({ cocina_access: false }));
+    fixture.componentInstance.form.controls.cocina_access.setValue(true);
+
+    await fixture.componentInstance.onSubmit();
+
+    expect(update.mock.calls[0][1].cocina_access).toBe(true);
   });
 });
