@@ -245,3 +245,25 @@ export function puedeCancelarComensal(order: Pick<DiningOrder, 'status' | 'items
   const items = order.items ?? [];
   return !items.some((it) => it.estado_cocina !== 'pendiente' && it.estado_cocina !== 'cancelado');
 }
+
+/**
+ * Spec 150 (research.md Decisión 0/10): ¿puede este pedido enviarse a la
+ * cola de preparación de cocina? "Orden confirmada" es cualquier pedido vivo
+ * (`status !== 'cancelada'`), no solo `'confirmado'` -- ver Decisión 0. No
+ * depende de `channel`/`order_type`: los tres orígenes (manual, mesa,
+ * domicilio) usan el mismo criterio (research.md Decisión 7). `cocinaAccess`
+ * es el gating del módulo de plan "cocina" (`PlanSummaryService.includes
+ * ('cocina')`), resuelto por quien llama -- este helper se mantiene puro, sin
+ * inyectar el servicio.
+ */
+export function canSendToKitchen(
+  order: Pick<DiningOrder, 'status' | 'payment_status' | 'kitchen_status'>,
+  cocinaAccess: boolean,
+): boolean {
+  return (
+    order.status !== 'cancelada' &&
+    order.payment_status === 'PAID' &&
+    !order.kitchen_status &&
+    cocinaAccess
+  );
+}

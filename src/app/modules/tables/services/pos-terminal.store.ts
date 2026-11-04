@@ -1,4 +1,5 @@
 import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   MenuCategory,
   MenuOption,
@@ -3388,6 +3389,33 @@ export class PosTerminalStore {
       await this.reload();
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo entregar el pedido.'));
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /**
+   * Spec 150 (FR-001/FR-003/FR-004/FR-007): envía un pedido confirmado y
+   * pagado a la cola de preparación de cocina. `ALREADY_IN_KITCHEN` (409 —
+   * doble clic o reintento de red sobre un pedido que ya quedó en la cola,
+   * clarificación 2 de spec.md) se maneja en silencio: solo refresca, sin
+   * `toast.error`, porque el pedido ya está correctamente en la cola.
+   * Cualquier otro error sí muestra el toast, mismo molde que `deliverOrder`.
+   */
+  async sendToKitchen(orderId?: string): Promise<void> {
+    const order = orderId ? this.orders().find((o) => o.id === orderId) : this.selectedOrder();
+    if (!order) return;
+    this.submitting.set(true);
+    try {
+      await this.api.sendToKitchen(order.id);
+      await this.reload();
+    } catch (err) {
+      const body = err instanceof HttpErrorResponse ? (err.error as { error?: { code?: string } }) : null;
+      if (body?.error?.code === 'ALREADY_IN_KITCHEN') {
+        await this.reload();
+        return;
+      }
+      this.toast.error(this.api.extractError(err, 'No se pudo enviar el pedido a cocina.'));
     } finally {
       this.submitting.set(false);
     }

@@ -501,6 +501,17 @@ export interface DiningOrder {
    * conteo de resultados), que vive un nivel más arriba.
    */
   total?: string | null;
+  /**
+   * Spec 150 (data-model.md): `null` si el pedido nunca se envió a la cola
+   * de preparación de cocina. Cualquier valor no nulo se trata como "ya
+   * enviado" (sin cerrar el conjunto de valores posibles, igual que el
+   * backend) -- nunca se compara contra el literal `"SIN_PREPARAR"` como si
+   * fuera el único valor no nulo posible.
+   */
+  kitchen_status?: string | null;
+  /** Hora del SERVIDOR en que se envió a cocina (ISO 8601); `null` hasta el
+   *  primer envío exitoso. */
+  sent_to_kitchen_at?: string | null;
 }
 
 // ── Terminal híbrida por origen (feature 028) ──────────────────────────────
