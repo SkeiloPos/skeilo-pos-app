@@ -30,7 +30,7 @@ function makeSummary(partial: Partial<PlanSummary>): PlanSummary {
     plan_vence_en: null,
     vencido: false,
     resources: {},
-    modules: { inventario: true, promociones: true },
+    modules: { inventario: true, promociones: true, cocina: false },
     ...partial,
   };
 }
@@ -90,7 +90,7 @@ describe('SidebarComponent.visibleItems', () => {
   // que ya bloquea el acceso directo por URL a esas mismas rutas.
   it('hides module-gated items the plan does not include', () => {
     currentUser.set(makeUser({ isSuperAdmin: false, role: UserRole.ADMIN }));
-    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
     const sidebar = createComponent();
 
     const routes = sidebar.visibleItems().map((i) => i.route);
@@ -101,7 +101,7 @@ describe('SidebarComponent.visibleItems', () => {
 
   it('shows module-gated items the plan does include', () => {
     currentUser.set(makeUser({ isSuperAdmin: false, role: UserRole.ADMIN }));
-    planSummary.set(makeSummary({ modules: { inventario: true, promociones: true } }));
+    planSummary.set(makeSummary({ modules: { inventario: true, promociones: true, cocina: false } }));
     const sidebar = createComponent();
 
     const routes = sidebar.visibleItems().map((i) => i.route);
@@ -111,7 +111,7 @@ describe('SidebarComponent.visibleItems', () => {
 
   it('hides all module-gated items when the tenant is vencido, regardless of module flags', () => {
     currentUser.set(makeUser({ isSuperAdmin: false, role: UserRole.ADMIN }));
-    planSummary.set(makeSummary({ vencido: true, modules: { inventario: true, promociones: true } }));
+    planSummary.set(makeSummary({ vencido: true, modules: { inventario: true, promociones: true, cocina: false } }));
     const sidebar = createComponent();
 
     const routes = sidebar.visibleItems().map((i) => i.route);
@@ -132,7 +132,7 @@ describe('SidebarComponent.visibleItems', () => {
 
   it('does not apply plan gating to super admin navigation', () => {
     currentUser.set(makeUser({ isSuperAdmin: true, role: UserRole.SUPER_ADMIN, tenantId: null }));
-    planSummary.set(makeSummary({ modules: { inventario: false, promociones: false } }));
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: false, cocina: false } }));
     const sidebar = createComponent();
 
     expect(sidebar.visibleItems().map((i) => i.route)).toEqual([

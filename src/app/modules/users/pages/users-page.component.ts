@@ -14,12 +14,14 @@ const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Admin',
   CASHIER: 'Cajero',
   MESERO: 'Mesero',
+  KITCHEN: 'Cocina',
 };
 
 const ROLE_BADGE_CLASSES: Record<string, string> = {
   ADMIN: 'bg-indigo-100 text-indigo-700',
   CASHIER: 'bg-green-100 text-green-700',
   MESERO: 'bg-amber-100 text-amber-700',
+  KITCHEN: 'bg-orange-100 text-orange-700',
 };
 
 const PAGE_SIZES = [10, 20, 50, 100];

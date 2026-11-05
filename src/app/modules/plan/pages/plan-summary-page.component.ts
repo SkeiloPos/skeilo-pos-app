@@ -13,6 +13,7 @@ const RESOURCE_LABEL: Record<string, string> = {
 const MODULE_LABEL: Record<string, string> = {
   inventario: 'Inventario',
   promociones: 'Promociones',
+  cocina: 'Cocina',
 };
 
 /** "Mi plan" del Tenant Admin (spec 033, Historia de Usuario 6, FR-013):

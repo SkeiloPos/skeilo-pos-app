@@ -11,6 +11,7 @@ export interface ResourceUsage {
 export interface ModuleAccess {
   inventario: boolean;
   promociones: boolean;
+  cocina: boolean;
 }
 
 export interface PlanSummary {

@@ -53,6 +53,18 @@ export const NAV_ITEMS: NavItem[] = [
     roles: [UserRole.ADMIN, UserRole.CASHIER, UserRole.MESERO],
     frame: { label: 'Terminal de Mesas', icon: 'qr-code', group: 'Operación' },
   },
+  {
+    label: 'Cocina',
+    icon: 'restaurant',
+    route: '/dashboard/cocina',
+    group: 'OPERACIONES',
+    roles: [UserRole.ADMIN, UserRole.CASHIER, UserRole.KITCHEN],
+    // Spec 151 (ajuste post-implementación): sin esto, la entrada se mostraba
+    // aunque el módulo "cocina" estuviera desactivado para el tenant -- mismo
+    // criterio que 'inventario'/'promociones' más abajo.
+    moduleKey: 'cocina',
+    frame: { label: 'Cocina', icon: 'restaurant', group: 'Operación' },
+  },
 
   // ── CATÁLOGO ───────────────────────────────────────────────────────────
   {

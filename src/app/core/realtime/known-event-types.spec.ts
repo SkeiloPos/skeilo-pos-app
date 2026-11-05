@@ -24,6 +24,8 @@ const KNOWN_TYPES_MAP: Record<RealtimeEventType, true> = {
   'order.item_addon_added': true,
   'order.item_voided': true,
   'order.cancelled': true,
+  'order.sent_to_kitchen': true,
+  'order.kitchen_status_changed': true,
   'session.bill_changed': true,
   'payment.completed': true,
   'session.closed': true,

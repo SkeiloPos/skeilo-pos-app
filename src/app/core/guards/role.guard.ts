@@ -9,6 +9,7 @@ const ROLE_DEFAULT_ROUTES: Record<UserRole, string> = {
   [UserRole.ADMIN]: '/dashboard/admin',
   [UserRole.CASHIER]: '/dashboard/caja',
   [UserRole.MESERO]: '/dashboard/mesas-sesiones',
+  [UserRole.KITCHEN]: '/dashboard/cocina',
 };
 
 export const roleGuard =

@@ -1,5 +1,5 @@
 /** Rol asignable a un usuario del tenant por un admin (`RoleName` del backend). */
-export type RoleName = 'ADMIN' | 'CASHIER' | 'MESERO';
+export type RoleName = 'ADMIN' | 'CASHIER' | 'MESERO' | 'KITCHEN';
 
 /** Envoltura de paginación devuelta por el backend (`Page[UserResponse]`). */
 export interface Page<T> {

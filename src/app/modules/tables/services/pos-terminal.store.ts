@@ -1,4 +1,5 @@
 import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   MenuCategory,
   MenuOption,
@@ -45,6 +46,8 @@ import {
 } from '../interfaces/dining.interface';
 import {
   hasPendingKitchenWork,
+  kitchenBoardStatusClass,
+  kitchenBoardStatusLabel,
   orderAttendedBy,
   orderChannelLabel,
   orderStatusClass,
@@ -183,6 +186,10 @@ export interface OrderSummaryCardView {
   attendedByLabel?: string;
   attendedByValue?: string;
   channelLabel?: string;
+  /** spec 151 (ajuste post-implementación): estado del tablero de cocina,
+   *  presente solo con el módulo "cocina" activo — ver `order-status.util.ts`. */
+  kitchenStatusLabel?: string;
+  kitchenStatusClass?: string;
 }
 
 const STATUS_META: Record<TableDisplayStatus, { label: string; chip: string }> = {
@@ -1119,6 +1126,17 @@ export class PosTerminalStore {
           chipClass: latest ? orderStatusClass(latest.status) : meta.chip,
           paymentStatusLabel: latest?.payment_status ? paymentStatusLabel(latest.payment_status) : undefined,
           paymentStatusClass: latest?.payment_status ? paymentStatusClass(latest.payment_status) : undefined,
+          // spec 151 (ajuste post-implementación): estado del tablero de
+          // cocina del último pedido, visible solo con el módulo "cocina"
+          // activo para el tenant.
+          kitchenStatusLabel:
+            this.planSummary.includes('cocina') && latest?.kitchen_status
+              ? kitchenBoardStatusLabel(latest.kitchen_status)
+              : undefined,
+          kitchenStatusClass:
+            this.planSummary.includes('cocina') && latest?.kitchen_status
+              ? kitchenBoardStatusClass(latest.kitchen_status)
+              : undefined,
           // spec 147: igual que paymentStatusLabel, del último pedido de la
           // mesa -- con varios, a quién atendió el pedido más reciente sigue
           // siendo un dato útil en la tarjeta.
@@ -1207,6 +1225,12 @@ export class PosTerminalStore {
       // criterio que `tablesView()` con una sola orden.
       paymentStatusLabel: o.payment_status ? paymentStatusLabel(o.payment_status) : undefined,
       paymentStatusClass: o.payment_status ? paymentStatusClass(o.payment_status) : undefined,
+      // spec 151 (ajuste post-implementación): mismo criterio que
+      // `tablesView()` -- visible solo con el módulo "cocina" activo.
+      kitchenStatusLabel:
+        this.planSummary.includes('cocina') && o.kitchen_status ? kitchenBoardStatusLabel(o.kitchen_status) : undefined,
+      kitchenStatusClass:
+        this.planSummary.includes('cocina') && o.kitchen_status ? kitchenBoardStatusClass(o.kitchen_status) : undefined,
       secondaryLabel: o.customer_name || 'Consumidor final',
       elapsedLabel: this.sinceLabel(new Date(o.created_at).getTime()),
       attendedByLabel: attendedBy?.label,
@@ -1728,6 +1752,13 @@ export class PosTerminalStore {
       // Spec 147 (FR-020, R8): la acción única "Entregar" emite este evento.
       this.realtime.on('order.delivered', recargar),
       this.realtime.on('order.cancelled', recargar),
+      // Spec 150/151 (ajuste post-implementación): sin esto, el badge
+      // "Cocina" de tablesView() (derivado de kitchen_status) solo se
+      // actualiza si otro evento ya suscrito dispara una recarga -- el
+      // cajero/admin tenía que refrescar la página a mano para ver un
+      // movimiento hecho desde el tablero de cocina.
+      this.realtime.on('order.sent_to_kitchen', recargar),
+      this.realtime.on('order.kitchen_status_changed', recargar),
       this.realtime.on('order.item_kitchen_changed', recargar),
       this.realtime.on('order.item_voided', recargar),
       // spec 123: una adición se agregó a una línea -- recarga para traer el
@@ -3388,6 +3419,33 @@ export class PosTerminalStore {
       await this.reload();
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo entregar el pedido.'));
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /**
+   * Spec 150 (FR-001/FR-003/FR-004/FR-007): envía un pedido confirmado y
+   * pagado a la cola de preparación de cocina. `ALREADY_IN_KITCHEN` (409 —
+   * doble clic o reintento de red sobre un pedido que ya quedó en la cola,
+   * clarificación 2 de spec.md) se maneja en silencio: solo refresca, sin
+   * `toast.error`, porque el pedido ya está correctamente en la cola.
+   * Cualquier otro error sí muestra el toast, mismo molde que `deliverOrder`.
+   */
+  async sendToKitchen(orderId?: string): Promise<void> {
+    const order = orderId ? this.orders().find((o) => o.id === orderId) : this.selectedOrder();
+    if (!order) return;
+    this.submitting.set(true);
+    try {
+      await this.api.sendToKitchen(order.id);
+      await this.reload();
+    } catch (err) {
+      const body = err instanceof HttpErrorResponse ? (err.error as { error?: { code?: string } }) : null;
+      if (body?.error?.code === 'ALREADY_IN_KITCHEN') {
+        await this.reload();
+        return;
+      }
+      this.toast.error(this.api.extractError(err, 'No se pudo enviar el pedido a cocina.'));
     } finally {
       this.submitting.set(false);
     }

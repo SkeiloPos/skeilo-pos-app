@@ -169,6 +169,18 @@ export class DiningSessionService {
     );
   }
 
+  /**
+   * Spec 150 (FR-001/FR-003/FR-004): envía un pedido confirmado y pagado a la
+   * cola de preparación de cocina, idempotente -- un segundo envío responde
+   * 409 `ALREADY_IN_KITCHEN` (manejado en silencio por `PosTerminalStore`).
+   * Mismo molde que `deliverOrder`.
+   */
+  async sendToKitchen(orderId: string): Promise<DiningOrder> {
+    return firstValueFrom(
+      this.http.post<DiningOrder>(`${this.api}/orders/${orderId}/send-to-kitchen`, {}),
+    );
+  }
+
   // ── Intentos de pago (cajero, spec 024) ──────────────────────────────────
 
   /** Historial completo de intentos de pago de una orden (incluye rechazados

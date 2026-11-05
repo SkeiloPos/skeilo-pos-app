@@ -119,6 +119,7 @@ export class PlansPageComponent implements OnInit {
     const included = [
       plan.inventario_access && 'Inventario',
       plan.promociones_access && 'Promociones',
+      plan.cocina_access && 'Cocina',
     ].filter(Boolean);
     return included.length === 0 ? 'Ninguno' : included.join(', ');
   }

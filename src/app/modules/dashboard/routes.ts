@@ -92,9 +92,20 @@ export const dashboardRoutes: Routes = [
       { path: 'unit-measures', pathMatch: 'full', redirectTo: 'ajustes/unidades' },
       { path: 'option-groups', pathMatch: 'full', redirectTo: 'ajustes/grupos-opciones' },
       { path: 'tables', pathMatch: 'full', redirectTo: 'mesas' },
-      // El tablero de cocina se deprecó: la preparación se marca desde la
-      // terminal de mesas, en la misma pantalla donde se toma y se cobra.
-      { path: 'cocina', pathMatch: 'full', redirectTo: 'mesas-sesiones' },
+      {
+        // Spec 151: revive el tablero de cocina en tres columnas (antes solo
+        // un redirect, spec 149) -- rol KITCHEN nuevo con carga diferida,
+        // visible también para ADMIN/CASHIER (solo lectura).
+        path: 'cocina',
+        loadComponent: () =>
+          import('../kitchen/pages/kitchen-board-page.component').then(
+            (m) => m.KitchenBoardPageComponent,
+          ),
+        canActivate: [
+          roleGuard([UserRole.ADMIN, UserRole.CASHIER, UserRole.KITCHEN]),
+          planModuleGuard('cocina'),
+        ],
+      },
       {
         path: 'ventas',
         loadComponent: () =>

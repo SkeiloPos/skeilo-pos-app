@@ -69,11 +69,33 @@ export interface ItemVoidedEvent extends RealtimeBase {
   readonly replacement_item_id: string | null;
 }
 
+/** Spec 151 (research.md Decisión 0): `kitchen_status` de un pedido en la
+ *  cola de cocina cambió de columna (incluso hacia atrás). `version` es el
+ *  valor YA incrementado -- el tablero lo adopta para que un movimiento
+ *  posterior del mismo usuario use el `version` vigente. */
+export interface OrderKitchenStatusChangedEvent extends RealtimeBase {
+  readonly type: 'order.kitchen_status_changed';
+  readonly order_id: string;
+  readonly table_session_id: string | null;
+  readonly kitchen_status: 'SIN_PREPARAR' | 'EN_PROGRESO' | 'LISTO';
+  readonly version: number;
+}
+
 export interface OrderCancelledEvent extends RealtimeBase {
   readonly type: 'order.cancelled';
   readonly order_id: string;
   readonly table_session_id: string | null;
   readonly motivo: string | null;
+}
+
+/** Spec 150: un pedido entró a la cola de preparación de cocina (primera
+ *  transición, `kitchen_status` pasa de `null` a `'SIN_PREPARAR'`). El
+ *  tablero de cocina lo necesita para mostrar la tarjeta nueva sin recargar. */
+export interface OrderSentToKitchenEvent extends RealtimeBase {
+  readonly type: 'order.sent_to_kitchen';
+  readonly order_id: string;
+  readonly table_session_id: string | null;
+  readonly kitchen_status: 'SIN_PREPARAR';
 }
 
 /**
@@ -161,6 +183,8 @@ export type RealtimeEvent =
   | ItemAddonAddedEvent
   | ItemVoidedEvent
   | OrderCancelledEvent
+  | OrderSentToKitchenEvent
+  | OrderKitchenStatusChangedEvent
   | BillChangedEvent
   | PaymentCompletedEvent
   | SessionClosedEvent

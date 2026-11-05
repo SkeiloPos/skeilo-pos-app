@@ -57,6 +57,16 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
             <span style="color:var(--terminal-color-text-muted)">Estado de pago:</span>
             <span class="px-1.5 py-0.5 rounded-[6px] font-medium" [class]="paymentStatusClass">{{ paymentStatusLabel }}</span>
           </div>
+          @if (kitchenStatusLabel) {
+            <!-- Spec 151 (ajuste post-implementación): estado del tablero de
+                 cocina, visible solo con el módulo "cocina" activo
+                 (resuelto por quien arma el view-model). A pedido del
+                 usuario, va justo debajo de "Estado de pago". -->
+            <div class="flex items-center gap-1.5">
+              <span style="color:var(--terminal-color-text-muted)">Cocina:</span>
+              <span class="px-1.5 py-0.5 rounded-[6px] font-medium" [class]="kitchenStatusClass">{{ kitchenStatusLabel }}</span>
+            </div>
+          }
           @if (attendedByLabel && attendedByValue) {
             <div class="flex items-center gap-1.5 truncate">
               <span style="color:var(--terminal-color-text-muted)">{{ attendedByLabel }}:</span>
@@ -122,6 +132,11 @@ export class OrderSummaryCardComponent {
   @Input() attendedByLabel?: string;
   @Input() attendedByValue?: string;
   @Input() channelLabel?: string;
+  /** Spec 151: estado del tablero de cocina (`SIN_PREPARAR`/`EN_PROGRESO`/
+   *  `LISTO`), ya traducido -- ausente si el módulo "cocina" no está activo
+   *  o la orden no tiene `kitchen_status`. */
+  @Input() kitchenStatusLabel?: string;
+  @Input() kitchenStatusClass?: string;
 
   @Output() select = new EventEmitter<void>();
 }
