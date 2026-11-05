@@ -21,6 +21,7 @@ const ROLE_HOME: Record<UserRole, string> = {
   [UserRole.ADMIN]: '/dashboard/admin',
   [UserRole.CASHIER]: '/dashboard/caja',
   [UserRole.MESERO]: '/dashboard/mesas-sesiones',
+  [UserRole.KITCHEN]: '/dashboard/cocina',
 };
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -28,6 +29,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
   [UserRole.CASHIER]: 'Cajero',
   [UserRole.MESERO]: 'Mesero',
+  [UserRole.KITCHEN]: 'Cocina',
 };
 
 /** Validator: `new_password` and `confirm_password` must match. */

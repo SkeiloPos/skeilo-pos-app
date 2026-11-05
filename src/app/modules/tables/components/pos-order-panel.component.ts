@@ -3,7 +3,10 @@ import { Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { DiningOrder, KitchenStatus, getSidebarMode } from '../interfaces/dining.interface';
 import {
+  canDeliverOrder,
   canSendToKitchen,
+  kitchenBoardStatusClass,
+  kitchenBoardStatusLabel,
   kitchenStatusLabel,
   orderStatusClass,
   orderStatusLabel,
@@ -113,6 +116,16 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                         >{{ paymentStatusLabel(o.payment_status) }}</span
                       >
                     }
+                    @if (showKitchenBadge(o)) {
+                      <!-- Spec 151 (ajuste post-implementación): estado del
+                           tablero de cocina, visible fuera del tablero solo
+                           con el módulo "cocina" activo para el tenant. -->
+                      <span
+                        class="px-2 py-0.5 rounded-[6px] text-[11px] font-medium"
+                        [class]="kitchenBoardStatusClass(o.kitchen_status!)"
+                        >{{ kitchenBoardStatusLabel(o.kitchen_status!) }}</span
+                      >
+                    }
                   } @else if (store.selectedTableStatusMeta(); as meta) {
                     <span
                       class="px-2 py-0.5 rounded-[6px] text-[11px] font-medium"
@@ -153,7 +166,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                   (click)="store.deliverOrder(o.id)"
                   [disabled]="store.submitting()"
                   class="shrink-0 px-4 py-2 rounded-[8px] text-white text-[13px] font-semibold transition-colors disabled:opacity-40"
-                  style="background:var(--terminal-color-success,#16a34a)"
+                  style="background:var(--terminal-color-primary,#7c3aed)"
                 >
                   Entregar
                 </button>
@@ -544,15 +557,23 @@ export class PosOrderPanelComponent {
     this.router.navigate(['/dashboard/mesas-sesiones', tableId, 'orden-manual']);
   }
 
-  /** Spec 147 (FR-001/FR-002a): ¿tiene este pedido algún ítem sin entregar?
-   *  Muestra el botón "Entregar" tanto para la primera entrega como para una
-   *  re-entrega (ítems agregados después de la primera). Solo aplica a
-   *  pedidos de mesa (`dining_table_id`, manual o QR) -- a pedido del
-   *  usuario: mostrador, Domicilio y Para llevar quedan `entregada`+`PAID`
-   *  de una vez al cobrar (`checkout_and_send`, `orders/checkout.py`
-   *  backend), no tienen un paso de entrega propio que mostrar aquí. */
+  /** Spec 147 (FR-001/FR-002a) + spec 151 (ajuste post-implementación): ¿puede
+   *  entregarse este pedido? Solo aplica a pedidos de mesa (`dining_table_id`,
+   *  manual o QR) -- mostrador, Domicilio y Para llevar quedan
+   *  `entregada`+`PAID` de una vez al cobrar (`checkout_and_send`,
+   *  `orders/checkout.py` backend), no tienen un paso de entrega propio que
+   *  mostrar aquí. Con el módulo "cocina" activo, delega en `canDeliverOrder`
+   *  para exigir `kitchen_status === 'LISTO'` en vez de la regla anterior por
+   *  producto. */
   canDeliver(order: DiningOrder): boolean {
-    return !!order.dining_table_id && (order.items ?? []).some((it) => it.estado_cocina === 'pendiente');
+    return canDeliverOrder(order, this.planSummary.includes('cocina'));
+  }
+
+  /** Spec 151: ¿se muestra el badge de estado de cocina en el header del
+   *  pedido? Solo con el módulo "cocina" activo y una orden que ya entró al
+   *  tablero (`kitchen_status` no nulo). */
+  showKitchenBadge(order: DiningOrder): boolean {
+    return this.planSummary.includes('cocina') && !!order.kitchen_status;
   }
 
   /** Spec 150: ¿puede enviarse este pedido a la cola de cocina? Resuelve el
@@ -626,6 +647,9 @@ export class PosOrderPanelComponent {
   readonly orderStatusClass = orderStatusClass;
   readonly paymentStatusLabel = paymentStatusLabel;
   readonly paymentStatusClass = paymentStatusClass;
+  /** spec 151 (ajuste post-implementación): estado del tablero de cocina. */
+  readonly kitchenBoardStatusLabel = kitchenBoardStatusLabel;
+  readonly kitchenBoardStatusClass = kitchenBoardStatusClass;
 
   /** spec 131: color del badge de preparación con los tokens del rediseño
    *  (research.md, "modelo de caja") en vez de `kitchenStatusClass()`

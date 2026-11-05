@@ -3,6 +3,7 @@ export enum UserRole {
   ADMIN = 'admin',
   CASHIER = 'cashier',
   MESERO = 'mesero',
+  KITCHEN = 'kitchen',
 }
 
 export interface User {

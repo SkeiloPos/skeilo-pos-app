@@ -267,3 +267,52 @@ export function canSendToKitchen(
     cocinaAccess
   );
 }
+
+/**
+ * Spec 151 (ajuste post-implementación): ¿puede entregarse este pedido?
+ * Con el módulo "cocina" activo, una orden de mesa nunca se entrega sin
+ * haber pasado por el tablero de cocina hasta "LISTO" -- `kitchen_status`
+ * en `null` (nunca se envió a cocina) bloquea el botón igual que estar en
+ * "SIN PREPARAR"/"EN PROGRESO". Sin el módulo activo, se mantiene la regla
+ * anterior a nivel de producto (spec 147). `cocinaAccess` es el mismo
+ * gating de `PlanSummaryService.includes('cocina')` que usa
+ * `canSendToKitchen`, resuelto por quien llama.
+ */
+export function canDeliverOrder(
+  order: Pick<DiningOrder, 'status' | 'dining_table_id' | 'items' | 'kitchen_status'>,
+  cocinaAccess: boolean,
+): boolean {
+  if (!order.dining_table_id || order.status === 'entregada') return false;
+  if (cocinaAccess) return order.kitchen_status === 'LISTO';
+  return (order.items ?? []).some((it) => it.estado_cocina === 'pendiente');
+}
+
+/**
+ * Spec 151: etiqueta en español del `kitchen_status` del tablero de cocina
+ * (`'SIN_PREPARAR'|'EN_PROGRESO'|'LISTO'`), para mostrarlo fuera del propio
+ * tablero (tarjeta de mesa, panel de detalle). Eje distinto de
+ * `estado_cocina` a nivel de producto -- no reutilizar `kitchenStatusLabel`
+ * ni sus clases para este valor.
+ */
+const KITCHEN_BOARD_STATUS_LABELS: Record<string, string> = {
+  SIN_PREPARAR: 'Sin preparar',
+  EN_PROGRESO: 'En progreso',
+  LISTO: 'Listo',
+};
+
+export function kitchenBoardStatusLabel(status: string): string {
+  return KITCHEN_BOARD_STATUS_LABELS[status] ?? status;
+}
+
+// A pedido del usuario: en mayúscula, igual que ORDER_STATUS_CLASSES -- `uppercase`
+// es puramente visual (CSS `text-transform`), no cambia el texto que devuelve
+// `kitchenBoardStatusLabel`.
+const KITCHEN_BOARD_STATUS_CLASSES: Record<string, string> = {
+  SIN_PREPARAR: 'bg-amber-100 text-amber-700 uppercase',
+  EN_PROGRESO: 'bg-sky-100 text-sky-700 uppercase',
+  LISTO: 'bg-green-100 text-green-700 uppercase',
+};
+
+export function kitchenBoardStatusClass(status: string): string {
+  return KITCHEN_BOARD_STATUS_CLASSES[status] ?? 'bg-gray-100 text-gray-500 uppercase';
+}

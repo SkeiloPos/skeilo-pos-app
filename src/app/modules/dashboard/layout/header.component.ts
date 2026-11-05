@@ -15,6 +15,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
   [UserRole.CASHIER]: 'Cajero',
   [UserRole.MESERO]: 'Mesero',
+  [UserRole.KITCHEN]: 'Cocina',
 };
 
 const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
@@ -22,6 +23,7 @@ const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'bg-purple-100 text-purple-700',
   [UserRole.CASHIER]: 'bg-blue-100 text-blue-700',
   [UserRole.MESERO]: 'bg-amber-100 text-amber-700',
+  [UserRole.KITCHEN]: 'bg-emerald-100 text-emerald-700',
 };
 
 @Component({

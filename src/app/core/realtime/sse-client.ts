@@ -153,6 +153,14 @@ export const KNOWN_EVENT_TYPES = [
   'order.item_addon_added',
   'order.item_voided',
   'order.cancelled',
+  // Spec 150: el tablero de cocina necesita este frame para mostrar una
+  // tarjeta nueva sin recargar -- mismo riesgo que el resto de esta lista si
+  // no se registra.
+  'order.sent_to_kitchen',
+  // Spec 151: el tablero de cocina necesita este frame para retirar/mover
+  // tarjetas sin recargar -- mismo riesgo que el resto de esta lista si no
+  // se registra.
+  'order.kitchen_status_changed',
   'session.bill_changed',
   'payment.completed',
   'session.closed',

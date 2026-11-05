@@ -49,6 +49,10 @@ describe('Rutas del panel: guardia de módulo por pantalla (spec 141)', () => {
     expect(moduloDe(porCamino('promotions'))).toBe('promociones');
   });
 
+  it('/dashboard/cocina exige el módulo «cocina» (spec 151, ajuste post-implementación)', () => {
+    expect(moduloDe(porCamino('cocina'))).toBe('cocina');
+  });
+
   it('las pantallas de Proveedores conservan además la restricción por rol Administrador', () => {
     for (const camino of ['proveedores', 'proveedores/:id/detalle']) {
       expect((porCamino(camino).canActivate ?? []).length, camino).toBe(2);
@@ -56,7 +60,7 @@ describe('Rutas del panel: guardia de módulo por pantalla (spec 141)', () => {
   });
 
   it('ninguna otra ruta del panel está gobernada por un módulo (ventas, catálogo, pedidos y cobro nunca se bloquean)', () => {
-    const permitidas = new Set([...DE_INVENTARIO, 'promotions']);
+    const permitidas = new Set([...DE_INVENTARIO, 'promotions', 'cocina']);
     const sobrantes = rutas
       .filter((r) => moduloDe(r.route) !== null && !permitidas.has(r.path))
       .map((r) => `${r.path} → ${moduloDe(r.route)}`);
