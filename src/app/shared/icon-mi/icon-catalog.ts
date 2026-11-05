@@ -98,6 +98,8 @@ export const ICON_CATALOG: Record<string, string> = {
   chevron_left: 'chevron_left',
   chevron_right: 'chevron_right',
   tune: 'tune',
+  // spec 152: toggle de filtros colapsables de la Carta del menú en móvil.
+  filter_list: 'filter_list',
   sticky_note_2: 'sticky_note_2',
 
   // spec 106: estrella de proveedor preferido (un solo glifo; el estado

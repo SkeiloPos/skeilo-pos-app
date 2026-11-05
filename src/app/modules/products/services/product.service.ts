@@ -54,7 +54,8 @@ function toNameConflict(err: unknown): VariantNameConflict | null {
   return null;
 }
 
-/** Raw backend product. */
+/** Raw backend product de `GET /products/{id}`, `POST`/`PATCH /products` --
+ *  a diferencia de `ProductListItemResponse`, no está recortado (spec 152). */
 interface ProductResponse {
   id: string;
   /** spec 143. */
@@ -78,6 +79,27 @@ interface ProductResponse {
   visible_en_qr?: boolean;
   created_at: string;
   updated_at?: string | null;
+}
+
+/** Raw backend `ProductListResponse` de `GET /products` (spec 152, FR-008/SC-004):
+ *  recortado respecto de `ProductResponse` -- sin `code`, `description`,
+ *  `tracks_inventory`, `is_topping`, `visible_en_qr` ni `available_changed_by_name`
+ *  -- y con el precio resumido ya calculado por el backend. */
+interface ProductListItemResponse {
+  id: string;
+  category_id: string;
+  category_name?: string | null;
+  name: string;
+  image_url: string | null;
+  preparation_type: Product['preparation_type'];
+  active: boolean;
+  available: boolean;
+  available_changed_at?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  /** Decimal serializado por el backend -- string, igual que `VariantResponse.price`. */
+  price_display: string | null;
+  price_from: boolean;
 }
 
 /** spec 129: nombre de una adición asociada, denormalizado por el backend. */
@@ -178,11 +200,14 @@ export class ProductService {
   readonly activeFilter = signal<'' | 'active' | 'inactive'>('');
   /** spec 093 (FR-006): filtro "Disponibles"/"Agotados" de la Carta del menú. */
   readonly availabilityFilter = signal<'' | 'available' | 'sold_out'>('');
+  /** spec 152 (US2, FR-003/FR-004): filtro de categoría, combinado con AND al resto --
+   *  `''` = "Todas las categorías" (no se envía `category_id`). */
+  readonly categoryFilter = signal<string>('');
   /** true tras el primer `loadProducts()`; gatea el fetch para que construir el
    *  servicio vía DI (p. ej. desde otro módulo) no dispare una petición sola. */
   private readonly wantsPage = signal(false);
 
-  private readonly productsQuery = injectPagedQuery<ProductResponse>({
+  private readonly productsQuery = injectPagedQuery<ProductListItemResponse>({
     queryKey: () => [
       'products',
       'page',
@@ -192,6 +217,7 @@ export class ProductService {
         search: this.search().trim(),
         active: this.activeFilter(),
         available: this.availabilityFilter(),
+        category: this.categoryFilter(),
       },
     ],
     queryFn: () =>
@@ -201,13 +227,14 @@ export class ProductService {
         this.search().trim(),
         this.activeFilter(),
         this.availabilityFilter(),
+        this.categoryFilter(),
       ),
     enabled: () => this.wantsPage(),
   });
 
   readonly products = computed(() =>
     (this.productsQuery.data()?.items ?? [])
-      .map((p) => this.toProduct(p))
+      .map((p) => this.toProductListItem(p))
       .sort((a, b) => a.name.localeCompare(b.name)),
   );
   readonly total = computed(() => this.productsQuery.data()?.total ?? 0);
@@ -229,14 +256,18 @@ export class ProductService {
     search: string,
     activeFilter: '' | 'active' | 'inactive',
     availabilityFilter: '' | 'available' | 'sold_out' = '',
-  ): Promise<Page<ProductResponse>> {
+    categoryId: string = '',
+  ): Promise<Page<ProductListItemResponse>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (search) params = params.set('search', search);
     if (activeFilter === 'active') params = params.set('active', 'true');
     if (activeFilter === 'inactive') params = params.set('active', 'false');
     if (availabilityFilter === 'available') params = params.set('available', 'true');
     if (availabilityFilter === 'sold_out') params = params.set('available', 'false');
-    return firstValueFrom(this.http.get<Page<ProductResponse>>(this.productsUrl, { params }));
+    if (categoryId) params = params.set('category_id', categoryId);
+    return firstValueFrom(
+      this.http.get<Page<ProductListItemResponse>>(this.productsUrl, { params }),
+    );
   }
 
   /**
@@ -251,7 +282,7 @@ export class ProductService {
     );
     if (query) params = params.set('search', query);
     const page = await firstValueFrom(
-      this.http.get<Page<ProductResponse>>(this.productsUrl, { params }),
+      this.http.get<Page<ProductListItemResponse>>(this.productsUrl, { params }),
     );
     return page.items.map((p) => ({ id: p.id, name: p.name }));
   }
@@ -283,6 +314,14 @@ export class ProductService {
     this.loadProducts(1);
   }
 
+  /** Aplica el filtro de categoría (spec 152, US2, FR-003/FR-004) y recarga desde la
+   *  página 1, conservando los demás filtros activos (AND). `''` = "Todas las
+   *  categorías". */
+  setCategoryFilter(categoryId: string): void {
+    this.categoryFilter.set(categoryId);
+    this.loadProducts(1);
+  }
+
   async getProduct(id: string): Promise<Product | null> {
     try {
       const p = await firstValueFrom(this.http.get<ProductResponse>(`${this.productsUrl}/${id}`));
@@ -303,6 +342,12 @@ export class ProductService {
       );
       return {
         ...this.toProduct(p),
+        code: p.code,
+        description: p.description,
+        available_changed_by_name: p.available_changed_by_name ?? null,
+        tracks_inventory: p.tracks_inventory ?? false,
+        is_topping: p.is_topping ?? false,
+        visible_en_qr: p.visible_en_qr ?? true,
         variants: p.variants.map((v) => this.toVariant(v)),
         topping_ids: p.topping_ids ?? [],
       };
@@ -313,11 +358,13 @@ export class ProductService {
   }
 
   /**
-   * Spec 148 (T038, D15): reemplaza SOLO la fila `id` en la página que la
-   * query paginada tiene en caché, sin invalidar/recargar nada -- trae
-   * `available_changed_by_name`/`available_changed_at` (quién y cuándo marcó
-   * "Agotado"), que el evento de disponibilidad no lleva (no hay nombres de
-   * empleados en un canal que también oye el comensal).
+   * Spec 148 (T038, D15): reemplaza `available`/`available_changed_at` SOLO en la
+   * fila `id` de la página que la query paginada tiene en caché, sin invalidar ni
+   * recargar nada -- el evento de disponibilidad no trae quién/cuándo marcó
+   * "Agotado" (no hay nombres de empleados en un canal que también oye el
+   * comensal). Spec 152: solo se fusionan esos dos campos (no se reemplaza la fila
+   * entera) porque `GET /products/{id}` ya no comparte forma con la fila del
+   * listado -- reemplazarla perdería `price_display`/`price_from`/`category_name`.
    */
   async refreshOne(id: string): Promise<void> {
     let raw: ProductResponse;
@@ -335,14 +382,19 @@ export class ProductService {
         search: this.search().trim(),
         active: this.activeFilter(),
         available: this.availabilityFilter(),
+        category: this.categoryFilter(),
       },
     ];
-    this.queryClient.setQueryData<Page<ProductResponse>>(key, (old) => {
+    this.queryClient.setQueryData<Page<ProductListItemResponse>>(key, (old) => {
       if (!old) return old;
       const idx = old.items.findIndex((p) => p.id === id);
       if (idx === -1) return old;
       const items = [...old.items];
-      items[idx] = raw;
+      items[idx] = {
+        ...items[idx],
+        available: raw.available,
+        available_changed_at: raw.available_changed_at ?? null,
+      };
       return { ...old, items };
     });
   }
@@ -669,7 +721,7 @@ export class ProductService {
       // spec 102 (D4): nombre ya resuelto por el backend (spec 097), para el resguardo del
       // selector de categoría si quedó fuera de `allCategories()`.
       category_name: product.category_name ?? '',
-      description: product.description ?? '',
+      description: raw.description ?? '',
       preparation_type: product.preparation_type,
       image_url: product.image_url ?? '',
       // spec 088: la imagen vigente al abrir el formulario, para detectar un formulario
@@ -677,9 +729,9 @@ export class ProductService {
       image_url_base: product.image_url ?? null,
       active: product.active,
       hasSizes: variantDrafts.length > 1,
-      tracks_inventory: product.tracks_inventory,
-      is_topping: product.is_topping,
-      visible_en_qr: product.visible_en_qr,
+      tracks_inventory: raw.tracks_inventory ?? false,
+      is_topping: raw.is_topping ?? false,
+      visible_en_qr: raw.visible_en_qr ?? true,
       topping_ids: raw.topping_ids ?? [],
       toppingNames: Object.fromEntries((raw.toppings ?? []).map((t) => [t.id, t.name])),
       variants: variantDrafts,
@@ -884,25 +936,45 @@ export class ProductService {
     }
   }
 
+  /** Spec 152: `ProductResponse` (`GET /products/{id}`, create/update) no trae
+   *  `price_display`/`price_from` -- solo lo hace el listado. No se usan fuera del
+   *  listado (el detalle muestra el precio por presentación), así que se fijan en
+   *  sus valores vacíos aquí. */
   private toProduct(p: ProductResponse): Product {
     return {
       id: p.id,
-      code: p.code,
       category_id: p.category_id,
       category_name: p.category_name ?? null,
       name: p.name,
-      description: p.description,
       preparation_type: p.preparation_type,
       image_url: p.image_url,
       active: p.active,
       available: p.available ?? true,
       available_changed_at: p.available_changed_at ?? null,
-      available_changed_by_name: p.available_changed_by_name ?? null,
-      tracks_inventory: p.tracks_inventory ?? false,
-      is_topping: p.is_topping ?? false,
-      visible_en_qr: p.visible_en_qr ?? true,
       created_at: p.created_at,
       updated_at: p.updated_at,
+      price_display: null,
+      price_from: false,
+    };
+  }
+
+  /** Spec 152 (FR-005/FR-006): fila del listado (`GET /products`), con el precio
+   *  resumido ya calculado por el backend (data-model.md "Regla de cómputo"). */
+  private toProductListItem(p: ProductListItemResponse): Product {
+    return {
+      id: p.id,
+      category_id: p.category_id,
+      category_name: p.category_name ?? null,
+      name: p.name,
+      preparation_type: p.preparation_type,
+      image_url: p.image_url,
+      active: p.active,
+      available: p.available ?? true,
+      available_changed_at: p.available_changed_at ?? null,
+      created_at: p.created_at,
+      updated_at: p.updated_at,
+      price_display: p.price_display,
+      price_from: p.price_from,
     };
   }
 
