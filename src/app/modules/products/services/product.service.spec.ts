@@ -486,6 +486,32 @@ describe('ProductService', () => {
     });
   });
 
+  describe('filtro de categoría (spec 152, US2, FR-003/FR-004)', () => {
+    it('setCategoryFilter() incluye category_id en la petición y recarga desde la página 1', async () => {
+      service.loadProducts();
+      await tick();
+      http.expectOne((r) => r.url === PRODUCTS && r.method === 'GET').flush({
+        items: [productResponse()], total: 1, page: 1, size: 20, pages: 1,
+      });
+      await tick();
+
+      service.setCategoryFilter('c1');
+      await tick();
+      const req = http.expectOne((r) => r.url === PRODUCTS && r.method === 'GET');
+      expect(req.request.params.get('category_id')).toBe('c1');
+      expect(req.request.params.get('page')).toBe('1');
+      req.flush({ items: [productResponse()], total: 1, page: 1, size: 20, pages: 1 });
+    });
+
+    it('"Todas las categorías" (categoryId vacío) omite category_id de la petición', async () => {
+      service.loadProducts();
+      await tick();
+      const req = http.expectOne((r) => r.url === PRODUCTS && r.method === 'GET');
+      expect(req.request.params.has('category_id')).toBe(false);
+      req.flush({ items: [productResponse()], total: 1, page: 1, size: 20, pages: 1 });
+    });
+  });
+
   describe('refreshOne (spec 148, T038)', () => {
     it('reemplaza solo esa fila sin volver a pedir la página', async () => {
       service.loadProducts();
