@@ -27,18 +27,20 @@ export type OptionGroupSelectionMode = 'conteo' | 'cantidad';
 
 // --- Products ---
 
-/** A product (list/detail). Mirrors backend `ProductResponse`/`ProductListResponse`. */
+/**
+ * Un producto en el listado (`GET /products`). Mirrors backend `ProductListResponse`
+ * (spec 152, FR-008/SC-004): recortado a los campos que la tarjeta (móvil/tablet) o la
+ * fila de tabla (escritorio) despliegan. `code`, `description`, `tracks_inventory`,
+ * `is_topping`, `visible_en_qr` y `available_changed_by_name` ya no viajan en este
+ * payload -- solo están en {@link ProductDetail} (`GET /products/{id}`).
+ */
 export interface Product {
   id: string;
-  /** spec 143: identificador estable, autogenerado y editable, usado como
-   *  código de referencia cruzada por el export/import masivo de la carta. */
-  code: string;
   category_id: string;
   /** spec 097: resuelto por el backend, sin depender de `GET /categories` (tope 100
    *  por página) cargado aparte en el cliente. */
   category_name: string | null;
   name: string;
-  description: string | null;
   preparation_type: PreparationType;
   image_url: string | null;
   active: boolean;
@@ -47,6 +49,30 @@ export interface Product {
   /** spec 093 (FR-013): quién marcó/desmarcó `available` por última vez y cuándo.
    *  `null` = nunca se tocó el interruptor dedicado. */
   available_changed_at: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  /** spec 152 (data-model.md "Regla de cómputo"): precio de la única variante activa
+   *  con precio > 0, o el mínimo si hay varias; llega como string (igual que
+   *  `Variant.price`). `null` = ninguna variante activa tiene precio configurado
+   *  ("Sin precio" en el cliente). */
+  price_display: string | null;
+  /** `true` = hay ≥2 variantes activas con precio > 0: `price_display` es el mínimo y
+   *  el cliente antepone "Desde". */
+  price_from: boolean;
+}
+
+/**
+ * `GET /products/{id}` (spec 093, escenario 9): el detalle de solo lectura de la Carta
+ * del menú, con las presentaciones activas y su precio -- sin receta ni grupos de
+ * opciones (FR-018). Usado por {@link ProductDetailPageComponent}. A diferencia del
+ * listado, `ProductDetailResponse` no recorta ningún campo de `Product` (spec 152).
+ */
+export interface ProductDetail extends Product {
+  /** spec 143: identificador estable, autogenerado y editable, usado como
+   *  código de referencia cruzada por el export/import masivo de la carta. */
+  code: string;
+  description: string | null;
+  /** spec 093 (FR-013): quién marcó/desmarcó `available` por última vez y cuándo. */
   available_changed_by_name: string | null;
   /** Si el producto exige y aplica descuento de inventario en sus presentaciones. */
   tracks_inventory: boolean;
@@ -57,16 +83,6 @@ export interface Product {
    *  patrón que `Category.visible_en_qr` (spec 128). Ya resuelto por el backend:
    *  nunca `null`. */
   visible_en_qr: boolean;
-  created_at: string;
-  updated_at?: string | null;
-}
-
-/**
- * `GET /products/{id}` (spec 093, escenario 9): el detalle de solo lectura de la Carta
- * del menú, con las presentaciones activas y su precio -- sin receta ni grupos de
- * opciones (FR-018). Usado por {@link ProductDetailPageComponent}.
- */
-export interface ProductDetail extends Product {
   variants: Variant[];
   /** spec 129 (FR-002): adiciones asociadas a este producto. */
   topping_ids: string[];
