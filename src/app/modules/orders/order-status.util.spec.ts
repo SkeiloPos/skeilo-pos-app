@@ -1,5 +1,7 @@
 import { afterEach, vi } from 'vitest';
 import {
+  canDeliverOrder,
+  canSendToKitchen,
   kitchenStatusLabel,
   orderDisplayCode,
   orderLocationLabel,
@@ -140,6 +142,143 @@ describe('puedeCancelarComensal', () => {
   it('cancelada: no se puede cancelar de nuevo', () => {
     expect(
       puedeCancelarComensal({ status: 'cancelada', items: [{ estado_cocina: 'cancelado' } as any] }),
+    ).toBe(false);
+  });
+});
+
+/**
+ * Spec 151/153 (T015): ¿puede entregarse este pedido? Con `cocinaAccess`
+ * activo, solo `kitchen_status==='LISTO'` habilita "Entregar" -- nunca antes,
+ * y nunca junto a una acción de cobro activa (FR-003/FR-004 de spec 153: un
+ * pedido de mesa recién pagado automáticamente SIN_PREPARAR no es
+ * entregable hasta que cocina lo marque LISTO).
+ */
+describe('canDeliverOrder', () => {
+  it('con cocinaAccess activo y kitchen_status LISTO, permite entregar', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: 't1', items: [], kitchen_status: 'LISTO' },
+        true,
+      ),
+    ).toBe(true);
+  });
+
+  it('con cocinaAccess activo y kitchen_status distinto de LISTO, no permite entregar', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: 't1', items: [], kitchen_status: 'SIN_PREPARAR' },
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: 't1', items: [], kitchen_status: 'EN_PROGRESO' },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  /**
+   * Spec 153, FR-001/FR-002: con `cocinaAccess` activo, un pedido de mesa
+   * recién cobrado queda `kitchen_status==='SIN_PREPARAR'` (enviado a
+   * cocina en el mismo paso del cobro) -- en ese instante no hay ninguna
+   * acción de cobro pendiente (ya se cobró) y tampoco "Entregar" está
+   * habilitado (no es `LISTO` todavía): cobro activo y entrega nunca
+   * coexisten.
+   */
+  it('con cocinaAccess activo, un pedido recién enviado a cocina (SIN_PREPARAR) no es entregable aunque ya esté pagado', () => {
+    expect(
+      canDeliverOrder(
+        {
+          status: 'confirmado',
+          dining_table_id: 't1',
+          items: [],
+          kitchen_status: 'SIN_PREPARAR',
+        },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('con cocinaAccess activo y kitchen_status null (nunca se envió a cocina), no permite entregar', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: 't1', items: [], kitchen_status: null },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('sin mesa (dining_table_id null), nunca permite entregar sin importar cocinaAccess', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: null, items: [], kitchen_status: 'LISTO' },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('ya entregada, no permite entregar de nuevo', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'entregada', dining_table_id: 't1', items: [], kitchen_status: 'LISTO' },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('sin cocinaAccess (no-regresión, FR-006), gobierna estado_cocina por producto', () => {
+    expect(
+      canDeliverOrder(
+        {
+          status: 'confirmado',
+          dining_table_id: 't1',
+          items: [{ estado_cocina: 'pendiente' } as any],
+          kitchen_status: null,
+        },
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      canDeliverOrder(
+        {
+          status: 'confirmado',
+          dining_table_id: 't1',
+          items: [{ estado_cocina: 'entregado' } as any],
+          kitchen_status: null,
+        },
+        false,
+      ),
+    ).toBe(false);
+  });
+});
+
+/** Spec 150: ¿puede enviarse este pedido a la cola de cocina? */
+describe('canSendToKitchen', () => {
+  it('pagado, sin kitchen_status y con cocinaAccess, sí se puede enviar', () => {
+    expect(
+      canSendToKitchen({ status: 'confirmado', payment_status: 'PAID', kitchen_status: null }, true),
+    ).toBe(true);
+  });
+
+  it('sin cocinaAccess, no se puede enviar aunque esté pagado y sin kitchen_status', () => {
+    expect(
+      canSendToKitchen({ status: 'confirmado', payment_status: 'PAID', kitchen_status: null }, false),
+    ).toBe(false);
+  });
+
+  it('ya enviado a cocina (kitchen_status no nulo), no se puede reenviar', () => {
+    expect(
+      canSendToKitchen(
+        { status: 'confirmado', payment_status: 'PAID', kitchen_status: 'SIN_PREPARAR' },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('sin pagar, no se puede enviar', () => {
+    expect(
+      canSendToKitchen({ status: 'confirmado', payment_status: 'UNPAID', kitchen_status: null }, true),
     ).toBe(false);
   });
 });

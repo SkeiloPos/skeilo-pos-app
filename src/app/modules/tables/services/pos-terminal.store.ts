@@ -2948,10 +2948,20 @@ export class PosTerminalStore {
    * como ayuda operativa: entrega de una vez, con la acción única
    * `deliverOrder`, lo que el cajero vaya a cobrar y todavía no marcó.
    *
+   * Spec 153 (FR-001/FR-003): con el módulo de Cocina activo, cobrar y
+   * enviar a cocina es un solo paso -- el backend (`_charge_session`) ya
+   * envía el pedido a cocina tras el pago, sin pasar antes por "Entregar".
+   * Mostrar aquí el diálogo "Entregar y cobrar" revivía la causa raíz del
+   * bug reportado (cobro y entrega mezclados sin relación con el estado
+   * real de cocina), así que con `cocinaAccess` se omite por completo y el
+   * cobro procede directo.
+   *
    * Refresca **solo los pedidos**, nunca la cuenta: llega con el efectivo ya
    * tecleado, y un `bill` nuevo se lo borraría justo antes de cobrar.
    */
   readonly ensureReadyToCharge = async (): Promise<boolean> => {
+    if (this.planSummary.includes('cocina')) return true;
+
     const pedidos = this.ordersToCharge().filter((o) =>
       (o.items ?? []).some((i) => i.estado_cocina === 'pendiente'),
     );
