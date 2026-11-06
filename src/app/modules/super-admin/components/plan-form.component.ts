@@ -116,6 +116,20 @@ const QUITAR_INVENTARIO_MENSAJE =
             </label>
           </div>
 
+          <div class="space-y-2">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              Instrucción de pago del menú QR
+            </h3>
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+              <input type="radio" formControlName="modalidad_pago_qr" value="PAY_AFTER_RECEIVING" />
+              Pago después de recibir
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+              <input type="radio" formControlName="modalidad_pago_qr" value="PAY_BEFORE_RECEIVING" />
+              Pago antes de recibir
+            </label>
+          </div>
+
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Precio mensual</label>
@@ -184,6 +198,10 @@ export class PlanFormComponent implements OnInit {
     inventario_access: new FormControl(false, { nonNullable: true }),
     promociones_access: new FormControl(false, { nonNullable: true }),
     cocina_access: new FormControl(false, { nonNullable: true }),
+    modalidad_pago_qr: new FormControl<'PAY_AFTER_RECEIVING' | 'PAY_BEFORE_RECEIVING'>(
+      'PAY_AFTER_RECEIVING',
+      { nonNullable: true },
+    ),
     precio_mensual: new FormControl<number | null>(null),
     precio_anual: new FormControl<number | null>(null),
   });
@@ -196,6 +214,7 @@ export class PlanFormComponent implements OnInit {
       inventario_access: this.plan.inventario_access,
       promociones_access: this.plan.promociones_access,
       cocina_access: this.plan.cocina_access,
+      modalidad_pago_qr: this.plan.modalidad_pago_qr,
       precio_mensual: this.plan.precio_mensual !== null ? Number(this.plan.precio_mensual) : null,
       precio_anual: this.plan.precio_anual !== null ? Number(this.plan.precio_anual) : null,
     });
@@ -226,6 +245,7 @@ export class PlanFormComponent implements OnInit {
       inventario_access: raw.inventario_access,
       promociones_access: raw.promociones_access,
       cocina_access: raw.cocina_access,
+      modalidad_pago_qr: raw.modalidad_pago_qr,
       precio_mensual: raw.precio_mensual,
       precio_anual: raw.precio_anual,
       mesas_limit: raw.mesas_limit.unlimited ? null : raw.mesas_limit.value,

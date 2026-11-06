@@ -1,5 +1,7 @@
 import { afterEach, vi } from 'vitest';
 import {
+  canDeliverOrder,
+  canSendToKitchen,
   kitchenStatusLabel,
   orderDisplayCode,
   orderLocationLabel,
@@ -7,6 +9,7 @@ import {
   orderTypeLabel,
   paymentStatusLabel,
   puedeCancelarComensal,
+  qrPaymentInstructionMessage,
 } from './order-status.util';
 
 /**
@@ -144,6 +147,143 @@ describe('puedeCancelarComensal', () => {
   });
 });
 
+/**
+ * Spec 151/153 (T015): ¿puede entregarse este pedido? Con `cocinaAccess`
+ * activo, solo `kitchen_status==='LISTO'` habilita "Entregar" -- nunca antes,
+ * y nunca junto a una acción de cobro activa (FR-003/FR-004 de spec 153: un
+ * pedido de mesa recién pagado automáticamente SIN_PREPARAR no es
+ * entregable hasta que cocina lo marque LISTO).
+ */
+describe('canDeliverOrder', () => {
+  it('con cocinaAccess activo y kitchen_status LISTO, permite entregar', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: 't1', items: [], kitchen_status: 'LISTO' },
+        true,
+      ),
+    ).toBe(true);
+  });
+
+  it('con cocinaAccess activo y kitchen_status distinto de LISTO, no permite entregar', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: 't1', items: [], kitchen_status: 'SIN_PREPARAR' },
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: 't1', items: [], kitchen_status: 'EN_PROGRESO' },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  /**
+   * Spec 153, FR-001/FR-002: con `cocinaAccess` activo, un pedido de mesa
+   * recién cobrado queda `kitchen_status==='SIN_PREPARAR'` (enviado a
+   * cocina en el mismo paso del cobro) -- en ese instante no hay ninguna
+   * acción de cobro pendiente (ya se cobró) y tampoco "Entregar" está
+   * habilitado (no es `LISTO` todavía): cobro activo y entrega nunca
+   * coexisten.
+   */
+  it('con cocinaAccess activo, un pedido recién enviado a cocina (SIN_PREPARAR) no es entregable aunque ya esté pagado', () => {
+    expect(
+      canDeliverOrder(
+        {
+          status: 'confirmado',
+          dining_table_id: 't1',
+          items: [],
+          kitchen_status: 'SIN_PREPARAR',
+        },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('con cocinaAccess activo y kitchen_status null (nunca se envió a cocina), no permite entregar', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: 't1', items: [], kitchen_status: null },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('sin mesa (dining_table_id null), nunca permite entregar sin importar cocinaAccess', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: null, items: [], kitchen_status: 'LISTO' },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('ya entregada, no permite entregar de nuevo', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'entregada', dining_table_id: 't1', items: [], kitchen_status: 'LISTO' },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('sin cocinaAccess (no-regresión, FR-006), gobierna estado_cocina por producto', () => {
+    expect(
+      canDeliverOrder(
+        {
+          status: 'confirmado',
+          dining_table_id: 't1',
+          items: [{ estado_cocina: 'pendiente' } as any],
+          kitchen_status: null,
+        },
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      canDeliverOrder(
+        {
+          status: 'confirmado',
+          dining_table_id: 't1',
+          items: [{ estado_cocina: 'entregado' } as any],
+          kitchen_status: null,
+        },
+        false,
+      ),
+    ).toBe(false);
+  });
+});
+
+/** Spec 150: ¿puede enviarse este pedido a la cola de cocina? */
+describe('canSendToKitchen', () => {
+  it('pagado, sin kitchen_status y con cocinaAccess, sí se puede enviar', () => {
+    expect(
+      canSendToKitchen({ status: 'confirmado', payment_status: 'PAID', kitchen_status: null }, true),
+    ).toBe(true);
+  });
+
+  it('sin cocinaAccess, no se puede enviar aunque esté pagado y sin kitchen_status', () => {
+    expect(
+      canSendToKitchen({ status: 'confirmado', payment_status: 'PAID', kitchen_status: null }, false),
+    ).toBe(false);
+  });
+
+  it('ya enviado a cocina (kitchen_status no nulo), no se puede reenviar', () => {
+    expect(
+      canSendToKitchen(
+        { status: 'confirmado', payment_status: 'PAID', kitchen_status: 'SIN_PREPARAR' },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('sin pagar, no se puede enviar', () => {
+    expect(
+      canSendToKitchen({ status: 'confirmado', payment_status: 'UNPAID', kitchen_status: null }, true),
+    ).toBe(false);
+  });
+});
+
 /** spec 120, data-model.md "Ubicación mostrada": mismo criterio que ya usa hoy
  *  `orders-page.component.ts` (`tableLabel()`), extendido para ser consistente
  *  entre la tarjeta de la lista y el detalle. */
@@ -161,5 +301,57 @@ describe('orderLocationLabel', () => {
 
   it('sin mesa y es domicilio, no hay ubicación que mostrar (el bloque de domicilio ocupa su lugar)', () => {
     expect(orderLocationLabel({ dining_table_id: null, order_type: 'DELIVERY' }, null)).toBe('');
+  });
+});
+
+/** spec 154, data-model.md "Combinación modalidad + método de pago → mensaje
+ *  exacto" (FR-007/FR-008): las seis combinaciones + el caso sin instrucción. */
+describe('qrPaymentInstructionMessage', () => {
+  const efectivo = { is_cash: true, cash_amount: null };
+  const transferencia = { is_cash: false, cash_amount: null };
+  const mixto = { is_cash: false, cash_amount: 5000 };
+
+  it('PAY_AFTER_RECEIVING + efectivo', () => {
+    expect(qrPaymentInstructionMessage('PAY_AFTER_RECEIVING', efectivo)).toBe(
+      'Te llevaremos tu pedido a la mesa. Paga al recibirlo.',
+    );
+  });
+
+  it('PAY_AFTER_RECEIVING + transferencia', () => {
+    expect(qrPaymentInstructionMessage('PAY_AFTER_RECEIVING', transferencia)).toBe(
+      'Muestra el comprobante de tu banco al cajero cuando recibas tu pedido.',
+    );
+  });
+
+  it('PAY_AFTER_RECEIVING + mixto', () => {
+    expect(qrPaymentInstructionMessage('PAY_AFTER_RECEIVING', mixto)).toBe(
+      'Al recibir tu pedido, muestra el comprobante de la transferencia al cajero. El efectivo lo pagas al recibirlo.',
+    );
+  });
+
+  it('PAY_BEFORE_RECEIVING + efectivo', () => {
+    expect(qrPaymentInstructionMessage('PAY_BEFORE_RECEIVING', efectivo)).toBe(
+      'Dirígete a la caja para realizar el pago. ¡Llevaremos tu pedido hasta tu mesa!',
+    );
+  });
+
+  it('PAY_BEFORE_RECEIVING + transferencia', () => {
+    expect(qrPaymentInstructionMessage('PAY_BEFORE_RECEIVING', transferencia)).toBe(
+      'Acércate a la caja y muestra el comprobante de tu transferencia para validar el pago. ¡Llevaremos tu pedido hasta tu mesa!',
+    );
+  });
+
+  it('PAY_BEFORE_RECEIVING + mixto', () => {
+    expect(qrPaymentInstructionMessage('PAY_BEFORE_RECEIVING', mixto)).toBe(
+      'Acércate a la caja, presenta el comprobante de tu transferencia por Nequi y realiza el pago restante en efectivo. ¡Llevaremos tu pedido hasta tu mesa!',
+    );
+  });
+
+  it('mode null/no reconocido o sin intento de pago, devuelve null', () => {
+    expect(qrPaymentInstructionMessage(null, efectivo)).toBeNull();
+    expect(qrPaymentInstructionMessage(undefined, efectivo)).toBeNull();
+    expect(qrPaymentInstructionMessage('OTRO', efectivo)).toBeNull();
+    expect(qrPaymentInstructionMessage('PAY_AFTER_RECEIVING', null)).toBeNull();
+    expect(qrPaymentInstructionMessage('PAY_AFTER_RECEIVING', undefined)).toBeNull();
   });
 });

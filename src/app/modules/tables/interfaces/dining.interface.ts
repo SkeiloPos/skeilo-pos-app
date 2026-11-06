@@ -460,6 +460,13 @@ export interface DiningOrder {
    */
   pending_balance?: string;
   /**
+   * spec 154 (FR-005/FR-013/FR-014): modalidad de pago del menú QR del plan
+   * vigente del tenant, computada por el servidor — solo viaja en las
+   * respuestas de `cart/router.py` (comensal anónimo); `null`/ausente en
+   * cualquier endpoint de staff (POS/caja/cocina/terminal de mesas).
+   */
+  qr_payment_instruction_mode?: 'PAY_AFTER_RECEIVING' | 'PAY_BEFORE_RECEIVING' | null;
+  /**
    * spec 094 (FR-011): descuento agregado congelado en el pedido. Campo crudo,
    * publicado para otros consumidores — el Detalle de Orden **no lo consume**
    * (research.md D16).

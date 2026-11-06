@@ -1489,6 +1489,56 @@ describe('PosTerminalStore.ensureReadyToCharge', () => {
 
     await expect(promise).resolves.toBe(false);
   });
+
+  /**
+   * Spec 153, T005/FR-001/FR-003: con el módulo de Cocina activo, cobrar ya
+   * no exige entregar primero -- ni siquiera pregunta. El backend
+   * (`_charge_session`) envía a cocina tras el cobro; mostrar aquí
+   * "Entregar y cobrar" era la causa raíz del bug reportado.
+   */
+  it('con cocinaAccess activo, no pregunta ni entrega aunque haya ítems pendientes', async () => {
+    TestBed.inject(PlanSummaryService).summary.set({
+      plan_name: 'Plan de prueba',
+      ciclo_facturacion: null,
+      plan_vence_en: null,
+      vencido: false,
+      resources: {},
+      modules: { inventario: false, promociones: false, cocina: true },
+    });
+    store.orders.set([{ ...order('o1', 'pendiente', ['pendiente']), dining_table_id: 't1' }]);
+    store.sessionBill.set({
+      table_session_id: 'ts1', dining_table_id: 't1', total: '4000', order_ids: ['o1'], split: [],
+    });
+
+    await expect(store.ensureReadyToCharge()).resolves.toBe(true);
+    // Sin cocinaAccess, este mismo estado dispararía el diálogo; aquí no debe
+    // haberse llamado a `confirm.ask` ni al endpoint de entrega.
+    http.verify();
+  });
+
+  /**
+   * Spec 153, T006/FR-006: sin `cocinaAccess` (módulo inactivo), el
+   * comportamiento no cambia respecto al existente -- no-regresión de US3.
+   */
+  it('sin cocinaAccess, sigue preguntando y entregando antes de cobrar (no-regresión)', async () => {
+    store.orders.set([{ ...order('o1', 'pendiente', ['pendiente']), dining_table_id: 't1' }]);
+    store.sessionBill.set({
+      table_session_id: 'ts1', dining_table_id: 't1', total: '4000', order_ids: ['o1'], split: [],
+    });
+
+    const promise = store.ensureReadyToCharge();
+    confirm.respond(true);
+    await Promise.resolve();
+
+    const deliverReq = http.expectOne(`${API}/orders/o1/deliver`);
+    deliverReq.flush({ ...order('o1', 'entregada', ['entregado']), dining_table_id: 't1' });
+    await new Promise((resolve) => setTimeout(resolve));
+
+    const reloadReq = http.expectOne((r) => r.url === `${API}/orders` && r.params.get('active_sessions_only') === 'true');
+    reloadReq.flush([]);
+
+    await expect(promise).resolves.toBe(true);
+  });
 });
 
 // ── spec 036, FR-001/FR-003: pestaña de tipo de orden ──────────────────────

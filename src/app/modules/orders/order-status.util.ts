@@ -1,4 +1,5 @@
 import {
+  CurrentPaymentAttemptSummary,
   DiningOrder,
   DiningOrderStatus,
   KitchenStatus,
@@ -315,4 +316,54 @@ const KITCHEN_BOARD_STATUS_CLASSES: Record<string, string> = {
 
 export function kitchenBoardStatusClass(status: string): string {
   return KITCHEN_BOARD_STATUS_CLASSES[status] ?? 'bg-gray-100 text-gray-500 uppercase';
+}
+
+// ── Instrucción de pago del menú QR (spec 154) ─────────────────────────────
+
+type QrPaymentInstructionMode = 'PAY_AFTER_RECEIVING' | 'PAY_BEFORE_RECEIVING';
+
+/** Mensaje exacto por (modalidad, método de pago) — data-model.md "Combinación
+ * modalidad + método de pago → mensaje exacto" (FR-007/FR-008). Mismo texto que
+ * mostraba antes `confirmation-step.component.ts` para `PAY_AFTER_RECEIVING`
+ * (comportamiento actual, sin cambio); los tres de `PAY_BEFORE_RECEIVING` son
+ * nuevos. */
+const QR_PAYMENT_INSTRUCTION_MESSAGES: Record<
+  QrPaymentInstructionMode,
+  { cash: string; transfer: string; mixed: string }
+> = {
+  PAY_AFTER_RECEIVING: {
+    cash: 'Te llevaremos tu pedido a la mesa. Paga al recibirlo.',
+    transfer: 'Muestra el comprobante de tu banco al cajero cuando recibas tu pedido.',
+    mixed:
+      'Al recibir tu pedido, muestra el comprobante de la transferencia al cajero. El efectivo lo pagas al recibirlo.',
+  },
+  PAY_BEFORE_RECEIVING: {
+    cash: 'Dirígete a la caja para realizar el pago. ¡Llevaremos tu pedido hasta tu mesa!',
+    transfer:
+      'Acércate a la caja y muestra el comprobante de tu transferencia para validar el pago. ¡Llevaremos tu pedido hasta tu mesa!',
+    mixed:
+      'Acércate a la caja, presenta el comprobante de tu transferencia por Nequi y realiza el pago restante en efectivo. ¡Llevaremos tu pedido hasta tu mesa!',
+  },
+};
+
+/**
+ * Resuelve el texto exacto de instrucción de pago para la pantalla de
+ * confirmación del menú QR (spec 154, FR-007/FR-008), a partir de
+ * `OrderResponse.qr_payment_instruction_mode` y el intento de pago vigente
+ * del pedido. `null` cuando `mode` no es uno de los dos valores del catálogo
+ * (incluye `null`/`undefined`) o cuando `attempt` no describe uno de los tres
+ * métodos de pago soportados (efectivo/transferencia/mixto) — en ambos casos
+ * la pantalla no debe renderizar ningún bloque de instrucción.
+ */
+export function qrPaymentInstructionMessage(
+  mode: string | null | undefined,
+  attempt: Pick<CurrentPaymentAttemptSummary, 'is_cash' | 'cash_amount'> | null | undefined,
+): string | null {
+  if (mode !== 'PAY_AFTER_RECEIVING' && mode !== 'PAY_BEFORE_RECEIVING') return null;
+  if (!attempt) return null;
+
+  const messages = QR_PAYMENT_INSTRUCTION_MESSAGES[mode];
+  if (attempt.cash_amount != null) return messages.mixed;
+  if (attempt.is_cash) return messages.cash;
+  return messages.transfer;
 }

@@ -17,6 +17,7 @@ function makePlan(partial: Partial<Plan>): Plan {
     inventario_access: false,
     promociones_access: false,
     cocina_access: false,
+    modalidad_pago_qr: 'PAY_AFTER_RECEIVING',
     precio_mensual: null,
     precio_anual: null,
     created_at: '2026-10-01T00:00:00+00:00',
