@@ -9,6 +9,7 @@ import {
   orderTypeLabel,
   paymentStatusLabel,
   puedeCancelarComensal,
+  qrPaymentInstructionMessage,
 } from './order-status.util';
 
 /**
@@ -300,5 +301,57 @@ describe('orderLocationLabel', () => {
 
   it('sin mesa y es domicilio, no hay ubicación que mostrar (el bloque de domicilio ocupa su lugar)', () => {
     expect(orderLocationLabel({ dining_table_id: null, order_type: 'DELIVERY' }, null)).toBe('');
+  });
+});
+
+/** spec 154, data-model.md "Combinación modalidad + método de pago → mensaje
+ *  exacto" (FR-007/FR-008): las seis combinaciones + el caso sin instrucción. */
+describe('qrPaymentInstructionMessage', () => {
+  const efectivo = { is_cash: true, cash_amount: null };
+  const transferencia = { is_cash: false, cash_amount: null };
+  const mixto = { is_cash: false, cash_amount: 5000 };
+
+  it('PAY_AFTER_RECEIVING + efectivo', () => {
+    expect(qrPaymentInstructionMessage('PAY_AFTER_RECEIVING', efectivo)).toBe(
+      'Te llevaremos tu pedido a la mesa. Paga al recibirlo.',
+    );
+  });
+
+  it('PAY_AFTER_RECEIVING + transferencia', () => {
+    expect(qrPaymentInstructionMessage('PAY_AFTER_RECEIVING', transferencia)).toBe(
+      'Muestra el comprobante de tu banco al cajero cuando recibas tu pedido.',
+    );
+  });
+
+  it('PAY_AFTER_RECEIVING + mixto', () => {
+    expect(qrPaymentInstructionMessage('PAY_AFTER_RECEIVING', mixto)).toBe(
+      'Al recibir tu pedido, muestra el comprobante de la transferencia al cajero. El efectivo lo pagas al recibirlo.',
+    );
+  });
+
+  it('PAY_BEFORE_RECEIVING + efectivo', () => {
+    expect(qrPaymentInstructionMessage('PAY_BEFORE_RECEIVING', efectivo)).toBe(
+      'Dirígete a la caja para realizar el pago. ¡Llevaremos tu pedido hasta tu mesa!',
+    );
+  });
+
+  it('PAY_BEFORE_RECEIVING + transferencia', () => {
+    expect(qrPaymentInstructionMessage('PAY_BEFORE_RECEIVING', transferencia)).toBe(
+      'Acércate a la caja y muestra el comprobante de tu transferencia para validar el pago. ¡Llevaremos tu pedido hasta tu mesa!',
+    );
+  });
+
+  it('PAY_BEFORE_RECEIVING + mixto', () => {
+    expect(qrPaymentInstructionMessage('PAY_BEFORE_RECEIVING', mixto)).toBe(
+      'Acércate a la caja, presenta el comprobante de tu transferencia por Nequi y realiza el pago restante en efectivo. ¡Llevaremos tu pedido hasta tu mesa!',
+    );
+  });
+
+  it('mode null/no reconocido o sin intento de pago, devuelve null', () => {
+    expect(qrPaymentInstructionMessage(null, efectivo)).toBeNull();
+    expect(qrPaymentInstructionMessage(undefined, efectivo)).toBeNull();
+    expect(qrPaymentInstructionMessage('OTRO', efectivo)).toBeNull();
+    expect(qrPaymentInstructionMessage('PAY_AFTER_RECEIVING', null)).toBeNull();
+    expect(qrPaymentInstructionMessage('PAY_AFTER_RECEIVING', undefined)).toBeNull();
   });
 });

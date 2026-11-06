@@ -16,6 +16,8 @@ export interface Plan {
   promociones_access: boolean;
   cocina_access: boolean;
 
+  modalidad_pago_qr: 'PAY_AFTER_RECEIVING' | 'PAY_BEFORE_RECEIVING';
+
   precio_mensual: string | null;
   precio_anual: string | null;
 
@@ -39,6 +41,8 @@ export interface PlanCreatePayload {
   inventario_access?: boolean;
   promociones_access?: boolean;
   cocina_access?: boolean;
+
+  modalidad_pago_qr?: 'PAY_AFTER_RECEIVING' | 'PAY_BEFORE_RECEIVING';
 
   precio_mensual?: number | null;
   precio_anual?: number | null;

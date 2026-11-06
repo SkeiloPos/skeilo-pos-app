@@ -3,7 +3,11 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { DinerService } from '../../services/diner.service';
 import { DiningCartService } from '../../services/dining-cart.service';
 import { DiningOrder } from '../../interfaces/dining.interface';
-import { orderStatusClass, orderStatusLabel } from '../../../orders/order-status.util';
+import {
+  orderStatusClass,
+  orderStatusLabel,
+  qrPaymentInstructionMessage,
+} from '../../../orders/order-status.util';
 import { IconComponent } from '../../../../shared/icon/icon.component';
 import { MoneyPipe } from '../../../../shared/money.pipe';
 import { CheckoutProgressStore } from './checkout-progress.store';
@@ -79,8 +83,7 @@ import { CheckoutProgressStore } from './checkout-progress.store';
                 <span class="text-sm text-gray-400">Efectivo + Transferencia</span>
               </div>
               <p class="text-sm text-gray-600 leading-relaxed">
-                Al recibir tu pedido, muestra el comprobante de la transferencia al cajero. El
-                efectivo lo pagas al recibirlo.
+                {{ paymentInstruction(o) }}
               </p>
               <div class="border-t border-gray-200 pt-3 flex flex-col gap-1.5 text-sm">
                 <div class="flex justify-between items-baseline">
@@ -114,7 +117,7 @@ import { CheckoutProgressStore } from './checkout-progress.store';
               @if (o.current_payment_attempt?.is_cash) {
                 <p class="flex items-center gap-2 text-sm text-amber-700">
                   <span class="w-4 h-4 block shrink-0"><app-icon name="wallet" /></span>
-                  Te llevaremos tu pedido a la mesa. Paga al recibirlo.
+                  {{ paymentInstruction(o) }}
                 </p>
               } @else if (o.current_payment_attempt) {
                 <!-- spec 132 (A-144, FR-023): ya no depende de
@@ -123,7 +126,7 @@ import { CheckoutProgressStore } from './checkout-progress.store';
                      para su propia vista casi siempre llega en null. -->
                 <p class="flex items-center gap-2 text-sm text-amber-700">
                   <span class="w-4 h-4 block shrink-0"><app-icon name="clock" /></span>
-                  Muestra el comprobante de tu banco al cajero cuando recibas tu pedido.
+                  {{ paymentInstruction(o) }}
                 </p>
               }
             }
@@ -182,6 +185,17 @@ export class ConfirmationStepComponent implements OnInit {
 
   orderStatusClass(status: string): string {
     return orderStatusClass(status as DiningOrder['status']);
+  }
+
+  /** spec 154 (research.md Decisión 5): `qr_payment_instruction_mode` nulo
+   *  (pedido de un backend viejo o endpoint fuera de `cart/router.py`) se
+   *  trata como `PAY_AFTER_RECEIVING` — el comportamiento actual, nunca
+   *  oculta la instrucción. */
+  paymentInstruction(order: DiningOrder): string | null {
+    return qrPaymentInstructionMessage(
+      order.qr_payment_instruction_mode ?? 'PAY_AFTER_RECEIVING',
+      order.current_payment_attempt,
+    );
   }
 
   /** Total de un pago mixto — la suma que el comensal ya vio en el paso de
