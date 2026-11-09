@@ -8,12 +8,13 @@ import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { startVisibleInterval, VisibleInterval } from '../../../core/realtime/visible-interval';
 
 /**
- * Modal de importación masiva de la carta (spec 143). Sube un `.xlsx` (exportado
- * desde este mismo módulo o editado a mano), confirma de inmediato que quedó "en
+ * Modal de importación masiva de la carta (spec 143; fusión de hojas
+ * Productos/Presentaciones, spec 155). Sube un `.xlsx` (exportado desde este
+ * mismo módulo o editado a mano), confirma de inmediato que quedó "en
  * proceso" sin bloquear la pantalla (Historia 2) y sondea el resultado con
  * `startVisibleInterval` hasta que termina, mostrando el resumen (productos,
  * presentaciones, receta y adiciones creados/actualizados/fallidos, agregados en
- * las 4 hojas) y el reporte de errores descargable.
+ * las 3 hojas) y el reporte de errores descargable.
  *
  * Al abrirse, consulta `getCurrentImportJob()` para encontrar un import ya en
  * curso o recién terminado -- mismo criterio que
