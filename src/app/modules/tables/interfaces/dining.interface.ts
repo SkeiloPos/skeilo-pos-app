@@ -685,6 +685,12 @@ export interface CloseSessionPayload {
   splits?: SplitPayment[];
   /** Spec 125 (FR-007): `RealtimeService.clientId` de esta terminal. */
   origin_client_id?: string | null;
+  /**
+   * Spec 156: acota el cobro a este subconjunto de pedidos de la sesión. Solo
+   * tiene efecto en `/charge` (no en `/close`, que siempre cobra todo). Sin
+   * valor, comportamiento actual (cobra todos los facturables).
+   */
+  order_ids?: string[];
 }
 
 /** Respuesta del cierre (`CloseSessionResponse`). */

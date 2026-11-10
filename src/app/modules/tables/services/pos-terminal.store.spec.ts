@@ -698,6 +698,15 @@ describe('PosTerminalStore.loadSessionBill — billOrphan (hotfix spec 029)', ()
  * inofensivo: cobrar SIEMPRE cerraba la sesión, así que nadie necesitaba
  * leerlo después) -- el panel se quedaba completamente en blanco, sin
  * "Liberar Mesa" ni ninguna otra acción.
+ *
+ * Spec 156 (bugfix A-156): `onCharged()` llamaba a `loadSessionBill` DOS
+ * veces -- una directa, en paralelo con `reload()` (que ya la hace por su
+ * cuenta, correctamente después de recargar `orders()`). Ya no se mockea
+ * `reload()` entero (eso escondía ambas llamadas detrás de un solo mock) --
+ * se mockean sus dos dependencias internas para que el `reload()` real
+ * llegue hasta su propio `loadSessionBill`, y así el test sigue viendo
+ * exactamente la MISMA secuencia HTTP que antes, pero a través del único
+ * camino que ahora existe.
  */
 describe('PosTerminalStore.onCharged — refresca sessionBill tras cobrar (bugfix)', () => {
   let store: PosTerminalStore;
@@ -716,20 +725,31 @@ describe('PosTerminalStore.onCharged — refresca sessionBill tras cobrar (bugfi
     });
     store = TestBed.inject(PosTerminalStore);
     http = TestBed.inject(HttpTestingController);
+    vi.spyOn((store as any).tableService, 'loadTables').mockResolvedValue(undefined);
+    vi.spyOn(store as any, 'reloadOrders').mockResolvedValue(undefined);
   });
 
   afterEach(() => http.verify());
 
   it('deja sessionBill recargado (no null) para la mesa seleccionada', async () => {
     store.selectedTableId.set('t1');
-    vi.spyOn(store, 'reload').mockResolvedValue(undefined);
 
     const promise = store.onCharged({ table_session: {} as never, sale_ids: [] });
 
+    // `reload()` pasa primero por `loadTables()`/`reloadOrders()` (mockeados,
+    // resuelven en un microtask) antes de llegar a su propio
+    // `loadSessionBill` -- a diferencia de la llamada directa que existía
+    // antes (spec 156, bugfix A-156), la petición ya no sale en el mismo
+    // tick que `onCharged`.
+    await new Promise((r) => setTimeout(r));
+    // Una sola secuencia de red: `expectOne` ya falla si hubiera una segunda
+    // coincidencia -- confirma que no compiten dos round-trips a la vez
+    // (antes había uno disparado por `reload()` y otro directo en el
+    // `Promise.all` de `onCharged`).
     const sessionsReq = http.expectOne(`${API}/table-sessions`);
     sessionsReq.flush([{ id: 'ts1', dining_table_id: 't1', status: 'active' } as never]);
     // `loadSessionBill` pide .../bill recién después de resolver la lista de
-    // sesiones -- hace falta un tick de microtarea antes de que exista.
+    // sesiones -- hace falta otro tick de microtarea antes de que exista.
     await new Promise((r) => setTimeout(r));
     const billReq = http.expectOne(`${API}/table-sessions/ts1/bill`);
     billReq.flush({ table_session_id: 'ts1', dining_table_id: 't1', total: '0', order_ids: [], split: [] });
@@ -738,6 +758,23 @@ describe('PosTerminalStore.onCharged — refresca sessionBill tras cobrar (bugfi
 
     expect(store.sessionBill()).not.toBeNull();
     expect(store.sessionBill()?.table_session_id).toBe('ts1');
+  });
+
+  it('limpia selectedChargeOrderIds de forma síncrona (spec 156, bugfix A-156)', async () => {
+    store.selectedTableId.set('t1');
+    store.selectedChargeOrderIds.set(new Set(['o-recien-cobrado']));
+
+    const promise = store.onCharged({ table_session: {} as never, sale_ids: [] });
+
+    // Sin esperar ningún microtask: la limpieza debe ser inmediata, no
+    // depender de que `orders()` ya se haya recargado.
+    expect(store.selectedChargeOrderIds().size).toBe(0);
+    expect(store.chargeOrderIdsParam()).toBeUndefined();
+
+    // Drena las peticiones pendientes para no dejar el test con handles sueltos.
+    await new Promise((r) => setTimeout(r));
+    http.expectOne(`${API}/table-sessions`).flush([]);
+    await promise;
   });
 });
 
