@@ -1,4 +1,4 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
@@ -55,9 +55,22 @@ export class TableSessionService {
     return firstValueFrom(this.http.get<TableSession>(`${this.api}/table-sessions/${id}`));
   }
 
-  /** Cuenta de la sesión: total + desglose por comensal. */
-  bill(id: string): Promise<SessionBill> {
-    return firstValueFrom(this.http.get<SessionBill>(`${this.api}/table-sessions/${id}/bill`));
+  /**
+   * Cuenta de la sesión: total + desglose por comensal.
+   *
+   * `orderIds` (spec 156) acota la cuenta a ese subconjunto de pedidos; sin
+   * él (u omitiendo la lista vacía), comportamiento actual sin cambios.
+   */
+  bill(id: string, orderIds?: string[]): Promise<SessionBill> {
+    let params = new HttpParams();
+    if (orderIds?.length) {
+      for (const orderId of orderIds) {
+        params = params.append('order_ids', orderId);
+      }
+    }
+    return firstValueFrom(
+      this.http.get<SessionBill>(`${this.api}/table-sessions/${id}/bill`, { params }),
+    );
   }
 
   /**

@@ -220,6 +220,14 @@ export class SessionBillPanelComponent implements OnChanges {
    * que ya se vea el panel.
    */
   @Input() prefillPayment: PaymentDraft | null = null;
+  /**
+   * Spec 156: subconjunto de pedidos a cobrar en esta transacción (`order_ids`
+   * del body). `undefined` o vacío significa "todos" -- comportamiento
+   * actual, sin selección. Solo tiene efecto real al cobrar vía `/charge`
+   * (`keepTableOpen`); el backend ignora `order_ids` en `/close`, que siempre
+   * cobra todo (D2 de research.md).
+   */
+  @Input() chargeOrderIds: string[] | undefined;
   /** Cierre completo: sus `sale_ids` son la fuente de la factura impresa. */
   @Output() charged = new EventEmitter<CloseSessionResponse>();
 
@@ -341,6 +349,7 @@ export class SessionBillPanelComponent implements OnChanges {
       // Vacío no se manda: el backend cae a los comensales o a la mesa.
       ...(nombre ? { customer_name: nombre } : {}),
       origin_client_id: this.realtime.clientId,
+      ...(this.chargeOrderIds?.length ? { order_ids: this.chargeOrderIds } : {}),
     };
   }
 
