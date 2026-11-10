@@ -406,6 +406,29 @@ export class PosTerminalStore {
       this.pollHandle?.setPeriod(abierto ? ORDERS_POLL_SSE_MS : ORDERS_POLL_MS);
     });
 
+    // Spec 156 (D7 de research.md): la selección de cobro se reinicia a
+    // "todos los pedidos sin cobrar" al cambiar de mesa, o cuando el CONJUNTO
+    // de pedidos cobrables de la mesa actual cambia de verdad (uno nuevo
+    // llega, o uno se paga en otra terminal) -- `chargeableOrderIds()` ya
+    // tiene igualdad por contenido (ver su definición), así que un refresco
+    // en segundo plano sin cambios reales ya no dispara este reset. Bugfix:
+    // sin esa igualdad por contenido, CUALQUIER recarga de `orders()`
+    // (sondeo, o un evento de tiempo real de OTRA mesa del negocio) producía
+    // un arreglo nuevo aunque el conjunto de ids no cambiara, y este efecto
+    // lo tomaba como "cambió de verdad" -- borraba la selección de un pedido
+    // específico a mitad de que el cajero revisaba su pago (spec 153,
+    // "cobrar sin entregar": esa revisión alarga la ventana de la carrera) y
+    // terminaba cobrando TODOS los pedidos en vez de solo el elegido. Se lee
+    // `selectedTableId()` fuera de `untracked` a propósito: cambiar de mesa
+    // debe resetear siempre, incluso en el caso límite de que ambas mesas
+    // tengan el mismo conjunto (vacío) de pedidos cobrables. Sin red: solo
+    // sincroniza un `Set` local, no dispara ningún fetch.
+    effect(() => {
+      this.selectedTableId();
+      const unpaidIds = this.chargeableOrderIds();
+      untracked(() => this.selectedChargeOrderIds.set(new Set(unpaidIds)));
+    });
+
     // Spec 134 (FR-019, M6): el borrador solo vive en memoria; una recarga automática
     // por versión nueva lo perdería. Mientras haya líneas sin enviar, no es un momento
     // seguro. La orden manual usa su propia instancia de este store, así que queda cubierta.
@@ -477,6 +500,15 @@ export class PosTerminalStore {
   readonly orders = signal<DiningOrder[]>([]);
   readonly selectedTableId = signal<string | null>(null);
   readonly selectedOrderId = signal<string | null>(null);
+  /**
+   * Spec 156 (US1/US2): pedidos de la mesa seleccionada que el cajero quiere
+   * incluir en la próxima transacción de cobro. Se reinicia a "todos los
+   * `orderTabs()` pendientes" cada vez que cambia `sessionBill()` (ver efecto
+   * en el constructor) -- mismo criterio de reset que ya usa `ngOnChanges` en
+   * `session-bill-panel.component.ts` al cambiar `bill`, para que "cobrar
+   * todo" siga siendo el comportamiento por defecto (Principio II).
+   */
+  readonly selectedChargeOrderIds = signal<Set<string>>(new Set());
   readonly draftLines = signal<DraftLine[]>([]);
   readonly customerName = signal('');
   /** Datos de entrega del borrador "Domicilio" (spec 056) — solo relevantes
@@ -1010,8 +1042,67 @@ export class PosTerminalStore {
           id: o.id,
           label: o.table_order_number != null ? `Pedido ${o.table_order_number}` : 'Pedido',
           pending: o.status === 'pendiente' && o.channel === 'QR_MENU',
+          // Spec 156 (US3): estado de pago por pestaña -- mismo par ya usado
+          // en `tablesView()`/`order-summary-card.component.ts`, ahora
+          // también visible aquí, donde el cajero elige qué cobrar.
+          paid: o.paid,
+          paymentStatusLabel: o.payment_status ? paymentStatusLabel(o.payment_status) : undefined,
+          paymentStatusClass: o.payment_status ? paymentStatusClass(o.payment_status) : undefined,
         }))
       : [];
+  });
+
+  /**
+   * Ids de los pedidos de la mesa seleccionada aún sin cobrar -- universo de
+   * selección de `selectedChargeOrderIds`/`chargeOrderIdsParam` (spec 156).
+   *
+   * Bugfix: `equal` por contenido (no la igualdad por referencia por
+   * defecto) -- sin esto, cualquier refresco de `orders()` en segundo plano
+   * (sondeo, o un evento de tiempo real de OTRA mesa del negocio) produce un
+   * arreglo nuevo aunque el conjunto de ids no cambie, y el efecto de reset
+   * del constructor lo toma como "cambió de verdad" -- borra la selección de
+   * un pedido específico a mitad de que el cajero revisa su pago (spec 153,
+   * "cobrar sin entregar": esa revisión alarga la ventana de la carrera) y
+   * termina cobrando TODOS los pedidos en vez de solo el elegido.
+   */
+  private readonly chargeableOrderIds = computed(
+    () => this.orderTabs().filter((t) => !t.paid).map((t) => t.id),
+    { equal: (a, b) => a.length === b.length && a.every((id) => b.includes(id)) },
+  );
+
+  /**
+   * Acota la selección a un único pedido (spec 156, US1): elegir una pestaña
+   * "Pedido N" para verla no solo enfoca su carrito (`selectOrder()`) --
+   * también deja ESE pedido como el único a cobrar. Sin ninguna pestaña
+   * elegida, la selección sigue siendo "todos" (comportamiento por defecto).
+   *
+   * Bugfix (a pedido del usuario): si el pedido ya está pagado, no hay nada
+   * que cobrar de él -- no toca la selección (ni dispara un refresco). Sin
+   * este guard, elegir la pestaña de un pedido YA PAGADO (solo para ver su
+   * detalle) lo dejaba como único seleccionado para cobrar, y el backend lo
+   * rechazaba con 409 ("Algunos pedidos seleccionados no se pueden
+   * cobrar."), aunque el cajero no tuviera ninguna intención de cobrarlo.
+   */
+  selectChargeOrderOnly(orderId: string): void {
+    if (!this.chargeableOrderIds().includes(orderId)) return;
+    this.selectedChargeOrderIds.set(new Set([orderId]));
+    void this.loadSessionBill(this.selectedTableId());
+  }
+
+  /**
+   * `order_ids` a mandar en el próximo `/bill`/`/charge` (spec 156).
+   * `undefined` si la selección cubre exactamente todos los pedidos
+   * facturables actuales (incluido el caso sin selección explícita, p. ej.
+   * antes de la primera carga) -- para no romper el caso por defecto
+   * "cobrar todo" (Principio II). El arreglo de ids seleccionados en
+   * cualquier otro caso (hoy, solo el de `selectChargeOrderOnly`).
+   */
+  readonly chargeOrderIdsParam = computed<string[] | undefined>(() => {
+    const selected = this.selectedChargeOrderIds();
+    const all = this.chargeableOrderIds();
+    if (selected.size === 0) return undefined;
+    if (selected.size === all.length && all.every((id) => selected.has(id))) return undefined;
+    return [...selected];
   });
 
   /**
@@ -3067,7 +3158,12 @@ export class PosTerminalStore {
     try {
       const sessions = await this.tableSessions.list();
       const session = sessions.find((s) => s.dining_table_id === tableId);
-      this.sessionBill.set(session ? await this.tableSessions.bill(session.id) : null);
+      // Spec 156 (D5 de research.md): acota el preview al subconjunto que el
+      // cajero tenga seleccionado -- `undefined` (selección = "todos") deja
+      // el comportamiento actual sin cambios.
+      this.sessionBill.set(
+        session ? await this.tableSessions.bill(session.id, this.chargeOrderIdsParam()) : null,
+      );
       // Sin sesión pero con pedidos vivos SIN PAGAR: la mesa no se puede
       // cobrar y hay que decirlo, no dejar el panel como si estuviera vacía.
       // Spec 029 hotfix: antes contaba cualquier pedido no terminal, sin
@@ -3077,7 +3173,13 @@ export class PosTerminalStore {
       this.billOrphan.set(!session && this.tableOrders(tableId).some((o) => !o.paid));
     } catch (err) {
       this.sessionBill.set(null);
-      this.billOrphan.set(false);
+      // Spec 156 (bugfix A-156): antes fijo en `false` sin condición -- un
+      // error transitorio (p. ej. el 409 de `_resolve_orders_to_charge` en
+      // la carrera de `onCharged`) tapaba un huérfano real y mostraba
+      // "Selecciona una mesa con consumo." aunque la mesa sí tuviera consumo
+      // sin cobrar. Mismo criterio que la rama de éxito (arriba): huérfano
+      // si hay algún pedido vivo de la mesa sin pagar.
+      this.billOrphan.set(!!tableId && this.tableOrders(tableId).some((o) => !o.paid));
       this.error.set(this.tableSessions.extractError(err, 'No se pudo cargar la cuenta.'));
     } finally {
       this.billLoading.set(false);
@@ -3256,6 +3358,17 @@ export class PosTerminalStore {
    * quedarse.
    */
   async onCharged(closed: CloseSessionResponse): Promise<void> {
+    // Spec 156 (bugfix A-156): limpia la selección de cobro parcial ANTES de
+    // cualquier `await` -- si no, un `loadSessionBill` disparado por el
+    // refresco de abajo puede leer todavía el pedido recién cobrado en
+    // `selectedChargeOrderIds` (el efecto de reset, más arriba en el
+    // constructor, solo corre cuando `chargeableOrderIds()` cambia de valor,
+    // es decir, después de que `orders()` se recargue) y el backend lo
+    // rechaza con 409 (`_resolve_orders_to_charge`, ya no es facturable) --
+    // el cajero veía "Algunos pedidos seleccionados no se pueden cobrar."/
+    // "Selecciona una mesa con consumo." sin que hubiera ningún problema
+    // real.
+    this.selectedChargeOrderIds.set(new Set());
     const total = Number(this.sessionBill()?.total ?? 0);
     this.lastSale.set({ total, customer: this.customerName() || 'Mesa' });
     this.successOpen.set(true);
@@ -3263,12 +3376,13 @@ export class PosTerminalStore {
     const tableId = this.selectedTableId();
     // Spec 147 ciclo 2 (bugfix): con `keepTableOpen`, cobrar ya no cierra la
     // sesión -- la mesa se queda seleccionada y "Liberar Mesa" (footer de
-    // `pos-checkout-panel.component.ts`) depende de `sessionBill()`. Antes
-    // de esta spec bastaba con `reload()` porque cobrar SIEMPRE cerraba la
-    // sesión (quedaba `null` para siempre, pero nadie lo necesitaba leer: la
-    // mesa ya no estaba seleccionada). Sin este refresh, el panel se quedaba
-    // completamente en blanco -- sin "Liberar Mesa" ni ningún otro botón.
-    await Promise.all([this.loadReceipts(closed), this.reload(), this.loadSessionBill(tableId)]);
+    // `pos-checkout-panel.component.ts`) depende de `sessionBill()`.
+    // `reload()` (más abajo) ya refresca `sessionBill` por su cuenta, DESPUÉS
+    // de recargar `orders()` -- spec 156 (bugfix A-156): llamar aquí también
+    // a `loadSessionBill` en paralelo era redundante y competía con esa
+    // secuencia; si este round-trip resolvía primero, `chargeOrderIdsParam()`
+    // todavía apuntaba al pedido recién cobrado (ver el `set` de arriba).
+    await Promise.all([this.loadReceipts(closed), this.reload()]);
     // No se toca `selectedOrderId`: si el pedido seleccionado seguía
     // existiendo tras el cierre (p. ej. la mesa tenía otro pedido en
     // paralelo sin incluir en este cobro, A-138), `selectedOrder()` lo sigue

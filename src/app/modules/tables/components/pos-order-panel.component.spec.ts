@@ -818,6 +818,9 @@ describe('PosOrderPanelComponent — cabecera y pestañas (spec 049)', () => {
     fixture.detectChanges();
 
     expect(store.selectedOrderId()).toBe('o2');
+    // Spec 156: elegir una pestaña también acota el cobro a ese pedido, lo
+    // que refresca `/bill` -- se responde para no dejar la petición abierta.
+    http.expectOne(`${API}/table-sessions`).flush([]);
   });
 
   it('con un único pedido activo no aparece ningún selector de pestañas', () => {
@@ -838,6 +841,174 @@ describe('PosOrderPanelComponent — cabecera y pestañas (spec 049)', () => {
 
     expect(findButton('+ Nuevo pedido')).toBeUndefined();
     expect(fixture.nativeElement.textContent).not.toContain('Nuevo pedido');
+  });
+});
+
+/** Spec 156 (US1/US2/US3): selección de cobro + badge de pago por pestaña. */
+describe('PosOrderPanelComponent — selección de cobro por pedido (spec 156)', () => {
+  let fixture: ComponentFixture<PosOrderPanelComponent>;
+  let store: PosTerminalStore;
+  let tableService: TableService;
+  let http: HttpTestingController;
+
+  function pedido(
+    id: string,
+    paymentStatus: 'PAID' | 'UNPAID',
+  ): DiningOrder {
+    return {
+      id,
+      channel: 'POS',
+      status: 'entregada',
+      dining_table_id: 't1',
+      customer_name: 'Deimer Hernandez',
+      table_order_number: Number(id.replace(/\D/g, '')) || null,
+      created_at: '2026-08-21T08:10:00',
+      paid: paymentStatus === 'PAID',
+      payment_status: paymentStatus,
+      items: [{ id: `${id}-i1`, product_variant_id: 'v1', quantity: 1, unit_price: '4000', estado_cocina: 'entregado' }],
+    } as DiningOrder;
+  }
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [PosOrderPanelComponent],
+      providers: [
+        PosTerminalStore,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(new QueryClient()),
+        { provide: PromotionService, useValue: { loadActive: () => {}, activePromotions: () => [], ready: () => false, now: () => new Date() } },
+      ],
+    });
+
+    fixture = TestBed.createComponent(PosOrderPanelComponent);
+    store = TestBed.inject(PosTerminalStore);
+    tableService = TestBed.inject(TableService);
+    http = TestBed.inject(HttpTestingController);
+    tableService.tables.set([table({ id: 't1', number: 2, status: 'ocupada' })]);
+  });
+
+  afterEach(() => http.verify());
+
+  it('sin elegir ninguna pestaña, chargeOrderIdsParam() es undefined (cobra todo, T022)', () => {
+    store.orders.set([pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID')]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    fixture.detectChanges();
+
+    expect(store.chargeOrderIdsParam()).toBeUndefined();
+  });
+
+  it('elegir "Pedido 2" acota chargeOrderIdsParam() a ese único pedido (US1, T022)', () => {
+    store.orders.set([pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID')]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    fixture.detectChanges();
+
+    const findButton = (text: string): HTMLButtonElement | undefined =>
+      Array.from(fixture.nativeElement.querySelectorAll('button[role="tab"]')).find((b) =>
+        (b as HTMLButtonElement).textContent?.includes(text),
+      ) as HTMLButtonElement | undefined;
+    findButton('Pedido 2')!.click();
+    fixture.detectChanges();
+    // Elegir la pestaña refresca `/bill` con la nueva selección (D5 de research.md).
+    http.expectOne(`${API}/table-sessions`).flush([]);
+
+    expect(store.chargeOrderIdsParam()).toEqual(['o2']);
+  });
+
+  it('una recarga de orders() sin cambios reales no resetea la selección (bugfix spec 153/156)', () => {
+    // El sondeo/tiempo real manda un arreglo NUEVO en cada respuesta aunque
+    // el conjunto de pedidos no haya cambiado -- la selección de un pedido
+    // específico no debe perderse por eso (antes sí se perdía, porque
+    // `chargeableOrderIds` comparaba por referencia).
+    store.orders.set([pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID')]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    fixture.detectChanges();
+    store.selectChargeOrderOnly('o2');
+    http.expectOne(`${API}/table-sessions`).flush([]);
+
+    // Misma mesa, mismos pedidos, pero un arreglo NUEVO (como lo entregaría
+    // `reloadOrders()` tras un sondeo real).
+    store.orders.set([pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID')]);
+    fixture.detectChanges();
+
+    expect(store.chargeOrderIdsParam()).toEqual(['o2']);
+  });
+
+  it('cambiar de mesa sí resetea la selección a "todos" (bugfix spec 153/156)', () => {
+    store.orders.set([
+      pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID'),
+      { ...pedido('o3', 'UNPAID'), dining_table_id: 't2' } as DiningOrder,
+    ]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    fixture.detectChanges();
+    store.selectChargeOrderOnly('o2');
+    http.expectOne(`${API}/table-sessions`).flush([]);
+    expect(store.chargeOrderIdsParam()).toEqual(['o2']);
+
+    tableService.tables.set([table({ id: 't1', number: 2, status: 'ocupada' }), table({ id: 't2', number: 3, status: 'ocupada' })]);
+    store.selectedTableId.set('t2');
+    fixture.detectChanges();
+
+    // La mesa t2 tiene un único pedido cobrable (sin pestañas, `orderTabs()`
+    // vacío) -- la selección por defecto ("todos") vuelve a `undefined`, sin
+    // quedar con el id de un pedido de la mesa t1.
+    expect(store.chargeOrderIdsParam()).toBeUndefined();
+  });
+
+  it('un pedido nuevo en la misma mesa sí resetea la selección a "todos" (bugfix spec 153/156)', () => {
+    store.orders.set([pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID')]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    fixture.detectChanges();
+    store.selectChargeOrderOnly('o2');
+    http.expectOne(`${API}/table-sessions`).flush([]);
+    expect(store.chargeOrderIdsParam()).toEqual(['o2']);
+
+    // Llega un tercer pedido cobrable a la misma mesa -- el conjunto de
+    // `chargeableOrderIds` sí cambió de verdad, así que la selección vuelve
+    // a "todos" (sin disparar ningún fetch: el efecto de reset solo
+    // sincroniza el `Set` local).
+    store.orders.set([pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID'), pedido('o3', 'UNPAID')]);
+    fixture.detectChanges();
+
+    expect(store.chargeOrderIdsParam()).toBeUndefined();
+  });
+
+  it('elegir la pestaña de un pedido YA PAGADO no lo deja seleccionado para cobrar (bugfix)', () => {
+    // El cajero solo quiere VER el detalle de un pedido ya cobrado -- no
+    // debería intentar cobrarlo de nuevo ni disparar un 409 del backend.
+    store.orders.set([pedido('o1', 'PAID'), pedido('o2', 'UNPAID')]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o2');
+    fixture.detectChanges();
+
+    const findButton = (text: string): HTMLButtonElement | undefined =>
+      Array.from(fixture.nativeElement.querySelectorAll('button[role="tab"]')).find((b) =>
+        (b as HTMLButtonElement).textContent?.includes(text),
+      ) as HTMLButtonElement | undefined;
+    findButton('Pedido 1')!.click();
+    fixture.detectChanges();
+
+    expect(store.selectedOrderId()).toBe('o1');
+    // Sin cambios en la selección de cobro -- sigue siendo "todos" (o2, el
+    // único pedido cobrable); nunca incluye o1 (ya pagado).
+    expect(store.chargeOrderIdsParam() ?? []).not.toContain('o1');
+  });
+
+  it('cada pestaña muestra su badge de estado de pago (US3, T023)', () => {
+    store.orders.set([pedido('o1', 'PAID'), pedido('o2', 'UNPAID')]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('PAGADO');
+    expect(text).toContain('NO PAGADO');
   });
 });
 

@@ -268,6 +268,16 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                   ></span>
                 }
                 {{ ot.label }}
+                <!-- Spec 156 (US3): estado de pago por pedido, visible
+                     justo donde el cajero elige qué cobrar. -->
+                @if (ot.paymentStatusLabel) {
+                  <span
+                    class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                    [class]="ot.paymentStatusClass"
+                  >
+                    {{ ot.paymentStatusLabel }}
+                  </span>
+                }
               </button>
             }
             <button
@@ -618,11 +628,20 @@ export class PosOrderPanelComponent {
    *  orden distinta seleccionada antes en la misma mesa. */
   readonly showCatalog = computed(() => this.store.catalogOpen() && !this.readOnly());
 
-  /** Elegir una pestaña "Pedido N" sale de la vista agregada y enfoca ese
-   *  pedido (spec 049, D5) — reusa `selectOrder()` tal cual. */
+  /**
+   * Elegir una pestaña "Pedido N" sale de la vista agregada y enfoca ese
+   * pedido (spec 049, D5) — reusa `selectOrder()` tal cual.
+   *
+   * Spec 156 (US1, a pedido del usuario): además, deja ESE pedido como el
+   * único seleccionado para cobrar (`selectChargeOrderOnly`) -- elegir una
+   * pestaña ya acota el cobro a ese pedido, sin ningún control aparte que
+   * marcar/desmarcar. Sin elegir ninguna pestaña, se sigue cobrando todo lo
+   * pendiente de la mesa (comportamiento por defecto, sin cambios).
+   */
   selectOrderTab(orderId: string): void {
     this.store.showAllOrders.set(false);
     this.store.selectOrder(orderId);
+    this.store.selectChargeOrderOnly(orderId);
   }
 
   /**

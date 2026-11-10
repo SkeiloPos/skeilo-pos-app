@@ -159,6 +159,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
             [orphan]="store.billOrphan()"
             [paidSummary]="store.selectedTablePaidSummary()"
             [selectedOrderTotal]="store.selectedOrderTotal()"
+            [chargeOrderIds]="store.chargeOrderIdsParam()"
             [readOnly]="true"
           />
         } @else if (store.selectedOrder() && showSessionCharge()) {
@@ -191,6 +192,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
               [orphan]="store.billOrphan()"
               [paidSummary]="store.selectedTablePaidSummary()"
               [selectedOrderTotal]="store.selectedOrderTotal()"
+              [chargeOrderIds]="store.chargeOrderIdsParam()"
               [beforeCharge]="store.ensureReadyToCharge"
               [keepTableOpen]="true"
               [prefillPayment]="prefillPayment()"
@@ -200,15 +202,26 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
               Spec 029, hotfix #4: hasta ahora la única acción sobre este
               pedido era cobrar. cancel_order ya existía en el backend
               (sin venta ni movimiento de caja) pero no estaba conectado.
+
+              Spec 156 (a pedido del usuario): oculto una vez el pedido ya
+              está payment_status === PAID -- rechazarlo a esta altura no
+              tiene sentido, ya se cobró. showSessionCharge() solo mira
+              status/channel (sigue entregada/QR_MENU aunque ya esté
+              pagado), así que sin este chequeo extra el botón seguía
+              ofreciéndose para un pedido cobrado de forma independiente
+              (/charge con order_ids) cuya mesa, a propósito, no se libera
+              de inmediato.
             -->
-            <button
-              (click)="store.rejectOrder()"
-              [disabled]="store.submitting()"
-              class="w-full min-h-11 py-2 mt-2 rounded-[8px] border text-[13px] font-medium disabled:opacity-40 transition-colors"
-              style="border-color:var(--terminal-color-error,#fca5a5);color:var(--terminal-color-error,#b91c1c);background:none"
-            >
-              Rechazar pedido
-            </button>
+            @if (store.selectedOrder()?.payment_status !== 'PAID') {
+              <button
+                (click)="store.rejectOrder()"
+                [disabled]="store.submitting()"
+                class="w-full min-h-11 py-2 mt-2 rounded-[8px] border text-[13px] font-medium disabled:opacity-40 transition-colors"
+                style="border-color:var(--terminal-color-error,#fca5a5);color:var(--terminal-color-error,#b91c1c);background:none"
+              >
+                Rechazar pedido
+              </button>
+            }
           </div>
         } @else if (
           (store.selectedOrder() || store.pendingOfSelectedTable().length === 0) &&
