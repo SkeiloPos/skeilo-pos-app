@@ -250,41 +250,62 @@ export function puedeCancelarComensal(order: Pick<DiningOrder, 'status' | 'items
 /**
  * Spec 150 (research.md Decisión 0/10): ¿puede este pedido enviarse a la
  * cola de preparación de cocina? "Orden confirmada" es cualquier pedido vivo
- * (`status !== 'cancelada'`), no solo `'confirmado'` -- ver Decisión 0. No
- * depende de `channel`/`order_type`: los tres orígenes (manual, mesa,
- * domicilio) usan el mismo criterio (research.md Decisión 7). `cocinaAccess`
- * es el gating del módulo de plan "cocina" (`PlanSummaryService.includes
- * ('cocina')`), resuelto por quien llama -- este helper se mantiene puro, sin
- * inyectar el servicio.
+ * (`status !== 'cancelada'`), no solo `'confirmado'` -- ver Decisión 0.
+ * `cocinaAccess` es el gating del módulo de plan "cocina"
+ * (`PlanSummaryService.includes('cocina')`), resuelto por quien llama -- este
+ * helper se mantiene puro, sin inyectar el servicio.
+ *
+ * Spec 157 (research.md Decisión 1/5, A-160): la exigencia de pago previo ya
+ * no es incondicional. Un pedido de mesa (`dining_table_id` no nulo) sigue
+ * exigiendo `payment_status === 'PAID'` siempre (sin cambios, spec 153). Para
+ * TAKEAWAY/DELIVERY (`dining_table_id` nulo), depende de la modalidad de
+ * cobro del plan (`qr_payment_instruction_mode`, spec 154, reutilizado fuera
+ * del menú QR): `PAY_AFTER_RECEIVING` permite el envío sin pagar; cualquier
+ * otro valor (incluido `undefined`/`null`, p. ej. respuestas de endpoints que
+ * aún no calculan el campo) sigue exigiendo el pago, igual que antes de esta
+ * spec.
  */
 export function canSendToKitchen(
-  order: Pick<DiningOrder, 'status' | 'payment_status' | 'kitchen_status'>,
+  order: Pick<
+    DiningOrder,
+    'status' | 'payment_status' | 'kitchen_status' | 'dining_table_id' | 'qr_payment_instruction_mode'
+  >,
   cocinaAccess: boolean,
 ): boolean {
-  return (
-    order.status !== 'cancelada' &&
-    order.payment_status === 'PAID' &&
-    !order.kitchen_status &&
-    cocinaAccess
-  );
+  if (order.status === 'cancelada' || order.kitchen_status || !cocinaAccess) return false;
+  const requiresPriorPayment =
+    order.dining_table_id != null || order.qr_payment_instruction_mode !== 'PAY_AFTER_RECEIVING';
+  return !requiresPriorPayment || order.payment_status === 'PAID';
 }
 
 /**
  * Spec 151 (ajuste post-implementación): ¿puede entregarse este pedido?
- * Con el módulo "cocina" activo, una orden de mesa nunca se entrega sin
- * haber pasado por el tablero de cocina hasta "LISTO" -- `kitchen_status`
- * en `null` (nunca se envió a cocina) bloquea el botón igual que estar en
+ * Con el módulo "cocina" activo, una orden nunca se entrega sin haber
+ * pasado por el tablero de cocina hasta "LISTO" -- `kitchen_status` en
+ * `null` (nunca se envió a cocina) bloquea el botón igual que estar en
  * "SIN PREPARAR"/"EN PROGRESO". Sin el módulo activo, se mantiene la regla
- * anterior a nivel de producto (spec 147). `cocinaAccess` es el mismo
- * gating de `PlanSummaryService.includes('cocina')` que usa
- * `canSendToKitchen`, resuelto por quien llama.
+ * anterior a nivel de producto (spec 147), exclusiva de pedidos de mesa.
+ * `cocinaAccess` es el mismo gating de `PlanSummaryService.includes
+ * ('cocina')` que usa `canSendToKitchen`, resuelto por quien llama.
+ *
+ * Spec 157 (hallazgo post-implementación, A-160): antes, la exigencia de
+ * `kitchen_status === 'LISTO'` solo aplicaba a pedidos de mesa
+ * (`dining_table_id` no nulo) -- TAKEAWAY/DELIVERY (`dining_table_id`
+ * nulo) siempre devolvía `false` sin mirar `cocinaAccess`, porque
+ * `checkout_and_send` los despachaba directo a `'entregada'` al cobrar, sin
+ * pasar por el tablero. Ahora que, con el módulo activo, TAKEAWAY/DELIVERY
+ * también sigue su propio ciclo de cocina (igual que una mesa), el mismo
+ * criterio de `kitchen_status` aplica sin importar si hay mesa o no. Sin
+ * `cocinaAccess`, TAKEAWAY/DELIVERY sigue sin paso de entrega propio (ya se
+ * despacharon automáticamente al cobrar), sin cambios.
  */
 export function canDeliverOrder(
   order: Pick<DiningOrder, 'status' | 'dining_table_id' | 'items' | 'kitchen_status'>,
   cocinaAccess: boolean,
 ): boolean {
-  if (!order.dining_table_id || order.status === 'entregada') return false;
+  if (order.status === 'entregada') return false;
   if (cocinaAccess) return order.kitchen_status === 'LISTO';
+  if (!order.dining_table_id) return false;
   return (order.items ?? []).some((it) => it.estado_cocina === 'pendiente');
 }
 

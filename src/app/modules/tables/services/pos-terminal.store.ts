@@ -1271,14 +1271,33 @@ export class PosTerminalStore {
 
   /**
    * Spec 059, Historia 2: pedidos `DELIVERY`/`TAKEAWAY` pendientes de cobro
-   * (`!paid && status !== 'cancelada'`, mismo criterio de visibilidad ya
-   * definido en spec 036 para estos tipos de orden), mapeados al mismo
-   * shape que consumen las tarjetas de mesa. Filtra sobre `orders()`, ya
-   * poblado por `reloadOrders()` sin ningún endpoint nuevo (research.md §4).
+   * y/o de cocina (`status !== 'cancelada'`), mapeados al mismo shape que
+   * consumen las tarjetas de mesa. Filtra sobre `orders()`, ya poblado por
+   * `reloadOrders()` sin ningún endpoint nuevo (research.md §4).
+   *
+   * Criterio de salida de la lista (spec 157, A-160, ajuste 2026-11-12 pedido
+   * por el usuario, corregido el mismo día): sin el módulo de Cocina activo,
+   * se mantiene el criterio original de spec 036/059 -- `!paid` (desaparece
+   * apenas se cobra, no hay ningún paso de cocina que esperar). Con el
+   * módulo activo, un pedido sin mesa sigue su propio ciclo de cocina igual
+   * que una mesa (ver `checkout.checkout_and_send`/`kitchen.deliver_order`):
+   * desaparece únicamente cuando `paid && status === 'entregada'`.
+   *
+   * Importante: NO se oculta solo por `kitchen_status === 'LISTO'` -- un
+   * intento anterior lo hacía, y producía un candado sin salida: al
+   * desaparecer de esta pestaña en cuanto llegaba a `'LISTO'`, nadie podía
+   * volver a seleccionar el pedido para pulsar "Entregar" (ese botón vive
+   * en el detalle, que requiere tenerlo seleccionado aquí), así que se
+   * quedaba atascado para siempre en la columna "LISTO" del tablero de
+   * cocina. Debe seguir visible y seleccionable en toda la fase
+   * `SIN_PREPARAR`/`EN_PROGRESO`/`LISTO` -- solo se va una vez entregado de
+   * verdad.
    */
   private ordersByTypeFiltered(type: 'DELIVERY' | 'TAKEAWAY'): OrderSummaryCardView[] {
+    const cocinaAccess = this.planSummary.includes('cocina');
     return this.orders()
-      .filter((o) => o.order_type === type && !o.paid && o.status !== 'cancelada')
+      .filter((o) => o.order_type === type && o.status !== 'cancelada')
+      .filter((o) => (cocinaAccess ? !(o.paid && o.status === 'entregada') : !o.paid))
       .map((o) => this.toOrderCardView(o));
   }
 

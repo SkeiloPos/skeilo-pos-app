@@ -210,11 +210,35 @@ describe('canDeliverOrder', () => {
     ).toBe(false);
   });
 
-  it('sin mesa (dining_table_id null), nunca permite entregar sin importar cocinaAccess', () => {
+  // Spec 157 (A-160, hallazgo post-implementación): antes, sin mesa nunca se
+  // podía entregar sin importar cocinaAccess, porque `checkout_and_send`
+  // siempre despachaba TAKEAWAY/DELIVERY directo a 'entregada' al cobrar.
+  // Ahora que, con el módulo activo, también siguen su propio ciclo de
+  // cocina, el mismo criterio de `kitchen_status === 'LISTO'` aplica sin
+  // mesa.
+  it('sin mesa (dining_table_id null) y cocinaAccess activo, permite entregar si kitchen_status es LISTO', () => {
     expect(
       canDeliverOrder(
         { status: 'confirmado', dining_table_id: null, items: [], kitchen_status: 'LISTO' },
         true,
+      ),
+    ).toBe(true);
+  });
+
+  it('sin mesa (dining_table_id null) y cocinaAccess activo, no permite entregar si kitchen_status no es LISTO', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: null, items: [], kitchen_status: 'SIN_PREPARAR' },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('sin mesa (dining_table_id null) y sin cocinaAccess, nunca permite entregar (sin paso de entrega propio, FR-007)', () => {
+    expect(
+      canDeliverOrder(
+        { status: 'confirmado', dining_table_id: null, items: [], kitchen_status: 'LISTO' },
+        false,
       ),
     ).toBe(false);
   });
@@ -281,6 +305,56 @@ describe('canSendToKitchen', () => {
     expect(
       canSendToKitchen({ status: 'confirmado', payment_status: 'UNPAID', kitchen_status: null }, true),
     ).toBe(false);
+  });
+
+  // Spec 157 (research.md Decisión 1/5, A-160): TAKEAWAY/DELIVERY depende de
+  // la modalidad de cobro del plan, no siempre exige PAID como mesa.
+  it('mesa (dining_table_id no nulo) sin pagar sigue sin poder enviarse, aunque la modalidad sea PAY_AFTER_RECEIVING', () => {
+    expect(
+      canSendToKitchen(
+        {
+          status: 'confirmado', payment_status: 'UNPAID', kitchen_status: null,
+          dining_table_id: 't1', qr_payment_instruction_mode: 'PAY_AFTER_RECEIVING',
+        },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('TAKEAWAY/DELIVERY (sin mesa) sin pagar, con PAY_AFTER_RECEIVING, sí se puede enviar', () => {
+    expect(
+      canSendToKitchen(
+        {
+          status: 'confirmado', payment_status: 'UNPAID', kitchen_status: null,
+          dining_table_id: null, qr_payment_instruction_mode: 'PAY_AFTER_RECEIVING',
+        },
+        true,
+      ),
+    ).toBe(true);
+  });
+
+  it('TAKEAWAY/DELIVERY (sin mesa) sin pagar, con PAY_BEFORE_RECEIVING, no se puede enviar (botón oculto, FR-002/FR-004)', () => {
+    expect(
+      canSendToKitchen(
+        {
+          status: 'confirmado', payment_status: 'UNPAID', kitchen_status: null,
+          dining_table_id: null, qr_payment_instruction_mode: 'PAY_BEFORE_RECEIVING',
+        },
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it('TAKEAWAY/DELIVERY (sin mesa) ya pagado, con PAY_BEFORE_RECEIVING, sí se puede enviar (FR-004, sin cambios)', () => {
+    expect(
+      canSendToKitchen(
+        {
+          status: 'confirmado', payment_status: 'PAID', kitchen_status: null,
+          dining_table_id: null, qr_payment_instruction_mode: 'PAY_BEFORE_RECEIVING',
+        },
+        true,
+      ),
+    ).toBe(true);
   });
 });
 
