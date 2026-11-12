@@ -3541,7 +3541,7 @@ describe('PosTerminalStore.ordersByType (spec 059, Historia 2)', () => {
     expect(store.ordersByType('para-llevar')[0].secondaryLabel).toBe('Consumidor final');
   });
 
-  it('un pedido ya pagado desaparece de su pestaña (FR-008, spec 036)', () => {
+  it('un pedido ya pagado desaparece de su pestaña (FR-008, spec 036) -- sin módulo de Cocina activo', () => {
     store.orders.set([withType('o1', 'TAKEAWAY', { paid: true })]);
 
     expect(store.ordersByType('para-llevar')).toEqual([]);
@@ -3558,6 +3558,68 @@ describe('PosTerminalStore.ordersByType (spec 059, Historia 2)', () => {
 
     expect(store.ordersByType('domicilios')).toEqual([]);
     expect(store.ordersByType('para-llevar')).toEqual([]);
+  });
+
+  /**
+   * Spec 157 (A-160, ajuste 2026-11-12 pedido por el usuario): con el módulo
+   * de Cocina activo, un TAKEAWAY/DELIVERY sigue su propio ciclo de cocina
+   * igual que una mesa -- ya pagado no es motivo suficiente para
+   * desaparecer de la pestaña, debe seguir visible hasta que también esté
+   * `'LISTO'` en cocina.
+   */
+  describe('con el módulo de Cocina activo', () => {
+    beforeEach(() => {
+      TestBed.inject(PlanSummaryService).summary.set({
+        plan_name: 'Plan de prueba',
+        ciclo_facturacion: null,
+        plan_vence_en: null,
+        vencido: false,
+        resources: {},
+        modules: { inventario: false, promociones: false, cocina: true },
+      });
+    });
+
+    it('pagado pero sin kitchen_status (nunca enviado a cocina), sigue visible', () => {
+      store.orders.set([withType('o1', 'TAKEAWAY', { paid: true, kitchen_status: null })]);
+
+      expect(store.ordersByType('para-llevar').map((c) => c.id)).toEqual(['o1']);
+    });
+
+    it('pagado y en SIN_PREPARAR/EN_PROGRESO (cocinándose), sigue visible', () => {
+      store.orders.set([
+        withType('o1', 'TAKEAWAY', { paid: true, kitchen_status: 'SIN_PREPARAR' }),
+        withType('o2', 'TAKEAWAY', { paid: true, kitchen_status: 'EN_PROGRESO' }),
+      ]);
+
+      expect(store.ordersByType('para-llevar').map((c) => c.id)).toEqual(['o1', 'o2']);
+    });
+
+    it('sin pagar, sigue visible sin importar kitchen_status (igual que sin el módulo)', () => {
+      store.orders.set([withType('o1', 'TAKEAWAY', { paid: false, kitchen_status: 'LISTO' })]);
+
+      expect(store.ordersByType('para-llevar').map((c) => c.id)).toEqual(['o1']);
+    });
+
+    it('pagado y LISTO en cocina pero todavía no entregado, sigue visible (hay que poder seleccionarlo para pulsar "Entregar")', () => {
+      store.orders.set([withType('o1', 'TAKEAWAY', { paid: true, kitchen_status: 'LISTO' })]);
+
+      expect(store.ordersByType('para-llevar').map((c) => c.id)).toEqual(['o1']);
+    });
+
+    it('pagado y ya entregado (status "entregada"), desaparece sin importar kitchen_status', () => {
+      store.orders.set([
+        { ...withType('o1', 'TAKEAWAY', { paid: true, kitchen_status: 'LISTO' }), status: 'entregada' },
+        { ...withType('o2', 'TAKEAWAY', { paid: true, kitchen_status: 'SIN_PREPARAR' }), status: 'entregada' },
+      ]);
+
+      expect(store.ordersByType('para-llevar')).toEqual([]);
+    });
+
+    it('sin pagar, ya entregado no es un estado real (no interviene), sigue visible', () => {
+      store.orders.set([withType('o1', 'TAKEAWAY', { paid: false, kitchen_status: 'LISTO' })]);
+
+      expect(store.ordersByType('para-llevar').map((c) => c.id)).toEqual(['o1']);
+    });
   });
 });
 

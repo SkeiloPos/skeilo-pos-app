@@ -568,13 +568,15 @@ export class PosOrderPanelComponent {
   }
 
   /** Spec 147 (FR-001/FR-002a) + spec 151 (ajuste post-implementación): ¿puede
-   *  entregarse este pedido? Solo aplica a pedidos de mesa (`dining_table_id`,
-   *  manual o QR) -- mostrador, Domicilio y Para llevar quedan
-   *  `entregada`+`PAID` de una vez al cobrar (`checkout_and_send`,
-   *  `orders/checkout.py` backend), no tienen un paso de entrega propio que
-   *  mostrar aquí. Con el módulo "cocina" activo, delega en `canDeliverOrder`
-   *  para exigir `kitchen_status === 'LISTO'` en vez de la regla anterior por
-   *  producto. */
+   *  entregarse este pedido? Sin el módulo "cocina" activo, solo aplica a
+   *  pedidos de mesa (`dining_table_id`, manual o QR) -- mostrador, Domicilio
+   *  y Para llevar quedan `entregada`+`PAID` de una vez al cobrar
+   *  (`checkout_and_send`, `orders/checkout.py` backend), no tienen un paso
+   *  de entrega propio que mostrar aquí. Con el módulo "cocina" activo
+   *  (spec 157, A-160, hallazgo post-implementación), `checkout_and_send` ya
+   *  no despacha automáticamente TAKEAWAY/DELIVERY -- siguen su propio ciclo
+   *  de cocina igual que una mesa, así que `canDeliverOrder` exige
+   *  `kitchen_status === 'LISTO'` sin importar si hay mesa o no. */
   canDeliver(order: DiningOrder): boolean {
     return canDeliverOrder(order, this.planSummary.includes('cocina'));
   }
