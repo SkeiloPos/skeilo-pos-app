@@ -379,7 +379,7 @@ import { isProductSoldOut } from '../../../core/availability/availability.util';
           <button
             type="button"
             (click)="viewingCart.set(true)"
-            [attr.aria-label]="'Ver pedido, ' + store.cartView().length + ' ítems, ' + store.fmt(store.subtotal())"
+            [attr.aria-label]="'Ver pedido, ' + store.cartView().length + ' ítems, ' + store.fmt(compactTotal())"
             class="flex-1 min-w-0 flex items-center gap-3 text-left"
           >
             <span
@@ -392,7 +392,7 @@ import { isProductSoldOut } from '../../../core/availability/availability.util';
               <span class="flex items-center gap-1 text-[13px]" style="color:var(--terminal-color-text-secondary,#334155)">
                 Ver pedido <app-mi-icon name="expand_less" [size]="16" />
               </span>
-              <b class="text-[18px]" style="color:var(--terminal-color-text-primary,#090d16)">{{ store.fmt(store.subtotal()) }}</b>
+              <b class="text-[18px]" style="color:var(--terminal-color-text-primary,#090d16)">{{ store.fmt(compactTotal()) }}</b>
             </span>
           </button>
           <button
@@ -982,6 +982,16 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
       // no se pueden pedir -- se debe quitar o esperar a que vuelvan.
       this.store.hasAffectedLines(),
   );
+
+  /** Total mostrado en la barra fija "Ver pedido"/"Crear orden" (móvil): debe
+   *  coincidir con el de `ticketBody` (línea 824/828), que ya resta el
+   *  descuento por promoción calculado por el backend (`draftPreview()`) --
+   *  antes usaba `store.subtotal()`, que nunca descuenta. */
+  readonly compactTotal = computed(() => {
+    const p = this.store.draftPreview();
+    if (p) return +p.total + this.store.combosSubtotal() + this.store.toppingsSubtotal();
+    return this.store.totals().total;
+  });
 
   /**
    * spec 073, FR-013: recalcula el desglose (con descuento por promoción) en
