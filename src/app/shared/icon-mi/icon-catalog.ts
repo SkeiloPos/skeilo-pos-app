@@ -132,6 +132,9 @@ export const ICON_CATALOG: Record<string, string> = {
   // spec 140: control +/- de cantidad en la vista de nueva compra.
   remove: 'remove',
 
+  // spec 159: sección de Auditoría y actividad del panel Super Admin.
+  audit: 'history',
+
   // Ícono de reserva para un `name` desconocido (contracts/icon-component-contract.md)
   help_outline: 'help_outline',
 };

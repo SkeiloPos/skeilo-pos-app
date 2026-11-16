@@ -24,6 +24,20 @@ export const superAdminRoutes: Routes = [
           ),
       },
       {
+        path: 'users/:id',
+        loadComponent: () =>
+          import('./pages/super-admin-user-detail-page.component').then(
+            (m) => m.SuperAdminUserDetailPageComponent,
+          ),
+      },
+      {
+        path: 'audit-logs',
+        loadComponent: () =>
+          import('./pages/super-admin-audit-page.component').then(
+            (m) => m.SuperAdminAuditPageComponent,
+          ),
+      },
+      {
         path: 'payment-methods-catalog',
         loadComponent: () =>
           import('./pages/payment-method-catalog-page.component').then(

@@ -3,8 +3,6 @@ import { RouterOutlet, Router, NavigationEnd } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs/operators';
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { SidebarComponent } from './sidebar.component';
-import { HeaderComponent } from './header.component';
 import { TenantSidebarComponent } from './tenant-sidebar.component';
 import { TenantHeaderComponent } from './tenant-header.component';
 import { LayoutService } from './layout.service';
@@ -23,92 +21,64 @@ import { MenuService } from '../../../core/services/menu.service';
   standalone: true,
   imports: [
     RouterOutlet,
-    SidebarComponent,
-    HeaderComponent,
     TenantSidebarComponent,
     TenantHeaderComponent,
     ToastContainerComponent,
     ConfirmDialogComponent,
   ],
   template: `
+    <!--
+      Spec 116 + reuso para Super Admin: un único shell (sidebar/navbar de
+      tenant) para todas las identidades -- Super Admin ya no tiene su propio
+      componente legado (app-sidebar/app-header), solo su propio juego de
+      ítems de navegación (SUPER_ADMIN_NAV_ITEMS, leído por
+      app-tenant-sidebar). El scrim del drawer móvil/tablet lo pinta
+      app-tenant-sidebar (autosuficiente), no este componente.
+    -->
     <div
-      class="shell-root flex h-screen bg-gray-50 overflow-hidden"
-      [class.panel-theme]="!isSuperAdmin()"
-      [attr.data-theme]="isSuperAdmin() ? null : panelThemeService.theme()"
+      class="shell-root flex h-screen bg-gray-50 overflow-hidden panel-theme"
+      [attr.data-theme]="panelThemeService.theme()"
     >
-      <!--
-        Overlay backdrop del sidebar legado (Super Admin) — spec 078, US6.
-        Acotado a Super Admin (spec 116, contracts/tenant-layout-contract.md
-        §2): app-tenant-sidebar pinta su propio scrim, autosuficiente; sin
-        este guard, los dos backdrops (idéntico bg-black/40) se dibujarían
-        encima uno del otro para tenant, oscureciendo el doble de lo previsto.
-      -->
-      @if (isSuperAdmin() && layoutService.sidebarOpen()) {
-        <div
-          class="fixed inset-0 bg-black/40 z-30 lg:hidden print:hidden"
-          (click)="layoutService.close()"
-        ></div>
-      }
-
-      @if (isSuperAdmin()) {
-        <app-sidebar />
-      } @else {
-        <app-tenant-sidebar />
-      }
+      <app-tenant-sidebar />
 
       <!--
-        Los dos sidebars son fixed en todos los breakpoints: en escritorio
-        no ocupan espacio de flexbox por sí solos, así que este margen es lo
-        que les cede el ancho al contenido. Super Admin conserva exactamente
-        su margen fijo de siempre (ml-64, spec 036); el panel de tenant usa un
-        margen que sigue su propio ancho variable (72px colapsado / 248px
-        expandido, spec 116, data-model.md §2) — nunca los dos a la vez. En
-        móvil/tablet ninguno aplica (prefijo lg:), donde ambos sidebars
-        siguen siendo un slide-over superpuesto, sin desplazar el contenido.
+        El sidebar es fixed en todos los breakpoints: en escritorio no ocupa
+        espacio de flexbox por sí solo, así que este margen es lo que le cede
+        el ancho al contenido (72px colapsado / 248px expandido, spec 116,
+        data-model.md §2). En móvil/tablet no aplica (prefijo lg:), donde el
+        sidebar sigue siendo un slide-over superpuesto, sin desplazar el contenido.
       -->
       <div
         class="shell-content relative flex flex-col flex-1 min-w-0 overflow-hidden transition-[margin-left] duration-300 ease-in-out"
-        [class.lg:ml-64]="isSuperAdmin() && layoutService.sidebarOpen()"
-        [class.lg:ml-[248px]]="!isSuperAdmin() && !layoutService.desktopCollapsed()"
-        [class.lg:ml-[72px]]="!isSuperAdmin() && layoutService.desktopCollapsed()"
+        [class.lg:ml-[248px]]="!layoutService.desktopCollapsed()"
+        [class.lg:ml-[72px]]="layoutService.desktopCollapsed()"
       >
-        @if (isSuperAdmin()) {
-          <app-header />
-        } @else {
-          <app-tenant-header />
-        }
+        <app-tenant-header />
 
         <!--
           Barra de carga + skeleton + aparición escalonada (Historia 4,
-          FR-019 a FR-022; contracts/navigation-transition-contract.md) —
-          acotada a !isSuperAdmin() (research.md R1/R20, mismo criterio que
-          el resto de esta spec). La barra vive en shell-content (no en
-          shell-root) para no superponerse al sidebar, igual que el navbar.
+          FR-019 a FR-022; contracts/navigation-transition-contract.md). La
+          barra vive en shell-content (no en shell-root) para no superponerse
+          al sidebar, igual que el navbar.
         -->
-        @if (!isSuperAdmin()) {
-          <div
-            class="nav-transition-bar"
-            [class.nav-transition-bar--visible]="navigationTransitionService.barVisible()"
-            [style.width.%]="navigationTransitionService.barProgress()"
-          ></div>
-        }
+        <div
+          class="nav-transition-bar"
+          [class.nav-transition-bar--visible]="navigationTransitionService.barVisible()"
+          [style.width.%]="navigationTransitionService.barProgress()"
+        ></div>
         <main class="shell-main flex-1 overflow-y-auto p-4 md:p-6">
-          @if (isSuperAdmin()) {
-            <router-outlet />
-          } @else {
-            <div class="nav-transition" [attr.data-phase]="navigationTransitionService.phase()">
-              <!-- Skeleton genérico (FR-021): bloques fijos, nunca derivados de
-                   los datos reales de la sección destino (research.md R20). -->
-              <div class="nav-skeleton" aria-hidden="true">
-                <div class="nav-skeleton__block" style="height: 88px"></div>
-                <div class="nav-skeleton__block" style="height: 220px"></div>
-                <div class="nav-skeleton__block" style="height: 160px"></div>
-              </div>
-              <div class="nav-transition__content">
-                <router-outlet />
-              </div>
+          <div class="nav-transition" [attr.data-phase]="navigationTransitionService.phase()">
+            <!-- Skeleton genérico (FR-021): bloques fijos, nunca derivados de
+                 los datos reales de la sección destino (research.md R20). -->
+            <div class="nav-skeleton" aria-hidden="true">
+              <div class="nav-skeleton__block" style="height: 88px"></div>
+              <div class="nav-skeleton__block" style="height: 220px"></div>
+              <div class="nav-skeleton__block" style="height: 160px"></div>
             </div>
-          }
+            <div class="nav-transition__content">
+              <router-outlet />
+            </div>
+          </div>
         </main>
       </div>
 
@@ -138,14 +108,12 @@ import { MenuService } from '../../../core/services/menu.service';
   // Acotado a `body.printing-cash-report` (salvo el telón, que nunca debe imprimirse) para no tocar
   // recibos, cuenta de mesa ni la hoja de QR.
   //
-  // spec 116: `app-tenant-sidebar`/`app-tenant-header` reciben el mismo tratamiento que
-  // `app-sidebar`/`app-header` -- quien cierra un turno e imprime el reporte desde este panel es
-  // casi siempre ADMIN/CASHIER (el panel de tenant), no Super Admin.
+  // spec 116: quien cierra un turno e imprime el reporte desde este panel es
+  // casi siempre ADMIN/CASHIER (el panel de tenant), no Super Admin -- pero el
+  // guard cubre el shell completo de todos modos, ahora único.
   styles: [
     `
       @media print {
-        :host-context(body.printing-cash-report) app-sidebar,
-        :host-context(body.printing-cash-report) app-header,
         :host-context(body.printing-cash-report) app-tenant-sidebar,
         :host-context(body.printing-cash-report) app-tenant-header {
           display: none;
@@ -180,18 +148,18 @@ export class DashboardLayoutComponent implements OnInit, OnDestroy {
   private readonly menuService = inject(MenuService);
   private unregisterAvailabilityTarget: (() => void) | null = null;
 
-  /** Misma fuente que ya usa SidebarComponent (research.md R1) -- la única
-   *  bifurcación entre el panel legado (Super Admin) y el rediseñado
-   *  (Administrador/Cajero/Mesero, spec 116). */
+  /** Único uso restante: Super Admin nunca tiene tenant, así que no abre el
+   *  SSE del staff (`ngOnInit`, abajo). Ya no gobierna qué sidebar/header se
+   *  pinta -- ambas identidades comparten el mismo shell. */
   readonly isSuperAdmin = computed(() => !!this.authService.currentUser()?.isSuperAdmin);
 
   /** El `cdk-overlay-container` es compartido por toda la app (un único nodo,
    *  hijo directo de `<body>`, fuera del subárbol de `.panel-theme`) -- sin
-   *  esto, el único `cdkConnectedOverlay` del panel de tenant (el menú de
-   *  acciones de Promociones) quedaría congelado en paleta clara aunque el
-   *  resto del panel esté en oscuro (research.md R18;
-   *  contracts/panel-theme-contract.md §9). Cubre automáticamente cualquier
-   *  overlay de CDK futuro, no solo el de Promociones -- un único punto. */
+   *  esto, el único `cdkConnectedOverlay` del panel (el menú de acciones de
+   *  Promociones) quedaría congelado en paleta clara aunque el resto del
+   *  panel esté en oscuro (research.md R18; contracts/panel-theme-contract.md
+   *  §9). Cubre automáticamente cualquier overlay de CDK futuro, no solo el
+   *  de Promociones -- un único punto. */
 
   /** Carga branding, plan y notificaciones recientes en una sola petición
    * agregada (spec 100) para todo el dashboard (los lee el sidebar para
@@ -204,7 +172,11 @@ export class DashboardLayoutComponent implements OnInit, OnDestroy {
     // shell autenticado, en vez de en una página hija (`pos-terminal.store.ts`
     // antes). Así sobrevive a la navegación entre secciones del POS — el
     // cajero sigue recibiendo avisos aunque no esté en Terminal de Mesas.
-    this.realtime.connectStaff();
+    // Super admin nunca tiene tenant (`tenant_id IS NULL`): `/realtime/ticket`
+    // depende de `get_tenant` y siempre devolvería 404 para esta cuenta.
+    if (!this.isSuperAdmin()) {
+      this.realtime.connectStaff();
+    }
     // Spec 148: el sincronizador de disponibilidad vive aquí, junto a la
     // conexión SSE del staff, por la misma razón (sobrevive a la navegación
     // entre secciones del POS en vez de reiniciarse en cada página).
@@ -222,12 +194,8 @@ export class DashboardLayoutComponent implements OnInit, OnDestroy {
   constructor() {
     effect(() => {
       const el = this.overlayContainer.getContainerElement();
-      el.classList.toggle('panel-theme', !this.isSuperAdmin());
-      if (this.isSuperAdmin()) {
-        el.removeAttribute('data-theme');
-      } else {
-        el.setAttribute('data-theme', this.panelThemeService.theme());
-      }
+      el.classList.add('panel-theme');
+      el.setAttribute('data-theme', this.panelThemeService.theme());
     });
 
     inject(Router).events

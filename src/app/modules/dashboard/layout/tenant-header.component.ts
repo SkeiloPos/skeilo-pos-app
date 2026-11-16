@@ -6,7 +6,7 @@ import { BreakpointObserver } from '@angular/cdk/layout';
 import { filter, map } from 'rxjs/operators';
 import { AuthService } from '../../../core/services/auth.service';
 import { UserRole } from '../../../core/interfaces/user.interface';
-import { NAV_ITEMS } from '../../../core/config/navigation.config';
+import { NAV_ITEMS, SUPER_ADMIN_NAV_ITEMS } from '../../../core/config/navigation.config';
 import { LayoutService } from './layout.service';
 import { PanelThemeService } from './panel-theme.service';
 import { CashService } from '../../cash-register/services/cash.service';
@@ -329,11 +329,16 @@ export class TenantHeaderComponent {
    *  `startsWith(item.route)`) evita que rutas que comparten prefijo de
    *  texto pero son módulos distintos se confundan (p. ej. `/dashboard/mesas`
    *  nunca coincide con `/dashboard/mesas-sesiones`); si más de un ítem
-   *  calificara, gana el de ruta más larga (el más específico). */
+   *  calificara, gana el de ruta más larga (el más específico).
+   *
+   *  Incluye `SUPER_ADMIN_NAV_ITEMS` (reuso de este navbar para Super Admin,
+   *  sin tenant): sus rutas (`/super-admin/...`) nunca comparten prefijo con
+   *  las de `NAV_ITEMS` (`/dashboard/...`), así que ambas listas conviven sin
+   *  ambigüedad en la misma búsqueda. */
   private readonly activeItem = computed(() => {
     const path = this.currentUrl().split(/[?#]/)[0];
     let best: (typeof NAV_ITEMS)[number] | undefined;
-    for (const item of NAV_ITEMS) {
+    for (const item of [...NAV_ITEMS, ...SUPER_ADMIN_NAV_ITEMS]) {
       const isMatch = path === item.route || path.startsWith(`${item.route}/`);
       if (isMatch && (!best || item.route.length > best.route.length)) best = item;
     }

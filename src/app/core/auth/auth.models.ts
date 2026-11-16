@@ -68,6 +68,9 @@ export interface JwtClaims {
   exp: number;
   jti: string;
   refresh: boolean;
+  /** spec 159: id de `shared.user_sessions` de este login. Ausente en
+   *  tokens acuñados antes de esa spec (compatibilidad retroactiva). */
+  sid?: string;
 }
 
 /** FastAPI error envelope (`{ "detail": "..." }`). */

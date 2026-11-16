@@ -64,6 +64,7 @@ describe('SidebarComponent.visibleItems', () => {
       '/super-admin/users',
       '/super-admin/payment-methods-catalog',
       '/super-admin/plans',
+      '/super-admin/audit-logs',
     ]);
     expect(sidebar.isSuperAdmin()).toBe(true);
   });
@@ -140,7 +141,23 @@ describe('SidebarComponent.visibleItems', () => {
       '/super-admin/users',
       '/super-admin/payment-methods-catalog',
       '/super-admin/plans',
+      '/super-admin/audit-logs',
     ]);
+  });
+
+  it('lists all five platform entries sharing the same layout/typography (T097, spec 159)', () => {
+    currentUser.set(makeUser({ isSuperAdmin: true, role: UserRole.SUPER_ADMIN, tenantId: null }));
+    const sidebar = createComponent();
+
+    const items = sidebar.visibleItems();
+    expect(items.map((i) => i.label)).toEqual([
+      'Tenants',
+      'Usuarios',
+      'Métodos de pago',
+      'Planes',
+      'Auditoría y actividad',
+    ]);
+    expect(items.every((i) => i.group === 'PLATAFORMA')).toBe(true);
   });
 });
 
