@@ -370,6 +370,13 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
           <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
           <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
         }
+        @case ('audit') {
+          <!-- reuso del sidebar de tenant para Super Admin -- ítem
+               "Auditoría y actividad", sin equivalente en el set existente. -->
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+          <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+          <path d="m9 14 2 2 4-4" />
+        }
         @case ('panel-left') {
           <!-- spec 116 (ajuste visual contra SkeiloPOS App.dc.html): botón de
                colapso del sidebar, reubicado dentro del propio sidebar. -->

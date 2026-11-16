@@ -7,7 +7,9 @@ import {
   OnInit,
   Output,
   inject,
+  signal,
 } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   AbstractControl,
   FormControl,
@@ -15,31 +17,27 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
-import { UserRole } from '../../../core/interfaces/user.interface';
-import { AdminUser, AdminUserForm } from '../interfaces/admin-user.interface';
+import { UserDetail, UserUpdatePayload } from '../interfaces/admin-user.interface';
 import { SuperAdminUsersService } from '../services/super-admin-users.service';
+import { SuperAdminUserDetailService } from '../services/super-admin-user-detail.service';
 import { TenantService } from '../services/tenant.service';
-import { PasswordInputComponent } from '../../../shared/password-input/password-input.component';
+import { Tenant } from '../interfaces/tenant.interface';
+import { ConfirmService } from '../../../shared/feedback/confirm.service';
 import { fullNameValidator, normalizeFullName } from '../../../shared/validators/full-name.validator';
 
-/** Tenant roles the super admin can assign (creating super admins is out of scope). */
-const ASSIGNABLE_ROLES: { value: UserRole; label: string }[] = [
-  { value: UserRole.ADMIN, label: 'Administrador' },
-  { value: UserRole.CASHIER, label: 'Cajero' },
-];
-
+/** Edita nombre, rol y/o negocio asociado de un usuario ya existente (spec
+ * 159, User Story 4, FR-016/FR-017). La creación directa de usuarios no es
+ * parte de este módulo (se hace al crear un tenant, o por invitación). */
 @Component({
   selector: 'app-admin-user-form',
   standalone: true,
-  imports: [ReactiveFormsModule, PasswordInputComponent],
+  imports: [ReactiveFormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-2xl shadow-xl w-full max-w-md">
         <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 class="text-lg font-semibold text-gray-900">
-            {{ user ? 'Editar usuario' : 'Nuevo usuario' }}
-          </h2>
+          <h2 class="text-lg font-semibold text-gray-900">Editar usuario</h2>
           <button
             type="button"
             (click)="onCancel()"
@@ -50,59 +48,18 @@ const ASSIGNABLE_ROLES: { value: UserRole; label: string }[] = [
         </div>
 
         <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate class="px-6 py-5 space-y-4">
-          <!-- Email -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">
-              Email <span class="text-red-500">*</span>
-            </label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Correo</label>
             <input
               type="email"
-              formControlName="email"
-              placeholder="usuario@negocio.com"
-              class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-500"
-              [class.border-red-400]="emailControl.invalid && emailControl.touched"
-              [class.border-gray-200]="!(emailControl.invalid && emailControl.touched)"
+              [value]="user?.email"
+              disabled
+              class="w-full px-3 py-2 border border-gray-200 bg-gray-50 text-gray-500 rounded-lg text-sm"
             />
-            @if (emailControl.touched && emailControl.errors?.['required']) {
-              <p class="text-red-500 text-xs mt-1">El email es requerido</p>
-            }
-            @if (emailControl.touched && emailControl.errors?.['email']) {
-              <p class="text-red-500 text-xs mt-1">Email inválido</p>
-            }
           </div>
 
-          <!-- Password (only on create) -->
-          @if (!user) {
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">
-                Contraseña <span class="text-red-500">*</span>
-              </label>
-              <app-password-input
-                formControlName="password"
-                placeholder="Mínimo 6 caracteres"
-                autocomplete="new-password"
-                sizeClass="px-3 py-2 rounded-lg text-sm"
-                [invalid]="passwordControl.invalid && passwordControl.touched"
-              />
-              @if (passwordControl.touched && passwordControl.errors?.['required']) {
-                <p class="text-red-500 text-xs mt-1">La contraseña es requerida</p>
-              }
-              @if (passwordControl.touched && passwordControl.errors?.['minlength']) {
-                <p class="text-red-500 text-xs mt-1">Mínimo 6 caracteres</p>
-              }
-            </div>
-          }
-
-          <!-- Name: obligatorio al crear; al editar, opcional pero válido si se escribe (spec 091) -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">
-              Nombre completo
-              @if (user) {
-                <span class="text-gray-400 font-normal">(opcional)</span>
-              } @else {
-                <span class="text-red-500">*</span>
-              }
-            </label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
             <input
               type="text"
               formControlName="name"
@@ -116,56 +73,56 @@ const ASSIGNABLE_ROLES: { value: UserRole; label: string }[] = [
             }
           </div>
 
-          <!-- Role -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">
-              Rol <span class="text-red-500">*</span>
-            </label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Rol</label>
             <select
-              formControlName="role"
-              class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-              [class.border-red-400]="roleControl.invalid && roleControl.touched"
-              [class.border-gray-200]="!(roleControl.invalid && roleControl.touched)"
+              formControlName="role_id"
+              class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
             >
-              <option [ngValue]="''" disabled>Selecciona un rol</option>
-              @for (r of roles; track r.value) {
-                <option [ngValue]="r.value">{{ r.label }}</option>
+              <option [ngValue]="''">Sin cambios</option>
+              @for (r of usersService.roles(); track r.id) {
+                <option [ngValue]="r.id">{{ r.name }}</option>
               }
             </select>
-            @if (roleControl.touched && roleControl.errors?.['required']) {
-              <p class="text-red-500 text-xs mt-1">El rol es requerido</p>
+          </div>
+
+          <div class="border-t border-gray-100 pt-4">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+              Negocio asociado (opcional)
+            </p>
+            <div class="grid grid-cols-2 gap-3">
+              <select
+                data-testid="membership-tenant"
+                formControlName="membership_tenant_id"
+                class="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+              >
+                <option [ngValue]="''">Sin cambios</option>
+                @for (t of tenants(); track t.id) {
+                  <option [ngValue]="t.id">{{ t.name }}</option>
+                }
+              </select>
+              <select
+                data-testid="membership-role"
+                formControlName="membership_role_id"
+                class="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+              >
+                <option [ngValue]="''">Rol en ese negocio</option>
+                @for (r of usersService.roles(); track r.id) {
+                  <option [ngValue]="r.id">{{ r.name }}</option>
+                }
+              </select>
+            </div>
+            @if (membershipError()) {
+              <p class="text-red-500 text-xs mt-1">{{ membershipError() }}</p>
             }
           </div>
 
-          <!-- Tenant -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">
-              Tenant <span class="text-red-500">*</span>
-            </label>
-            <select
-              formControlName="tenant_id"
-              class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-              [class.border-red-400]="tenantControl.invalid && tenantControl.touched"
-              [class.border-gray-200]="!(tenantControl.invalid && tenantControl.touched)"
-            >
-              <option [ngValue]="null" disabled>Selecciona un tenant</option>
-              @for (t of tenantService.tenants(); track t.id) {
-                <option [ngValue]="t.id">{{ t.name }}</option>
-              }
-            </select>
-            @if (tenantControl.touched && tenantControl.errors?.['required']) {
-              <p class="text-red-500 text-xs mt-1">El tenant es requerido</p>
-            }
-          </div>
-
-          <!-- Service error -->
-          @if (usersService.error()) {
+          @if (error()) {
             <p class="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">
-              {{ usersService.error() }}
+              {{ error() }}
             </p>
           }
 
-          <!-- Actions -->
           <div class="flex gap-3 pt-2">
             <button
               type="button"
@@ -176,10 +133,10 @@ const ASSIGNABLE_ROLES: { value: UserRole; label: string }[] = [
             </button>
             <button
               type="submit"
-              [disabled]="usersService.isSubmitting()"
+              [disabled]="isSubmitting()"
               class="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {{ usersService.isSubmitting() ? 'Guardando...' : 'Guardar' }}
+              {{ isSubmitting() ? 'Guardando...' : 'Guardar' }}
             </button>
           </div>
         </form>
@@ -188,103 +145,107 @@ const ASSIGNABLE_ROLES: { value: UserRole; label: string }[] = [
   `,
 })
 export class AdminUserFormComponent implements OnInit, OnChanges {
-  @Input() user: AdminUser | null = null;
-  @Output() saved = new EventEmitter<void>();
+  @Input() user: UserDetail | null = null;
+  @Output() saved = new EventEmitter<UserDetail>();
   @Output() cancelled = new EventEmitter<void>();
 
   readonly usersService = inject(SuperAdminUsersService);
-  readonly tenantService = inject(TenantService);
-  readonly roles = ASSIGNABLE_ROLES;
+  private readonly detailService = inject(SuperAdminUserDetailService);
+  private readonly tenantService = inject(TenantService);
+  private readonly confirm = inject(ConfirmService);
+
+  readonly tenants = signal<Tenant[]>([]);
+  readonly error = signal<string | null>(null);
+  readonly isSubmitting = signal(false);
+  readonly membershipError = signal<string | null>(null);
 
   readonly form = new FormGroup({
-    email: new FormControl('', {
-      nonNullable: true,
-      validators: [Validators.required, Validators.email],
-    }),
-    password: new FormControl('', {
-      nonNullable: true,
-      validators: [Validators.required, Validators.minLength(6)],
-    }),
-    name: new FormControl('', { nonNullable: true, validators: [fullNameValidator()] }),
-    role: new FormControl<UserRole | ''>('', { nonNullable: true, validators: [Validators.required] }),
-    tenant_id: new FormControl<number | null>(null, { validators: [Validators.required] }),
+    name: new FormControl('', { nonNullable: true, validators: [fullNameValidator({ optional: true })] }),
+    role_id: new FormControl<string>('', { nonNullable: true }),
+    membership_tenant_id: new FormControl<number | ''>('', { nonNullable: true }),
+    membership_role_id: new FormControl<string>('', { nonNullable: true }),
   });
 
-  get emailControl(): AbstractControl {
-    return this.form.controls.email;
-  }
   get nameControl(): AbstractControl {
     return this.form.controls.name;
   }
-  get passwordControl(): AbstractControl {
-    return this.form.controls.password;
-  }
-  get roleControl(): AbstractControl {
-    return this.form.controls.role;
-  }
-  get tenantControl(): AbstractControl {
-    return this.form.controls.tenant_id;
-  }
 
   ngOnInit(): void {
-    // Ensure the tenant selector has options even when opened directly.
-    if (this.tenantService.tenants().length === 0) {
-      this.tenantService.loadTenants();
+    if (this.usersService.roles().length === 0) {
+      void this.usersService.loadRoles();
     }
+    this.tenantService.loadTenants().subscribe({
+      next: response => this.tenants.set(response.items),
+      error: () => undefined,
+    });
   }
 
   ngOnChanges(): void {
-    this.usersService.error.set(null);
-    if (this.user) {
-      // Editing: email immutable, password not required.
-      this.form.reset();
-      this.form.patchValue({
-        email: this.user.email,
-        name: this.user.name ?? '',
-        role: this.user.role,
-        tenant_id: this.user.tenant_id,
-      });
-      this.emailControl.disable();
-      this.nameControl.setValidators([fullNameValidator({ optional: true })]);
-      this.nameControl.updateValueAndValidity();
-      this.passwordControl.clearValidators();
-      this.passwordControl.updateValueAndValidity();
-    } else {
-      this.form.reset({ email: '', password: '', name: '', role: '', tenant_id: null });
-      this.emailControl.enable();
-      this.nameControl.setValidators([fullNameValidator()]);
-      this.nameControl.updateValueAndValidity();
-      this.passwordControl.setValidators([Validators.required, Validators.minLength(6)]);
-      this.passwordControl.updateValueAndValidity();
-    }
+    this.error.set(null);
+    this.membershipError.set(null);
+    this.form.reset({
+      name: this.user?.name ?? '',
+      role_id: '',
+      membership_tenant_id: '',
+      membership_role_id: '',
+    });
   }
 
   async onSubmit(): Promise<void> {
     this.form.markAllAsTouched();
-    if (this.form.invalid) return;
+    this.membershipError.set(null);
+    if (this.form.invalid || !this.user) return;
 
     const raw = this.form.getRawValue();
-    const data: AdminUserForm = {
-      email: raw.email.trim(),
-      password: raw.password,
-      // Normalizado (recorte + NFC) cuando se escribió; vacío al editar sin nombre propio.
-      name: raw.name.trim() === '' ? '' : (normalizeFullName(raw.name) as { value: string }).value,
-      role: raw.role as UserRole,
-      tenant_id: raw.tenant_id,
-    };
-
-    if (this.user) {
-      await this.usersService.updateUser(this.user.id, data);
-    } else {
-      await this.usersService.createUser(data);
+    const hasTenant = raw.membership_tenant_id !== '';
+    const hasRole = raw.membership_role_id !== '';
+    if (hasTenant !== hasRole) {
+      this.membershipError.set('Elige el negocio y el rol en ese negocio juntos.');
+      return;
     }
 
-    if (!this.usersService.error()) {
-      this.saved.emit();
+    const name = raw.name.trim() === '' ? undefined : (normalizeFullName(raw.name) as { value: string }).value;
+    const payload: UserUpdatePayload = {
+      ...(name !== undefined && name !== this.user.name ? { name } : {}),
+      ...(raw.role_id ? { role_id: raw.role_id } : {}),
+      ...(hasTenant ? { membership_tenant_id: raw.membership_tenant_id as number } : {}),
+      ...(hasRole ? { membership_role_id: raw.membership_role_id } : {}),
+    };
+
+    if (Object.keys(payload).length === 0) {
+      this.cancelled.emit();
+      return;
+    }
+
+    const ok = await this.confirm.ask({
+      title: 'Confirmar cambios',
+      message: '¿Confirmas que quieres guardar estos cambios en el usuario?',
+      confirmText: 'Guardar',
+    });
+    if (!ok) return;
+
+    this.isSubmitting.set(true);
+    this.error.set(null);
+    try {
+      const updated = await this.detailService.updateUser(this.user.id, payload);
+      this.usersService.refreshListAndStats();
+      this.saved.emit(updated);
+    } catch (err) {
+      this.error.set(this.extractError(err));
+    } finally {
+      this.isSubmitting.set(false);
     }
   }
 
   onCancel(): void {
     this.cancelled.emit();
+  }
+
+  private extractError(err: unknown): string {
+    if (err instanceof HttpErrorResponse) {
+      const body = err.error as { detail?: string } | null;
+      return body?.detail ?? 'No se pudo guardar el usuario.';
+    }
+    return 'No se pudo guardar el usuario.';
   }
 }
