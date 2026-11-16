@@ -4,7 +4,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { map } from 'rxjs/operators';
 import { AuthService } from '../../../core/services/auth.service';
-import { NAV_ITEMS } from '../../../core/config/navigation.config';
+import { NAV_ITEMS, SUPER_ADMIN_NAV_ITEMS } from '../../../core/config/navigation.config';
 import { NavItem, TENANT_FRAME_GROUP_ORDER } from '../../../core/interfaces/navigation.interface';
 import { IconComponent } from '../../../shared/icon/icon.component';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
@@ -24,9 +24,9 @@ const DESKTOP_COLLAPSED_WIDTH_PX = 72;
 
 /**
  * Sidebar rediseñado del panel de tenant (Administrador/Cajero/Mesero) — spec
- * 116. Reemplaza a `SidebarComponent` SOLO para estas identidades
- * (`DashboardLayoutComponent`, research.md R1); `SidebarComponent` sigue
- * siendo, sin ningún cambio, la implementación real para Super Admin.
+ * 116. También lo usa Super Admin (sin tenant propio): muestra
+ * `SUPER_ADMIN_NAV_ITEMS` en vez de `NAV_ITEMS`, sin filtro de plan/módulo.
+ * `SidebarComponent` (legado) queda sin uso en `DashboardLayoutComponent`.
  */
 @Component({
   selector: 'app-tenant-sidebar',
@@ -206,8 +206,14 @@ export class TenantSidebarComponent {
   private readonly planSummaryService = inject(PlanSummaryService);
   private readonly breakpointObserver = inject(BreakpointObserver);
 
-  readonly logoUrl = this.tenantInfo.logoUrl;
-  readonly businessName = this.tenantInfo.businessName;
+  readonly isSuperAdmin = computed(() => !!this.authService.currentUser()?.isSuperAdmin);
+
+  // Super admin nunca tiene tenant (`tenant_id IS NULL`): no hay logo/nombre
+  // de negocio que leer -- el encabezado muestra la marca de la plataforma.
+  readonly logoUrl = computed(() => (this.isSuperAdmin() ? null : this.tenantInfo.logoUrl()));
+  readonly businessName = computed(() =>
+    this.isSuperAdmin() ? 'SkeiloPOS' : this.tenantInfo.businessName(),
+  );
 
   // Solo color/peso de fuente -- la estructura (flex, alto, radio, padding)
   // vive en la clase estática del <a> en el template, para no duplicar
@@ -248,10 +254,14 @@ export class TenantSidebarComponent {
   });
 
   /** Mismo filtro de `SidebarComponent.visibleItems` (research.md R1,
-   *  data-model.md §5), trasladado sin reescribirlo. */
+   *  data-model.md §5), trasladado sin reescribirlo. Super admin se
+   *  identifica por el flag, no por un rol de tenant (mismo criterio que el
+   *  legado): su navegación (Tenants, Usuarios...) no pasa por el filtro de
+   *  plan, que no aplica a la plataforma. */
   readonly visibleItems = computed<NavItem[]>(() => {
     const user = this.authService.currentUser();
     if (!user) return [];
+    if (user.isSuperAdmin) return SUPER_ADMIN_NAV_ITEMS;
     const summary = this.planSummaryService.summary();
     return NAV_ITEMS.filter((item) => item.roles.includes(user.role)).filter((item) => {
       if (!item.moduleKey) return true;

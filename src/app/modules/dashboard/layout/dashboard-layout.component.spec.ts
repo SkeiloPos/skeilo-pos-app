@@ -10,8 +10,6 @@ import { NavigationTransitionService } from './navigation-transition.service';
 import { DashboardLayoutComponent } from './dashboard-layout.component';
 import { LayoutService } from './layout.service';
 import { PanelThemeService } from './panel-theme.service';
-import { SidebarComponent } from './sidebar.component';
-import { HeaderComponent } from './header.component';
 import { TenantSidebarComponent } from './tenant-sidebar.component';
 import { TenantHeaderComponent } from './tenant-header.component';
 import { AuthService } from '../../../core/services/auth.service';
@@ -46,8 +44,8 @@ function setViewportWidth(width: number): void {
  *
  * No se llama `fixture.detectChanges()` a propósito: la suscripción a
  * `Router.events` vive en el constructor (corre al crear el componente,
- * sin falta de render), y evita tener que montar `<app-sidebar>`/
- * `<app-header>` completos con sus propias dependencias (AuthService,
+ * sin falta de render), y evita tener que montar `<app-tenant-sidebar>`/
+ * `<app-tenant-header>` completos con sus propias dependencias (AuthService,
  * TenantInfoService, etc.), ajenas a lo que prueba este bloque.
  */
 describe('DashboardLayoutComponent — auto-cierre del sidebar solo en móvil (spec 036)', () => {
@@ -159,7 +157,6 @@ describe('LayoutService — valor inicial de sidebarOpen por ancho (spec 078, US
 // (Historia 6). El comportamiento observable — cuándo el menú arranca oculto y
 // cuándo auto-cierra — sí queda cubierto por los tests de este archivo.
 
-
 /**
  * spec 089 (Historia 5, FR-022/FR-024): el reporte de cierre de caja se imprimía en blanco. Causa
  * reproducida con Chrome real (`Page.printToPDF`, medio `print`): al paginar a ~816 px el telón del menú
@@ -184,23 +181,12 @@ describe('DashboardLayoutComponent — impresión del reporte de caja (spec 089,
         swPushStub,
         provideHttpClient(),
         provideHttpClientTesting(),
-        // spec 116: este bloque solo verifica el CSS de impresión del shell
-        // de Super Admin (legado) -- sin este doble, `isSuperAdmin()` (real
-        // AuthService, sin sesión) resolvería `false` y montaría los
-        // componentes nuevos de tenant, que no son el objeto de esta prueba.
         { provide: AuthService, useValue: { currentUser: () => ({ isSuperAdmin: true }) } },
       ],
     });
     TestBed.overrideComponent(DashboardLayoutComponent, {
       remove: {
-        imports: [
-          SidebarComponent,
-          HeaderComponent,
-          TenantSidebarComponent,
-          TenantHeaderComponent,
-          ToastContainerComponent,
-          ConfirmDialogComponent,
-        ],
+        imports: [TenantSidebarComponent, TenantHeaderComponent, ToastContainerComponent, ConfirmDialogComponent],
       },
       add: { schemas: [NO_ERRORS_SCHEMA] },
     });
@@ -209,12 +195,6 @@ describe('DashboardLayoutComponent — impresión del reporte de caja (spec 089,
     fixture.detectChanges();
     return fixture.nativeElement as HTMLElement;
   }
-
-  it('el telón del menú móvil nunca se imprime (print:hidden), aunque el menú esté abierto', () => {
-    const backdrop = render().querySelector('div.fixed.inset-0') as HTMLElement | null;
-    expect(backdrop).not.toBeNull();
-    expect(backdrop!.className).toContain('print:hidden');
-  });
 
   it('los tres contenedores del shell tienen las clases que la impresión libera', () => {
     const el = render();
@@ -235,15 +215,7 @@ describe('DashboardLayoutComponent — impresión del reporte de caja (spec 089,
     expect(css).toMatch(/position:\s*static/);
   });
 
-  it('sigue ocultando sidebar y header solo durante esa impresión (spec 087)', () => {
-    const css = estilos();
-    expect(css).toMatch(/printing-cash-report[^{}]*app-sidebar/);
-    expect(css).toMatch(/printing-cash-report[^{}]*app-header/);
-  });
-
-  // spec 116: quien cierra turno e imprime el reporte desde el panel de
-  // tenant (ADMIN/CASHIER) necesita el mismo tratamiento de impresión.
-  it('también oculta app-tenant-sidebar/app-tenant-header durante esa impresión (spec 116)', () => {
+  it('oculta app-tenant-sidebar/app-tenant-header solo durante esa impresión (spec 087/116)', () => {
     const css = estilos();
     expect(css).toMatch(/printing-cash-report[^{}]*app-tenant-sidebar/);
     expect(css).toMatch(/printing-cash-report[^{}]*app-tenant-header/);
@@ -251,12 +223,14 @@ describe('DashboardLayoutComponent — impresión del reporte de caja (spec 089,
 });
 
 /**
- * spec 116 (T021, contracts/tenant-layout-contract.md §1): la única
- * bifurcación del shell compartido -- Super Admin sigue montando
- * `app-sidebar`/`app-header` sin ningún cambio; el resto (Administrador,
- * Cajero, Mesero) monta los componentes nuevos.
+ * Reuso del sidebar/navbar rediseñado (spec 116) para Super Admin: ya no hay
+ * bifurcación de componente -- todas las identidades, Super Admin incluido
+ * (sin tenant propio), montan `app-tenant-sidebar`/`app-tenant-header`. El
+ * componente legado (`SidebarComponent`/`HeaderComponent`) queda sin uso en
+ * este shell; `TenantSidebarComponent` es quien decide qué ítems mostrar
+ * (`NAV_ITEMS` vs. `SUPER_ADMIN_NAV_ITEMS`) según `user.isSuperAdmin`.
  */
-describe('DashboardLayoutComponent — bifurcación Super Admin vs. tenant (spec 116, research.md R1)', () => {
+describe('DashboardLayoutComponent — shell único, reutilizado por Super Admin', () => {
   function render(isSuperAdmin: boolean): HTMLElement {
     const currentUser = signal({
       id: 'u1',
@@ -293,36 +267,29 @@ describe('DashboardLayoutComponent — bifurcación Super Admin vs. tenant (spec
     return fixture.nativeElement as HTMLElement;
   }
 
-  it('un usuario no-super-admin monta app-tenant-sidebar/app-tenant-header (y no app-sidebar/app-header)', () => {
-    const el = render(false);
-    expect(el.querySelector('app-tenant-sidebar')).not.toBeNull();
-    expect(el.querySelector('app-tenant-header')).not.toBeNull();
-    expect(el.querySelector('app-sidebar')).toBeNull();
-    expect(el.querySelector('app-header')).toBeNull();
+  it('tanto un super admin como un usuario de tenant montan app-tenant-sidebar/app-tenant-header', () => {
+    for (const isSuperAdmin of [false, true]) {
+      const el = render(isSuperAdmin);
+      expect(el.querySelector('app-tenant-sidebar')).not.toBeNull();
+      expect(el.querySelector('app-tenant-header')).not.toBeNull();
+      expect(el.querySelector('app-sidebar')).toBeNull();
+      expect(el.querySelector('app-header')).toBeNull();
+    }
   });
 
-  it('un super admin sigue montando app-sidebar/app-header sin ningún cambio (prueba negativa, research.md R1)', () => {
-    const el = render(true);
-    expect(el.querySelector('app-sidebar')).not.toBeNull();
-    expect(el.querySelector('app-header')).not.toBeNull();
-    expect(el.querySelector('app-tenant-sidebar')).toBeNull();
-    expect(el.querySelector('app-tenant-header')).toBeNull();
-  });
-
-  it('solo el shell de tenant lleva la clase .panel-theme; Super Admin nunca la recibe (FR-009, FR-010)', () => {
-    const tenantRoot = render(false).querySelector('.shell-root')!;
-    expect(tenantRoot.classList.contains('panel-theme')).toBe(true);
-
-    const superAdminRoot = render(true).querySelector('.shell-root')!;
-    expect(superAdminRoot.classList.contains('panel-theme')).toBe(false);
-    expect(superAdminRoot.getAttribute('data-theme')).toBeNull();
+  it('ambos reciben la clase .panel-theme y un data-theme en la raíz del shell', () => {
+    for (const isSuperAdmin of [false, true]) {
+      const root = render(isSuperAdmin).querySelector('.shell-root')!;
+      expect(root.classList.contains('panel-theme')).toBe(true);
+      expect(root.getAttribute('data-theme')).not.toBeNull();
+    }
   });
 });
 
 /**
  * spec 116 (T024, contracts/panel-theme-contract.md §1/§3): alternar el tema
- * actualiza `data-theme` en la raíz del shell; Super Admin nunca ve el
- * interruptor ni la clase `.panel-theme` (research.md R1).
+ * actualiza `data-theme` en la raíz del shell. Reutilizado por Super Admin:
+ * ya no hay una identidad que quede fuera del interruptor de tema.
  */
 describe('DashboardLayoutComponent — tema claro/oscuro (spec 116, T024)', () => {
   function render(isSuperAdmin: boolean) {
@@ -361,27 +328,21 @@ describe('DashboardLayoutComponent — tema claro/oscuro (spec 116, T024)', () =
     return fixture;
   }
 
-  it('alternar el tema actualiza data-theme en la raíz y cambia el ícono del botón (moon↔sun)', () => {
-    const fixture = render(false);
-    const panelTheme = TestBed.inject(PanelThemeService);
-    panelTheme.setTheme('light');
-    fixture.detectChanges();
+  it('alternar el tema actualiza data-theme en la raíz, para cualquier identidad', () => {
+    for (const isSuperAdmin of [false, true]) {
+      const fixture = render(isSuperAdmin);
+      const panelTheme = TestBed.inject(PanelThemeService);
+      panelTheme.setTheme('light');
+      fixture.detectChanges();
 
-    const root = (fixture.nativeElement as HTMLElement).querySelector('.shell-root')!;
-    expect(root.getAttribute('data-theme')).toBe('light');
+      const root = (fixture.nativeElement as HTMLElement).querySelector('.shell-root')!;
+      expect(root.getAttribute('data-theme')).toBe('light');
 
-    panelTheme.toggleTheme();
-    fixture.detectChanges();
+      panelTheme.toggleTheme();
+      fixture.detectChanges();
 
-    expect(root.getAttribute('data-theme')).toBe('dark');
-  });
-
-  it('un super admin nunca recibe la clase .panel-theme ni ve el interruptor de tema', () => {
-    const fixture = render(true);
-    const el = fixture.nativeElement as HTMLElement;
-
-    expect(el.querySelector('.shell-root')!.classList.contains('panel-theme')).toBe(false);
-    expect(el.querySelector('app-tenant-header')).toBeNull();
+      expect(root.getAttribute('data-theme')).toBe('dark');
+    }
   });
 });
 
@@ -389,8 +350,9 @@ describe('DashboardLayoutComponent — tema claro/oscuro (spec 116, T024)', () =
  * spec 116 (T050, research.md R18; contracts/panel-theme-contract.md §9): el
  * `cdk-overlay-container` es compartido por toda la app (un nodo hijo de
  * `<body>`, fuera del subárbol de `.panel-theme`) -- sin esta sincronización,
- * el único `cdkConnectedOverlay` del panel de tenant (Promociones) quedaría
- * congelado en paleta clara aunque el resto del panel esté en oscuro.
+ * el único `cdkConnectedOverlay` del panel (Promociones) quedaría congelado
+ * en paleta clara aunque el resto del panel esté en oscuro. Reutilizado por
+ * Super Admin: también repinta el contenedor compartido.
  */
 describe('DashboardLayoutComponent — sincronización del cdk-overlay-container (spec 116, T050)', () => {
   function render(isSuperAdmin: boolean) {
@@ -429,35 +391,29 @@ describe('DashboardLayoutComponent — sincronización del cdk-overlay-container
     return fixture;
   }
 
-  it('un usuario de tenant repinta el contenedor compartido de CDK Overlay con el tema activo', () => {
-    const fixture = render(false);
-    const panelTheme = TestBed.inject(PanelThemeService);
-    const overlayEl = TestBed.inject(OverlayContainer).getContainerElement();
+  it('tanto super admin como tenant repintan el contenedor compartido de CDK Overlay con el tema activo', () => {
+    for (const isSuperAdmin of [false, true]) {
+      const fixture = render(isSuperAdmin);
+      const panelTheme = TestBed.inject(PanelThemeService);
+      const overlayEl = TestBed.inject(OverlayContainer).getContainerElement();
 
-    panelTheme.setTheme('light');
-    fixture.detectChanges();
-    expect(overlayEl.classList.contains('panel-theme')).toBe(true);
-    expect(overlayEl.getAttribute('data-theme')).toBe('light');
+      panelTheme.setTheme('light');
+      fixture.detectChanges();
+      expect(overlayEl.classList.contains('panel-theme')).toBe(true);
+      expect(overlayEl.getAttribute('data-theme')).toBe('light');
 
-    panelTheme.toggleTheme();
-    fixture.detectChanges();
-    expect(overlayEl.getAttribute('data-theme')).toBe('dark');
-  });
-
-  it('un super admin nunca repinta el contenedor compartido de CDK Overlay', () => {
-    render(true);
-    const overlayEl = TestBed.inject(OverlayContainer).getContainerElement();
-
-    expect(overlayEl.classList.contains('panel-theme')).toBe(false);
-    expect(overlayEl.getAttribute('data-theme')).toBeNull();
+      panelTheme.toggleTheme();
+      fixture.detectChanges();
+      expect(overlayEl.getAttribute('data-theme')).toBe('dark');
+    }
   });
 });
 
 /**
  * spec 116 (T065; contracts/navigation-transition-contract.md §1, §6): la
  * barra/skeleton de transición de navegación se muestran y ocultan según
- * `NavigationTransitionService.phase()`, y un super admin nunca monta el
- * contenedor (`.nav-transition`) -- research.md R1/R20.
+ * `NavigationTransitionService.phase()`. Reutilizado por Super Admin: también
+ * monta el contenedor de transición.
  */
 describe('DashboardLayoutComponent — barra de carga y skeleton de navegación (spec 116, T065)', () => {
   function render(isSuperAdmin: boolean, transitionServiceStub?: unknown) {
@@ -499,12 +455,14 @@ describe('DashboardLayoutComponent — barra de carga y skeleton de navegación 
     return fixture;
   }
 
-  it('un super admin nunca monta el contenedor de transición de navegación', () => {
-    const fixture = render(true);
-    const el = fixture.nativeElement as HTMLElement;
+  it('tanto super admin como tenant montan el contenedor de transición de navegación', () => {
+    for (const isSuperAdmin of [false, true]) {
+      const fixture = render(isSuperAdmin);
+      const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelector('.nav-transition')).toBeNull();
-    expect(el.querySelector('.nav-transition-bar')).toBeNull();
+      expect(el.querySelector('.nav-transition')).not.toBeNull();
+      expect(el.querySelector('.nav-transition-bar')).not.toBeNull();
+    }
   });
 
   it('un usuario de tenant monta el contenedor, y su data-phase refleja la fase del servicio', () => {

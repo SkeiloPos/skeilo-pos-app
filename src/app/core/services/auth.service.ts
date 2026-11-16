@@ -244,8 +244,10 @@ export class AuthService {
   private buildUserFromBackend(backend: BackendUser): User | null {
     const role = mapBackendRole(backend.role);
     // Un super admin se identifica por el flag `is_super_admin`, no por un rol de
-    // tenant: su `role` (p. ej. `SUPER_ADMIN`) puede no pertenecer al enum. Solo
-    // es sesión inválida si el rol es desconocido y además no es super admin.
+    // tenant: el backend manda `role: null` para esta cuenta (no tiene `Role`
+    // asignado, `tenant_id IS NULL`), así que `mapBackendRole` nunca resuelve
+    // nada para ella. Solo es sesión inválida si el rol es desconocido y
+    // además no es super admin.
     if (!role && !backend.is_super_admin) return null;
     return {
       id: backend.uid,
@@ -254,7 +256,13 @@ export class AuthService {
       // cambio, o si el campo viene vacío.
       name: backend.name?.trim() || displayNameFromEmail(backend.email),
       email: backend.email,
-      role: role ?? UserRole.ADMIN,
+      // Antes caía a `UserRole.ADMIN` también para super admin (sin `role`
+      // propio) -- eso hacía que cualquier chequeo por rol (p. ej.
+      // `showCashIndicator` en tenant-header.component.ts) lo confundiera con
+      // un ADMIN de tenant real y disparara llamadas a `/cash/registers` sin
+      // tenant, con `x-tenant-host` resolviendo al dominio raíz ("admin") y
+      // un 404 del backend.
+      role: role ?? (backend.is_super_admin ? UserRole.SUPER_ADMIN : UserRole.ADMIN),
       tenantId: backend.tenant_id,
       isSuperAdmin: backend.is_super_admin,
       mustChangePassword: backend.must_change_password ?? false,

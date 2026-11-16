@@ -92,8 +92,12 @@ describe('AuthService.login', () => {
     expect(user).not.toBeNull();
     expect(user!.isSuperAdmin).toBe(true);
     expect(user!.tenantId).toBeNull();
-    // Falls back to ADMIN since SUPER_ADMIN is not a tenant role.
-    expect(user!.role).toBe(UserRole.ADMIN);
+    // `role` resuelve a SUPER_ADMIN por el flag `is_super_admin`, no por
+    // fallback a ADMIN -- ese fallback hacía que cualquier chequeo por rol de
+    // tenant (p. ej. `showCashIndicator` en tenant-header.component.ts)
+    // confundiera a un super admin con un ADMIN real y disparara llamadas a
+    // endpoints de tenant sin tenant propio.
+    expect(user!.role).toBe(UserRole.SUPER_ADMIN);
   });
 
   it('uses the real name from the backend when present (spec 122, FR-010)', async () => {

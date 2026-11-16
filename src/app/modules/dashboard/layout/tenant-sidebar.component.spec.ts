@@ -5,6 +5,7 @@ import { Component } from '@angular/core';
 import { vi } from 'vitest';
 import { TenantSidebarComponent } from './tenant-sidebar.component';
 import { LayoutService } from './layout.service';
+import { SUPER_ADMIN_NAV_ITEMS } from '../../../core/config/navigation.config';
 import { AuthService } from '../../../core/services/auth.service';
 import { User, UserRole } from '../../../core/interfaces/user.interface';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
@@ -356,6 +357,36 @@ describe('TenantSidebarComponent (spec 116)', () => {
     const h1 = (f.nativeElement as HTMLElement).querySelector('h1')!;
     expect(h1.textContent?.trim()).toBe(longName);
     expect(h1.className).toContain('truncate');
+  });
+
+  // ── Reuso del sidebar para Super Admin (sin tenant propio) ───────────────
+
+  it('super admin ve SUPER_ADMIN_NAV_ITEMS, sin pasar por el filtro de plan', () => {
+    currentUser.set(makeUser({ isSuperAdmin: true, tenantId: null }));
+    planSummary.set(makeSummary({ vencido: true })); // ni siquiera un plan vencido lo afecta
+    createComponent();
+
+    const routes = fixture.componentInstance.visibleItems().map((i) => i.route);
+    expect(routes).toEqual(SUPER_ADMIN_NAV_ITEMS.map((i) => i.route));
+  });
+
+  it('super admin agrupa sus ítems bajo un único grupo «Plataforma»', () => {
+    currentUser.set(makeUser({ isSuperAdmin: true, tenantId: null }));
+    createComponent();
+
+    const groups = fixture.componentInstance.groupedItems();
+    expect(groups.map((g) => g.title)).toEqual(['Plataforma']);
+    expect(groups[0].items.map((i) => i.route)).toEqual(SUPER_ADMIN_NAV_ITEMS.map((i) => i.route));
+  });
+
+  it('super admin ve "SkeiloPOS" en el encabezado, nunca el nombre de un negocio', () => {
+    currentUser.set(makeUser({ isSuperAdmin: true, tenantId: null }));
+    createComponent();
+
+    expect(fixture.componentInstance.businessName()).toBe('SkeiloPOS');
+    expect((fixture.nativeElement as HTMLElement).querySelector('h1')?.textContent?.trim()).toBe(
+      'SkeiloPOS',
+    );
   });
 
   // ── Historia 3 — responsive (data-model.md §3; T028) ─────────────────────

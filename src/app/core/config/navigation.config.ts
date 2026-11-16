@@ -153,6 +153,10 @@ export const NAV_ITEMS: NavItem[] = [
 /**
  * Navegación del área Super Admin (dominio raíz). No se filtra por rol: estos
  * ítems se muestran cuando el usuario autenticado es super admin.
+ *
+ * `frame` (grupo único `'Plataforma'`): reutiliza el sidebar rediseñado del
+ * panel de tenant (`app-tenant-sidebar`) en vez del componente legado
+ * (`app-sidebar`) -- ya no hay un shell distinto para Super Admin.
  */
 export const SUPER_ADMIN_NAV_ITEMS: NavItem[] = [
   {
@@ -161,6 +165,7 @@ export const SUPER_ADMIN_NAV_ITEMS: NavItem[] = [
     route: '/super-admin/tenants',
     group: 'PLATAFORMA',
     roles: [UserRole.SUPER_ADMIN],
+    frame: { label: 'Tenants', icon: 'tenants', group: 'Plataforma' },
   },
   {
     label: 'Usuarios',
@@ -168,6 +173,7 @@ export const SUPER_ADMIN_NAV_ITEMS: NavItem[] = [
     route: '/super-admin/users',
     group: 'PLATAFORMA',
     roles: [UserRole.SUPER_ADMIN],
+    frame: { label: 'Usuarios', icon: 'users', group: 'Plataforma' },
   },
   {
     label: 'Métodos de pago',
@@ -175,11 +181,21 @@ export const SUPER_ADMIN_NAV_ITEMS: NavItem[] = [
     route: '/super-admin/payment-methods-catalog',
     group: 'PLATAFORMA',
     roles: [UserRole.SUPER_ADMIN],
+    frame: { label: 'Métodos de pago', icon: 'payment-methods', group: 'Plataforma' },
   },
   {
     label: 'Planes',
     icon: 'layers',
     route: '/super-admin/plans',
+    group: 'PLATAFORMA',
+    roles: [UserRole.SUPER_ADMIN],
+    frame: { label: 'Planes', icon: 'layers', group: 'Plataforma' },
+  },
+  {
+    label: 'Auditoría y actividad',
+    icon: 'audit',
+    route: '/super-admin/audit-logs',
+    frame: { label: 'Auditoría y actividad', icon: 'audit', group: 'Plataforma' },
     group: 'PLATAFORMA',
     roles: [UserRole.SUPER_ADMIN],
   },
