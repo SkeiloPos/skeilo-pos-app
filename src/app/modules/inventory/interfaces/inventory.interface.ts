@@ -192,6 +192,62 @@ export interface PurchaseCreatePayload {
   allow_incomplete?: boolean;
 }
 
+// --- Compra sugerida (spec 158) ---
+
+/** Fila del listado de `GET /inventory/purchases/suggested`. Mirrors backend
+ *  `SuggestedPurchaseLineResponse`. `suggested_quantity` es siempre `1` al abrir (FR-003) --
+ *  el cliente recalcula localmente si el usuario ajusta la cantidad. */
+export interface SuggestedPurchaseLine {
+  inventory_item_id: string;
+  code: string;
+  name: string;
+  current_stock: number;
+  min_stock: number;
+  deficit: number;
+  base_unit_abbreviation: string;
+  supplier_item_id: string | null;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  purchase_unit_label: string | null;
+  conversion_factor: number | null;
+  unit_price: number | null;
+  suggested_quantity: number;
+  is_preselected: boolean;
+  /** "Sin proveedor configurado. Elige uno." cuando `is_preselected` es `false` (FR-006). */
+  missing_supplier_reason: string | null;
+}
+
+/** Una línea del payload de `POST /inventory/purchases/suggested/generate`
+ *  (`SuggestedPurchaseLineIn`). */
+export interface GenerateSuggestedPurchasesLinePayload {
+  inventory_item_id: string;
+  supplier_item_id: string;
+  presentation_quantity: number;
+  presentation_unit_cost: number;
+}
+
+/** `POST /inventory/purchases/suggested/generate` (`GenerateSuggestedPurchasesRequest`). */
+export interface GenerateSuggestedPurchasesPayload {
+  idempotency_key: string;
+  lines: GenerateSuggestedPurchasesLinePayload[];
+}
+
+/** Motivo de una línea inválida en el 422 de `POST .../generate` (FR-011/FR-012,
+ *  contracts/suggested-purchases-api.md). */
+export type SuggestedPurchaseLineErrorReason =
+  | 'unit_price_zero'
+  | 'quantity_below_minimum'
+  | 'supplier_item_inactive'
+  | 'supplier_item_not_found';
+
+/** Cuerpo del 422 de `POST .../generate`: una línea por cada fila que falló la
+ *  revalidación de servidor -- el frontend la usa para resaltar esa fila sin volver a
+ *  pedir el listado. */
+export interface GenerateSuggestedPurchasesError {
+  message: string;
+  lines: { inventory_item_id: string; reason: SuggestedPurchaseLineErrorReason }[];
+}
+
 // --- Importación masiva (spec 109) ---
 
 export type InventoryImportJobStatus = 'procesando' | 'finalizado' | 'interrumpido';
