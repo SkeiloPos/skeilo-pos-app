@@ -243,6 +243,15 @@ export const dashboardRoutes: Routes = [
         canActivate: [roleGuard([UserRole.ADMIN]), planModuleGuard('inventario')],
       },
       {
+        // spec 158: más específica que 'inventario' por el mismo motivo que 'compras/nueva'.
+        path: 'inventario/compra-sugerida',
+        loadComponent: () =>
+          import('../inventory/pages/suggested-purchase-page.component').then(
+            (m) => m.SuggestedPurchasePageComponent,
+          ),
+        canActivate: [roleGuard([UserRole.ADMIN]), planModuleGuard('inventario')],
+      },
+      {
         path: 'inventario',
         loadComponent: () =>
           import('../inventory/pages/inventory-page.component').then(

@@ -138,19 +138,31 @@ type ActiveFilter = '' | 'active' | 'inactive';
       <!-- ============ TAB: INSUMOS ============ -->
       @if (tab() === 'items') {
         <!-- Alert -->
-        <button
-          type="button"
-          (click)="toggleLowFilter()"
-          class="text-left rounded-xl border p-4 transition-colors max-w-xs w-full"
-          [class]="
-            service.itemsLowStock()
-              ? 'bg-amber-100 border-amber-300'
-              : 'bg-amber-50 border-amber-100 hover:bg-amber-100'
-          "
-        >
-          <p class="text-xs text-amber-700 font-medium uppercase tracking-wide">Bajo mínimo</p>
-          <p class="text-2xl font-bold text-amber-800 mt-1">{{ service.lowStockItems().length }}</p>
-        </button>
+        <div class="flex items-start gap-3 flex-wrap">
+          <button
+            type="button"
+            (click)="toggleLowFilter()"
+            class="text-left rounded-xl border p-4 transition-colors max-w-xs w-full"
+            [class]="
+              service.itemsLowStock()
+                ? 'bg-amber-100 border-amber-300'
+                : 'bg-amber-50 border-amber-100 hover:bg-amber-100'
+            "
+          >
+            <p class="text-xs text-amber-700 font-medium uppercase tracking-wide">Bajo mínimo</p>
+            <p class="text-2xl font-bold text-amber-800 mt-1">{{ service.lowStockItems().length }}</p>
+          </button>
+          <!-- spec 158: punto de entrada visible a la pantalla de compra sugerida, al lado de
+               la tarjeta de bajo mínimo que ya resume lo mismo. -->
+          <button
+            type="button"
+            (click)="goToSuggestedPurchase()"
+            class="h-[72px] px-4 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold text-sm hover:bg-indigo-100 transition-colors flex items-center gap-2"
+          >
+            <app-mi-icon name="shopping_cart" [size]="18" />
+            Compra sugerida
+          </button>
+        </div>
 
         <!-- Table -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
@@ -521,7 +533,7 @@ type ActiveFilter = '' | 'active' | 'inactive';
               @for (p of service.purchases(); track p.id) {
                 <div class="px-4 py-3">
                   <div class="w-full flex items-center justify-between gap-3">
-                    <button type="button" (click)="toggleExpanded(p.id)" class="flex-1 text-left">
+                    <button type="button" (click)="toggleExpanded(p)" class="flex-1 text-left">
                       <p class="font-medium text-gray-900">{{ supplierName(p.supplier_id) }}</p>
                       <p class="text-xs text-gray-500">
                         {{ p.purchased_at | tenantDate: 'short' }}
@@ -909,8 +921,15 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   private readonly unitMap = computed(
     () => new Map(this.unitMeasureService.unitMeasures().map((u) => [u.id, u.abbreviation])),
   );
+  /** spec 158: `allItems()` tope en 100 (orden alfabético) -- la compra sugerida reparte
+   *  órdenes por todo el catálogo según déficit, no por popularidad/orden alfabético, así
+   *  que es mucho más fácil que una de sus líneas quede fuera de ese tope. `resolvedExtraItems()`
+   *  (poblado por `resolveMissingItems()`, ver `openReceive()`) completa lo que falte, mismo
+   *  patrón que `purchase-view.component.ts::itemById`. */
   private readonly itemMap = computed(
-    () => new Map(this.service.allItems().map((i) => [i.id, i.name])),
+    () => new Map(
+      [...this.service.allItems(), ...this.service.resolvedExtraItems()].map((i) => [i.id, i.name]),
+    ),
   );
   /** Opciones para el select con buscador de insumos del tab Movimientos. */
   readonly movementItemOptions = computed(() =>
@@ -973,6 +992,11 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   // --- paginación de Compras ---
   goToNewPurchase(): void {
     this.router.navigate(['/dashboard/inventario/compras/nueva']);
+  }
+
+  /** spec 158: punto de entrada a la pantalla de compra sugerida. */
+  goToSuggestedPurchase(): void {
+    this.router.navigate(['/dashboard/inventario/compra-sugerida']);
   }
 
   /** Reabrir un borrador incompleto (spec 140, FR-017): `GET /purchases` ya trae `items`,
@@ -1057,8 +1081,9 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
     // spec 138 (A-147): el día del respaldo es el día local del negocio, no el día UTC.
     return `inventario_${businessToday(this.tenantInfo.timezone())}.xlsx`;
   }
-  toggleExpanded(id: string): void {
-    this.expandedId.update((current) => (current === id ? null : id));
+  toggleExpanded(p: Purchase): void {
+    this.expandedId.update((current) => (current === p.id ? null : p.id));
+    void this.service.resolveMissingItems(p.items.map((it) => it.inventory_item_id));
   }
 
   // --- recepción de compra (RF-022) ---
@@ -1078,6 +1103,7 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
     }[p.status];
   }
   openReceive(p: Purchase): void {
+    void this.service.resolveMissingItems(p.items.map((it) => it.inventory_item_id));
     this.receiveRows.set(
       p.items.map((it) => {
         const pending = it.quantity - it.received_quantity;
