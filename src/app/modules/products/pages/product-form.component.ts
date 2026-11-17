@@ -110,7 +110,7 @@ interface SlotBreakdown {
         <!-- ===== 1. Datos generales ===== -->
         <section class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <div class="mb-4">
-            <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">1. Datos generales</h2>
+            <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">Datos generales</h2>
             <p class="text-xs text-gray-500 mt-1">Lo que verán tus clientes en la carta.</p>
           </div>
           <div class="flex flex-col sm:flex-row gap-5">
@@ -205,7 +205,7 @@ interface SlotBreakdown {
         <section class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <div class="flex items-start justify-between gap-4">
             <div>
-              <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">2. Tamaños y precios</h2>
+              <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">Tamaños y precios</h2>
               <p class="text-xs text-gray-500 mt-1">Cada tamaño tiene su propio precio. Si el producto se vende en un solo tamaño, desactívalo.</p>
             </div>
             <button type="button" (click)="toggleHasSizes()" role="switch" [attr.aria-checked]="draft().hasSizes"
@@ -266,10 +266,12 @@ interface SlotBreakdown {
                         [bordered]="false" sizeClass="text-sm" />
                     </div>
                     <div class="flex items-center justify-end gap-1 flex-wrap">
-                      <button type="button" (click)="goToInventory(v.localId); $event.stopPropagation()"
-                        class="px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg inline-flex items-center gap-1 whitespace-nowrap">
-                        <app-mi-icon name="inventory" [size]="14" /> Inventario
-                      </button>
+                      @if (inventarioIncluido()) {
+                        <button type="button" (click)="goToInventory(v.localId); $event.stopPropagation()"
+                          class="px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg inline-flex items-center gap-1 whitespace-nowrap">
+                          <app-mi-icon name="inventory" [size]="14" /> Inventario
+                        </button>
+                      }
                       @if (draft().variants.length > 1) {
                         <button type="button" (click)="removeVariant(v.localId); $event.stopPropagation()"
                           class="px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors">
@@ -296,83 +298,82 @@ interface SlotBreakdown {
              parte de inventario de "Sabores a elegir" (cantidad de consumo, detalle de
              insumo -- el selector de grupo y min/max siguen editables sin importar este
              switch, spec 064 FR-006). Apagarlo NO borra los insumos ya guardados, solo
-             deja de exigirlos y de aplicarlos al vender. Deshabilitado (no oculto) sin
-             el módulo Inventario en el plan (spec 064, FR-011) -- un producto existente
-             con el switch ya encendido debe seguir mostrando ese valor. -->
-        <section id="product-form-inventario" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">3. Inventario</h2>
-              <p class="text-xs text-gray-500 mt-1">
-                @if (inventarioIncluido()) {
+             deja de exigirlos y de aplicarlos al vender. Oculta (no deshabilitada) sin
+             el módulo Inventario en el plan (spec 160, FR-002) -- un producto existente
+             con tracks_inventory/insumos ya guardados conserva ese valor intacto aunque
+             la sección no se renderice mientras el plan no incluya el módulo. -->
+        @if (inventarioIncluido()) {
+          <section id="product-form-inventario" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">Inventario</h2>
+                <p class="text-xs text-gray-500 mt-1">
                   <span>Actívalo para descontar insumos del stock cada vez que se venda este producto.</span>
-                } @else {
-                  <span>Tu plan actual no incluye el módulo de inventario.</span>
-                }
-              </p>
+                </p>
+              </div>
+              <button type="button" (click)="toggleTracksInventory()" role="switch"
+                [attr.aria-checked]="draft().tracks_inventory"
+                class="relative w-11 h-6 rounded-full transition-colors shrink-0"
+                [class]="draft().tracks_inventory ? 'bg-indigo-600' : 'bg-gray-300'"
+                title="Actívalo si este producto descuenta insumos del inventario al venderse">
+                <span class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" [class]="draft().tracks_inventory ? 'left-[22px]' : 'left-0.5'"></span>
+              </button>
             </div>
-            <button type="button" (click)="toggleTracksInventory()" role="switch"
-              [attr.aria-checked]="draft().tracks_inventory" [disabled]="!inventarioIncluido()"
-              class="relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-              [class]="draft().tracks_inventory ? 'bg-indigo-600' : 'bg-gray-300'"
-              title="Actívalo si este producto descuenta insumos del inventario al venderse">
-              <span class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" [class]="draft().tracks_inventory ? 'left-[22px]' : 'left-0.5'"></span>
-            </button>
-          </div>
 
-          <div class="mt-4 space-y-4">
-            @if (draft().tracks_inventory && draft().hasSizes && draft().variants.length > 1) {
-              <div class="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 space-y-2">
-                @if (activeVariant(); as av) {
-                  <div class="text-sm text-indigo-800">
-                    Configurando el inventario de: <strong>{{ variantLabel(av) }}</strong> · $ {{ av.price | number: '1.0-0' }}
-                  </div>
-                }
-                <ng-container [ngTemplateOutlet]="sizeContextChips" [ngTemplateOutletContext]="{ variants: draft().variants }" />
-              </div>
-            }
-
-            @if (showsInventoryWarning()) {
-              <div class="rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-sm text-amber-700">
-                <app-mi-icon name="warning" [size]="16" class="inline-flex align-text-bottom" /> Este producto no podrá venderse hasta que se le configure al menos un insumo en alguna presentación.
-              </div>
-            }
-
-            @if (activeVariant(); as av) {
-              @if (sectionsEnabled()) {
-                <div>
-                  <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Insumos fijos</h4>
-                  <p class="text-xs text-gray-400 mt-0.5 mb-2">Se descuentan siempre que se venda este tamaño.</p>
-                  <div class="space-y-2">
-                    @if (av.recipe.length === 0) {
-                      <p class="text-sm text-gray-400">Ninguno todavía.</p>
-                    }
-                    @for (line of av.recipe; track $index) {
-                      <div class="flex items-center gap-2">
-                        <app-searchable-select [ngModel]="line.inventory_item_id"
-                          (ngModelChange)="setRecipeField(av.localId, $index, 'inventory_item_id', $event)"
-                          (optionPicked)="onInventoryItemPicked($event)"
-                          [options]="inventoryOptions()" [search]="searchInventoryItems" placeholder="Insumo…" class="flex-1" />
-                        <input type="number" min="0" step="0.001" [value]="line.quantity"
-                          (input)="setRecipeField(av.localId, $index, 'quantity', +$any($event.target).value)" placeholder="Cant."
-                          class="w-24 px-2 py-2 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                        <span class="w-12 text-xs text-gray-400">{{ unitAbbr(line.inventory_item_id) }}</span>
-                        <button type="button" (click)="removeRecipeLine(av.localId, $index)"
-                          class="px-2 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg"><app-mi-icon name="close" ariaLabel="Quitar" [size]="14" /></button>
-                      </div>
-                    }
-                    <button type="button" (click)="addRecipeLine(av.localId)"
-                      class="text-sm font-medium text-indigo-600 hover:text-indigo-700">+ Agregar insumo</button>
-                  </div>
-                </div>
-              } @else {
-                <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
-                  Activa "Maneja inventario" arriba para configurar los insumos fijos que este tamaño descuenta.
+            <div class="mt-4 space-y-4">
+              @if (draft().tracks_inventory && draft().hasSizes && draft().variants.length > 1) {
+                <div class="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 space-y-2">
+                  @if (activeVariant(); as av) {
+                    <div class="text-sm text-indigo-800">
+                      Configurando el inventario de: <strong>{{ variantLabel(av) }}</strong> · $ {{ av.price | number: '1.0-0' }}
+                    </div>
+                  }
+                  <ng-container [ngTemplateOutlet]="sizeContextChips" [ngTemplateOutletContext]="{ variants: draft().variants }" />
                 </div>
               }
-            }
-          </div>
-        </section>
+
+              @if (showsInventoryWarning()) {
+                <div class="rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-sm text-amber-700">
+                  <app-mi-icon name="warning" [size]="16" class="inline-flex align-text-bottom" /> Este producto no podrá venderse hasta que se le configure al menos un insumo en alguna presentación.
+                </div>
+              }
+
+              @if (activeVariant(); as av) {
+                @if (sectionsEnabled()) {
+                  <div>
+                    <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Insumos fijos</h4>
+                    <p class="text-xs text-gray-400 mt-0.5 mb-2">Se descuentan siempre que se venda este tamaño.</p>
+                    <div class="space-y-2">
+                      @if (av.recipe.length === 0) {
+                        <p class="text-sm text-gray-400">Ninguno todavía.</p>
+                      }
+                      @for (line of av.recipe; track $index) {
+                        <div class="flex items-center gap-2">
+                          <app-searchable-select [ngModel]="line.inventory_item_id"
+                            (ngModelChange)="setRecipeField(av.localId, $index, 'inventory_item_id', $event)"
+                            (optionPicked)="onInventoryItemPicked($event)"
+                            [options]="inventoryOptions()" [search]="searchInventoryItems" placeholder="Insumo…" class="flex-1" />
+                          <input type="number" min="0" step="0.001" [value]="line.quantity"
+                            (input)="setRecipeField(av.localId, $index, 'quantity', +$any($event.target).value)" placeholder="Cant."
+                            class="w-24 px-2 py-2 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                          <span class="w-12 text-xs text-gray-400">{{ unitAbbr(line.inventory_item_id) }}</span>
+                          <button type="button" (click)="removeRecipeLine(av.localId, $index)"
+                            class="px-2 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg"><app-mi-icon name="close" ariaLabel="Quitar" [size]="14" /></button>
+                        </div>
+                      }
+                      <button type="button" (click)="addRecipeLine(av.localId)"
+                        class="text-sm font-medium text-indigo-600 hover:text-indigo-700">+ Agregar insumo</button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                    Activa "Maneja inventario" arriba para configurar los insumos fijos que este tamaño descuenta.
+                  </div>
+                }
+              }
+            </div>
+          </section>
+        }
 
         <!-- ===== 4. Sabores a elegir (spec 064) =====
              A diferencia de "Insumos fijos" (100% inventario), esta sección SIEMPRE está
@@ -382,7 +383,7 @@ interface SlotBreakdown {
              producto con el acceso por plan) dependen de inventario. -->
         <section class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <div>
-            <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">4. Sabores a elegir</h2>
+            <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">Sabores a elegir</h2>
             <p class="text-xs text-gray-500 mt-1">
               @if (sectionsEnabled()) {
                 <span>El cliente elige, y se descuenta la cantidad indicada del insumo de <strong>cada</strong> opción que elija.</span>
@@ -527,7 +528,7 @@ interface SlotBreakdown {
         @if (!draft().is_topping) {
           <section class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <div class="mb-4">
-              <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">5. Toppings</h2>
+              <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">Toppings</h2>
               <p class="text-xs text-gray-500 mt-1">Productos del catálogo que el cliente puede añadir. Cada uno conserva su propio precio -- aplica a todas las presentaciones.</p>
             </div>
             <div class="space-y-2">
@@ -554,7 +555,7 @@ interface SlotBreakdown {
              Agrupa lo que no modela el mockup: estado del producto y visibilidad. -->
         <section class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <div class="mb-1">
-            <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">6. Configuración adicional</h2>
+            <h2 class="text-base font-semibold text-gray-900" style="font-family:Sora,ui-sans-serif,system-ui,sans-serif">Configuración adicional</h2>
             <p class="text-xs text-gray-500 mt-1">Estado y visibilidad del producto.</p>
           </div>
 
