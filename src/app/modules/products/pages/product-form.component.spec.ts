@@ -720,45 +720,78 @@ describe('ProductFormComponent', () => {
     expect(component.draft().deactivated).toEqual([]);
   });
 
-  // ── Gating por plan del switch de inventario (spec 064, US5) ─────────────
+  // ── Gating por plan de la sección de inventario (spec 160) ───────────────
 
-  it('sin el módulo Inventario en el plan, el switch aparece deshabilitado', async () => {
+  /** El botón "Inventario" de salto rápido en la fila de tamaños. */
+  const inventoryJumpButton = (): HTMLButtonElement | null =>
+    (Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.trim() === 'Inventario',
+    ) ?? null) as HTMLButtonElement | null;
+
+  it('sin el módulo Inventario en el plan, la sección "3. Inventario" no se renderiza', async () => {
     planSummary.set(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
     await createNew();
-
-    expect(switchButton().disabled).toBe(true);
-  });
-
-  it('sin el módulo Inventario, hacer click en el switch deshabilitado no cambia nada', async () => {
-    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
-    await createNew();
-
-    switchButton().click(); // no-op: el navegador nunca dispara (click) sobre [disabled]
+    component.toggleHasSizes(); // con tamaños, para que exista la fila con el botón "Inventario"
     fixture.detectChanges();
 
-    expect(component.draft().tracks_inventory).toBe(false);
+    expect(fixture.nativeElement.querySelector('#product-form-inventario')).toBeNull();
+    expect(text()).not.toContain('Inventario');
+    expect(text()).not.toContain('Tu plan actual no incluye el módulo de inventario');
+    expect(inventoryJumpButton()).toBeNull();
   });
 
-  it('un producto existente con tracks_inventory=true conserva ese valor visible aunque el switch esté deshabilitado sin el módulo', async () => {
+  it('sin el módulo Inventario, un producto existente con tracks_inventory=true conserva sus datos sin mostrar la sección', async () => {
     planSummary.set(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
     await createEdit('p9', true);
 
+    expect(fixture.nativeElement.querySelector('#product-form-inventario')).toBeNull();
     expect(component.draft().tracks_inventory).toBe(true);
-    expect(switchButton().getAttribute('aria-checked')).toBe('true');
-    expect(switchButton().disabled).toBe(true);
-    // sectionsEnabled() combina el switch con el plan: sin módulo, ni "Insumos fijos" ni
-    // la parte de inventario de "Sabores a elegir" se muestran, aunque el switch siga en
-    // `true` (dato preservado, FR-013) -- research.md Decisión 5.
-    expect(text()).not.toContain('Insumos fijos');
+    expect(component.draft().variants[0].recipe.length).toBe(1);
+    expect(component.draft().variants[0].recipe[0].inventory_item_id).toBe('i1');
+    expect(component.draft().variants[0].recipe[0].quantity).toBe(1);
   });
 
-  it('con el módulo Inventario incluido, el switch funciona con normalidad (sin regresión)', async () => {
+  it('con el módulo Inventario incluido, la sección y el switch funcionan con normalidad (sin regresión)', async () => {
     planSummary.set(makeSummary({ modules: { inventario: true, promociones: true, cocina: false } }));
     await createNew();
 
+    expect(fixture.nativeElement.querySelector('#product-form-inventario')).not.toBeNull();
+    expect(text()).toContain('Inventario');
     expect(switchButton().disabled).toBe(false);
     switchButton().click();
     fixture.detectChanges();
+    expect(component.draft().tracks_inventory).toBe(true);
+    expect(text()).toContain('Insumos fijos');
+  });
+
+  it('con el módulo Inventario incluido, un producto existente muestra la sección con la receta ya guardada (FR-006)', async () => {
+    planSummary.set(makeSummary({ modules: { inventario: true, promociones: true, cocina: false } }));
+    await createEdit('p9', true);
+
+    expect(fixture.nativeElement.querySelector('#product-form-inventario')).not.toBeNull();
+    expect(text()).toContain('Insumos fijos');
+    expect(component.draft().variants[0].recipe.length).toBe(1);
+    expect(component.draft().variants[0].recipe[0].inventory_item_id).toBe('i1');
+  });
+
+  it('al cambiar el plan en vivo, la sección aparece/desaparece sin alterar el draft (spec 160, US3)', async () => {
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
+    await createEdit('p9', true);
+
+    expect(fixture.nativeElement.querySelector('#product-form-inventario')).toBeNull();
+    expect(component.draft().tracks_inventory).toBe(true);
+
+    planSummary.set(makeSummary({ modules: { inventario: true, promociones: true, cocina: false } }));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#product-form-inventario')).not.toBeNull();
+    expect(component.draft().tracks_inventory).toBe(true);
+    expect(component.draft().variants[0].recipe[0].inventory_item_id).toBe('i1');
+
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#product-form-inventario')).toBeNull();
     expect(component.draft().tracks_inventory).toBe(true);
   });
 
@@ -1049,7 +1082,7 @@ describe('ProductFormComponent', () => {
     await createEdit('p9', false);
 
     const tabla = position('Agregar tamaño');
-    const inventario = position('3. Inventario');
+    const inventario = position('Inventario</h2>');
     const detalle = position('Insumos fijos') === -1
       ? position('Activa "Maneja inventario" arriba')
       : position('Insumos fijos');
@@ -1057,6 +1090,14 @@ describe('ProductFormComponent', () => {
     expect(tabla).toBeGreaterThan(-1);
     expect(inventario).toBeGreaterThan(tabla);
     expect(detalle).toBeGreaterThan(inventario);
+  });
+
+  it('sin el módulo Inventario, con tamaños, la tarjeta de inventario no existe en el DOM', async () => {
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
+    await createEdit('p9', false);
+
+    expect(position('Agregar tamaño')).toBeGreaterThan(-1);
+    expect(position('Inventario</h2>')).toBe(-1);
   });
 
   it('con "Maneja inventario" apagado, la tabla de tamaños sigue visible y editable', async () => {
@@ -1071,7 +1112,15 @@ describe('ProductFormComponent', () => {
     await createNew();
 
     expect(fixture.nativeElement.querySelectorAll('[cdkDrag]').length).toBe(0);
-    expect(position('3. Inventario')).toBeGreaterThan(position('2. Tamaños y precios'));
+    expect(position('Inventario</h2>')).toBeGreaterThan(position('Tamaños y precios</h2>'));
+  });
+
+  it('sin el módulo Inventario y sin tamaños, no hay tarjeta de inventario', async () => {
+    planSummary.set(makeSummary({ modules: { inventario: false, promociones: true, cocina: false } }));
+    await createNew();
+
+    expect(fixture.nativeElement.querySelectorAll('[cdkDrag]').length).toBe(0);
+    expect(position('Inventario</h2>')).toBe(-1);
   });
 
   // ── Historia 1 (spec 102): nombre real de insumos ya guardados ───────────
