@@ -13,6 +13,7 @@ import {
   DinerSessionExpiredError,
   MenuPromotionAnnouncement,
   PendingPaymentExitError,
+  ResolvedLegalDocument,
 } from '../services/diner.service';
 import { DinerTokenStore } from '../services/diner-token.store';
 import {
@@ -221,15 +222,33 @@ const REFRESH_DEBOUNCE_MS = 250;
                 <p class="text-red-600 text-sm bg-red-50 px-3 py-2 rounded-lg">{{ errorMessage() }}</p>
               }
               <button
+                data-testid="confirmar-nombre"
                 (click)="confirmName()"
-                [disabled]="joining()"
+                [disabled]="joining() || !legalDocument()"
                 class="w-full h-12 bg-violet-700 hover:bg-violet-800 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
               >
                 {{ joining() ? 'Abriendo sesión...' : 'Continuar' }}
               </button>
-              <p class="text-center text-xs leading-relaxed text-gray-400">
-                Al continuar, aceptas nuestras <a href="#" class="font-semibold text-violet-700 hover:text-violet-800">Políticas de Privacidad</a> y el tratamiento de tus datos para la gestión de tu pedido.
-              </p>
+              <!-- spec 162 (FR-016/FR-017): sin documento legal vigente, el negocio
+                   todavía no puede recibir comensales por QR (control real: 409 del
+                   backend; esto solo evita ofrecer un formulario que de todos modos
+                   sería rechazado). -->
+              @if (legalDocument()) {
+                <p data-testid="aviso-legal" class="text-center text-xs leading-relaxed text-gray-400">
+                  Al continuar, aceptas nuestro
+                  <a
+                    data-testid="aviso-legal-link"
+                    [href]="'/legal/documento/' + legalDocument()!.id"
+                    target="_blank"
+                    class="font-semibold text-violet-700 hover:text-violet-800"
+                  >aviso legal</a>
+                  y el tratamiento de tus datos para la gestión de tu pedido.
+                </p>
+              } @else {
+                <p data-testid="sin-documento-legal" class="text-center text-xs leading-relaxed text-amber-600">
+                  Este negocio todavía no tiene su aviso legal publicado; vuelve a intentarlo más tarde.
+                </p>
+              }
             </div>
           </div>
           <p class="absolute left-0 right-0 bottom-4 text-center text-xs text-gray-400">Todos los derechos reservados · SkeiloPOS</p>
@@ -905,6 +924,10 @@ export class PublicMenuComponent implements OnInit, OnDestroy, AvailabilityTarge
   readonly nameInput = signal('');
   readonly nameError = signal(false);
   readonly joining = signal(false);
+  /** spec 162 (FR-016/FR-017): aviso legal vigente del tenant, o `null` si
+   *  todavía no publicó ninguno — en ese caso no se ofrece el formulario de
+   *  nombre (el backend lo rechazaría igual con 409, esto es solo UX). */
+  readonly legalDocument = signal<ResolvedLegalDocument | null>(null);
 
   readonly selectedProduct = signal<MenuProduct | null>(null);
   /** Spec 148 (D10/H11): resuelve el producto abierto por id contra el menú
@@ -1198,12 +1221,14 @@ export class PublicMenuComponent implements OnInit, OnDestroy, AvailabilityTarge
 
     // 1. Resolver mesa + menú desde el token firmado.
     try {
-      const { table, business, categories, promotions } = await this.api.resolveByToken(this.token);
+      const { table, business, categories, promotions, legalDocument } =
+        await this.api.resolveByToken(this.token);
       this.tableNumber.set(table.number);
       this.tableName.set(table.name);
       this.businessName.set(business?.name ?? null);
       this.businessLogo.set(business?.logo_url ?? null);
       this.businessTimezone.set(business?.timezone ?? FALLBACK_TIMEZONE);
+      this.legalDocument.set(legalDocument);
       this.categories.set(categories);
       this.promotionAnnouncements.set(promotions ?? []);
       this.cart.indexMenu(categories);
@@ -1334,6 +1359,14 @@ export class PublicMenuComponent implements OnInit, OnDestroy, AvailabilityTarge
 
     if (!this.token) {
       this.errorMessage.set('No se pudo identificar la mesa. Escanea el QR nuevamente.');
+      return;
+    }
+    // spec 162 (FR-016): sin aviso legal vigente no se ofrece el formulario de
+    // nombre — control real de UX; el backend igual rechazaría con 409.
+    if (!this.legalDocument()) {
+      this.errorMessage.set(
+        'Este negocio todavía no tiene su aviso legal publicado; no se puede continuar.',
+      );
       return;
     }
 

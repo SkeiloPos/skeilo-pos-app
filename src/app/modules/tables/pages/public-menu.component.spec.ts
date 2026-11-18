@@ -33,14 +33,25 @@ class FakeDinerService {
   promotions: MenuPromotionAnnouncement[] = [];
   /** spec 089: si se fija, `myOrders()` lo lanza (un 401 de sesión, con o sin cierre). */
   myOrdersError: unknown = null;
+  /** spec 162 (FR-016/FR-017): snapshot vigente del tenant por defecto —
+   *  solo los tests de esa spec lo fuerzan a `null` para probar la ausencia. */
+  legalDocument: { id: string; version: number } | null = { id: 'doc-1', version: 1 };
   async resolveByToken() {
     return {
       table: { id: 't1', number: 1, name: null },
       business: this.business,
       categories: this.categories,
       promotions: this.promotions,
+      legalDocument: this.legalDocument,
     };
   }
+  getTenantLegalDocument = vi.fn(async () => ({
+    id: 'doc-1',
+    version: 1,
+    contenido_html: '<p>Aviso de prueba</p>',
+    published_at: '2026-01-01T00:00:00Z',
+    content_hash: 'abc',
+  }));
   leave = vi.fn(async (): Promise<void> => {});
   /** spec 089 (A-95): las pruebas de acceso denegado comprueban que nunca se llama. */
   openSession = vi.fn(async () => ({}));
@@ -117,6 +128,8 @@ describe('PublicMenuComponent', () => {
       promotions?: MenuPromotionAnnouncement[];
       queryParams?: Record<string, string>;
       router?: { navigate: ReturnType<typeof vi.fn> };
+      /** spec 162 (FR-016/FR-017): por defecto el fake ya trae uno vigente. */
+      legalDocument?: { id: string; version: number } | null;
     } = {},
   ): Promise<{ fixture: ComponentFixture<PublicMenuComponent>; component: PublicMenuComponent }> {
     TestBed.resetTestingModule();
@@ -128,6 +141,7 @@ describe('PublicMenuComponent', () => {
     diner.categories = categories;
     diner.business = opts.business ?? null;
     diner.promotions = opts.promotions ?? [];
+    if ('legalDocument' in opts) diner.legalDocument = opts.legalDocument ?? null;
     TestBed.configureTestingModule({
       imports: [PublicMenuComponent],
       providers: [
@@ -171,6 +185,34 @@ describe('PublicMenuComponent', () => {
   it('un primer acceso (sin marca de cierre) muestra la pantalla de nombre', async () => {
     const { component } = await createComponent('tok-1');
     expect(component.view()).toBe('name');
+  });
+
+  // spec 162 (FR-016/FR-017): aviso legal antes del campo de nombre.
+  it('con documento legal vigente, muestra el enlace al aviso y permite continuar', async () => {
+    const { fixture, component } = await createComponent('tok-1');
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(component.legalDocument()).toEqual({ id: 'doc-1', version: 1 });
+    expect(el.querySelector('[data-testid="aviso-legal-link"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="sin-documento-legal"]')).toBeNull();
+    const boton = el.querySelector('[data-testid="confirmar-nombre"]') as HTMLButtonElement;
+    expect(boton.disabled).toBe(false);
+  });
+
+  it('sin documento legal publicado, oculta el enlace, deshabilita "Continuar" y bloquea confirmName()', async () => {
+    const { fixture, component } = await createComponent('tok-1', [], { legalDocument: null });
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelector('[data-testid="aviso-legal-link"]')).toBeNull();
+    expect(el.querySelector('[data-testid="sin-documento-legal"]')).not.toBeNull();
+    const boton = el.querySelector('[data-testid="confirmar-nombre"]') as HTMLButtonElement;
+    expect(boton.disabled).toBe(true);
+
+    const diner = TestBed.inject(DinerService) as unknown as FakeDinerService;
+    component.nameInput.set('Ana');
+    await component.confirmName();
+    expect(diner.openSession).not.toHaveBeenCalled();
+    expect(component.errorMessage()).toContain('aviso legal publicado');
   });
 
   it('tras cerrar sesión, un acceso posterior con el mismo :token muestra el acceso denegado en vez de la pantalla de nombre — cubre recarga, "Atrás" y "Adelante" (FR-002 a FR-005; A-95 FR-015a/b)', async () => {

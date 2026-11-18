@@ -85,6 +85,13 @@ export const dashboardRoutes: Routes = [
                 (m) => m.OptionGroupsPageComponent,
               ),
           },
+          {
+            path: 'legal',
+            loadComponent: () =>
+              import('../settings/pages/legal/tenant-legal-document-page.component').then(
+                (m) => m.TenantLegalDocumentPageComponent,
+              ),
+          },
         ],
       },
       // Rutas reubicadas — se conservan como redirect (deep links/marcadores).
