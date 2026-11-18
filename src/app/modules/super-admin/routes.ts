@@ -49,6 +49,20 @@ export const superAdminRoutes: Routes = [
         loadComponent: () =>
           import('./pages/plans-page.component').then((m) => m.PlansPageComponent),
       },
+      {
+        path: 'legal/platform-documents',
+        loadComponent: () =>
+          import('./pages/legal/legal-platform-documents-page.component').then(
+            (m) => m.LegalPlatformDocumentsPageComponent,
+          ),
+      },
+      {
+        path: 'legal/master-template',
+        loadComponent: () =>
+          import('./pages/legal/legal-master-template-page.component').then(
+            (m) => m.LegalMasterTemplatePageComponent,
+          ),
+      },
     ],
   },
 ];

@@ -133,6 +133,16 @@ export const routes: Routes = [
     ],
   },
   {
+    // spec 162 (FR-017): página pública del aviso legal vigente del tenant,
+    // enlazada desde la pantalla de nombre del menú QR. Sin token de mesa:
+    // el id del snapshot ya identifica tenant + versión + contenido.
+    path: 'legal/documento/:id',
+    loadComponent: () =>
+      import('./modules/tables/pages/legal-document-viewer.component').then(
+        m => m.LegalDocumentViewerComponent,
+      ),
+  },
+  {
     // QR antiguos (UUID plano). El backend ya no acepta ese formato, pero hay
     // códigos impresos pegados en las mesas: mejor explicarlo que dar un 404 mudo.
     path: 'menu/qr/:token',

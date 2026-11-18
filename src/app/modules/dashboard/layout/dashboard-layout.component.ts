@@ -15,6 +15,8 @@ import { ConfirmDialogComponent } from '../../../shared/feedback/confirm-dialog.
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import { AvailabilitySyncService } from '../../../core/availability/availability-sync.service';
 import { MenuService } from '../../../core/services/menu.service';
+import { PlatformAcceptanceModalComponent } from './platform-acceptance-modal.component';
+import { PlatformAcceptanceService } from './platform-acceptance.service';
 
 @Component({
   selector: 'app-dashboard-layout',
@@ -25,6 +27,7 @@ import { MenuService } from '../../../core/services/menu.service';
     TenantHeaderComponent,
     ToastContainerComponent,
     ConfirmDialogComponent,
+    PlatformAcceptanceModalComponent,
   ],
   template: `
     <!--
@@ -84,6 +87,11 @@ import { MenuService } from '../../../core/services/menu.service';
 
       <app-toast-container />
       <app-confirm-dialog />
+      <!-- spec 162, FR-019: bloqueo de panel para el admin del tenant
+           (Super Admin no acepta nada aquí, nunca tiene fila pendiente). -->
+      @if (!isSuperAdmin()) {
+        <app-platform-acceptance-modal />
+      }
     </div>
   `,
   // spec 087 (FR-002, A-87): el shell (sidebar/header) no tenía ningún
@@ -146,6 +154,7 @@ export class DashboardLayoutComponent implements OnInit, OnDestroy {
   private readonly overlayContainer = inject(OverlayContainer);
   private readonly availabilitySync = inject(AvailabilitySyncService);
   private readonly menuService = inject(MenuService);
+  private readonly platformAcceptanceService = inject(PlatformAcceptanceService);
   private unregisterAvailabilityTarget: (() => void) | null = null;
 
   /** Único uso restante: Super Admin nunca tiene tenant, así que no abre el
@@ -176,6 +185,10 @@ export class DashboardLayoutComponent implements OnInit, OnDestroy {
     // depende de `get_tenant` y siempre devolvería 404 para esta cuenta.
     if (!this.isSuperAdmin()) {
       this.realtime.connectStaff();
+      // spec 162, FR-019: se consulta una vez al abrir el shell, antes de
+      // pintar ninguna otra pantalla -- el modal bloquea hasta que
+      // `pendientes` queda vacío (ver `app-platform-acceptance-modal`).
+      void this.platformAcceptanceService.loadPending();
     }
     // Spec 148: el sincronizador de disponibilidad vive aquí, junto a la
     // conexión SSE del staff, por la misma razón (sobrevive a la navegación

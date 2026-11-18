@@ -43,6 +43,13 @@ export interface MenuPromotionAnnouncement {
   rules: { text: string; variant_count: number; min_qty: number; value: number }[];
 }
 
+/** spec 162 (Decisión 8): snapshot vigente del documento legal propio del
+ *  tenant, o `null` si todavía no publicó ninguno. */
+export interface ResolvedLegalDocument {
+  id: string;
+  version: number;
+}
+
 /** Resultado de resolver el QR firmado: mesa + negocio + menú activo. */
 export interface ResolvedMenu {
   table: DinerTable;
@@ -51,6 +58,8 @@ export interface ResolvedMenu {
   /** spec 063 (FR-022): anuncios de promociones vigentes ahora — cada
    *  elemento de `promotions[].rules[]` es una regla (research.md D-R3). */
   promotions: MenuPromotionAnnouncement[];
+  /** spec 162 (FR-017): aviso legal a mostrar antes del campo de nombre. */
+  legalDocument: ResolvedLegalDocument | null;
 }
 
 /** Mapea grupos de opciones crudos; se usa a nivel de variante y de producto. */
@@ -163,6 +172,27 @@ export class DinerService {
       this.http.get<Record<string, unknown>>(`${this.api}/menu/qr-token/${token}`),
     );
     return this.mapResolved(raw);
+  }
+
+  /** spec 162 (FR-017): contenido completo del aviso legal vigente del
+   *  tenant, por el id opaco que ya llegó en `resolveByToken().legalDocument`.
+   *  Público, sin sesión — mismo endpoint que usaría la landing. */
+  async getTenantLegalDocument(id: string): Promise<{
+    id: string;
+    version: number;
+    contenido_html: string;
+    published_at: string;
+    content_hash: string;
+  }> {
+    return firstValueFrom(
+      this.http.get<{
+        id: string;
+        version: number;
+        contenido_html: string;
+        published_at: string;
+        content_hash: string;
+      }>(`${this.api}/legal/tenant-documents/${id}`),
+    );
   }
 
   /** Spec 148 (D8/FR-026): consulta ligera de reconciliación de disponibilidad
@@ -363,6 +393,7 @@ export class DinerService {
     const tableRaw = (raw['table'] ?? raw['dining_table'] ?? raw) as Record<string, unknown>;
     const categoriesRaw = (raw['menu'] ?? raw['categories'] ?? raw['items'] ?? []) as unknown[];
     const businessRaw = raw['business'] as Record<string, unknown> | undefined;
+    const legalDocumentRaw = raw['legal_document'] as Record<string, unknown> | null | undefined;
 
     return {
       table: {
@@ -389,6 +420,9 @@ export class DinerService {
           value: Number(r['value'] ?? 0),
         })),
       })),
+      legalDocument: legalDocumentRaw
+        ? { id: legalDocumentRaw['id'] as string, version: (legalDocumentRaw['version'] as number) ?? 0 }
+        : null,
     };
   }
 
