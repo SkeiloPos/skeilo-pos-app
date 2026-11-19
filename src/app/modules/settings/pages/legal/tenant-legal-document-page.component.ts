@@ -5,7 +5,7 @@ import { TenantDatePipe } from '../../../../shared/pipes/tenant-date.pipe';
 
 const CAMPO_LABEL: Partial<Record<string, string>> = {
   razon_social: 'Razón social',
-  identificacion_legal: 'Identificación legal (NIT/RUT)',
+  identificacion_legal: 'Identificación legal (NIT/RUT) (opcional)',
   direccion_legal: 'Dirección legal',
   ciudad: 'Ciudad',
   correo_contacto: 'Correo de contacto',
@@ -58,8 +58,13 @@ const CAMPO_LABEL: Partial<Record<string, string>> = {
           <label class="text-sm font-medium" for="razon_social">Razón social</label>
           <input id="razon_social" class="aj-input" [(ngModel)]="form.razon_social" />
 
-          <label class="text-sm font-medium" for="identificacion_legal">Identificación legal (NIT/RUT)</label>
+          <label class="text-sm font-medium" for="identificacion_legal">
+            Identificación legal (NIT/RUT) <span class="aj-muted font-normal">(opcional)</span>
+          </label>
           <input id="identificacion_legal" class="aj-input" [(ngModel)]="form.identificacion_legal" />
+          <p class="aj-muted text-xs -mt-2">
+            Si no la ingresas, puedes publicar igual; el dato se omite en tu documento legal.
+          </p>
 
           <label class="text-sm font-medium" for="direccion_legal">Dirección legal</label>
           <input id="direccion_legal" class="aj-input" [(ngModel)]="form.direccion_legal" />
