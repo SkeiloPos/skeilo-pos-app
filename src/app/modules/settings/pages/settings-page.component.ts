@@ -55,6 +55,7 @@ export class SettingsPageComponent {
     { label: 'Métodos de pago', path: 'metodos-pago' },
     { label: 'Unidades de medida', path: 'unidades', moduleKey: 'inventario' },
     { label: 'Grupos de opciones', path: 'grupos-opciones' },
+    { label: 'Documento legal', path: 'legal' },
   ];
 
   /** Pestañas visibles: igual que `SidebarComponent.visibleItems`, fail-open

@@ -192,6 +192,22 @@ export const SUPER_ADMIN_NAV_ITEMS: NavItem[] = [
     frame: { label: 'Planes', icon: 'layers', group: 'Plataforma' },
   },
   {
+    label: 'Documentos legales',
+    icon: 'shield-check',
+    route: '/super-admin/legal/platform-documents',
+    group: 'PLATAFORMA',
+    roles: [UserRole.SUPER_ADMIN],
+    frame: { label: 'Documentos legales', icon: 'shield-check', group: 'Plataforma' },
+  },
+  {
+    label: 'Plantilla legal',
+    icon: 'shield-check',
+    route: '/super-admin/legal/master-template',
+    group: 'PLATAFORMA',
+    roles: [UserRole.SUPER_ADMIN],
+    frame: { label: 'Plantilla legal', icon: 'shield-check', group: 'Plataforma' },
+  },
+  {
     label: 'Auditoría y actividad',
     icon: 'audit',
     route: '/super-admin/audit-logs',
