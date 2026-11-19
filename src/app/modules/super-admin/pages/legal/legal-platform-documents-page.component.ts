@@ -76,6 +76,7 @@ const ESTADO_BADGE: Record<string, string> = {
             </div>
             <textarea
               [(ngModel)]="editorText"
+              (input)="onEditorInput()"
               rows="12"
               class="w-full rounded-xl border border-gray-200 p-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
               placeholder="Contenido en Markdown..."
@@ -83,7 +84,7 @@ const ESTADO_BADGE: Record<string, string> = {
             <div class="flex items-center gap-3">
               <button
                 (click)="saveDraft(d)"
-                [disabled]="service.isSubmitting()"
+                [disabled]="service.isSubmitting() || !editorText.trim()"
                 class="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 disabled:opacity-50"
               >
                 Guardar borrador
@@ -95,7 +96,7 @@ const ESTADO_BADGE: Record<string, string> = {
               />
               <button
                 (click)="publish(d)"
-                [disabled]="service.isSubmitting() || !fechaVigencia"
+                [disabled]="service.isSubmitting() || !fechaVigencia || !editorText.trim()"
                 class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 disabled:opacity-50"
               >
                 Publicar
@@ -264,18 +265,27 @@ export class LegalPlatformDocumentsPageComponent implements OnInit {
   protected readonly previewHtml = signal('');
   protected readonly previewVersion = signal<number | null>(null);
 
+  private editorDirty = false;
+
   async ngOnInit(): Promise<void> {
     await this.load();
   }
 
   async selectTipo(t: PlatformLegalDocumentType): Promise<void> {
     this.tipo.set(t);
+    this.editorDirty = false;
     await this.load();
   }
 
   private async load(): Promise<void> {
     await this.service.loadHistory(this.tipo());
-    this.editorText = this.draft()?.contenido_markdown ?? '';
+    if (!this.editorDirty) {
+      this.editorText = this.draft()?.contenido_markdown ?? '';
+    }
+  }
+
+  onEditorInput(): void {
+    this.editorDirty = true;
   }
 
   /** Nuevo borrador precargado con el contenido de la versión publicada
@@ -286,6 +296,7 @@ export class LegalPlatformDocumentsPageComponent implements OnInit {
     const base = this.history().find((d) => d.estado === 'publicado') ?? this.history()[0];
     if (await this.service.createDraft(this.tipo(), base?.contenido_markdown ?? '')) {
       this.editorText = this.draft()?.contenido_markdown ?? '';
+      this.editorDirty = false;
     }
   }
 
@@ -293,7 +304,15 @@ export class LegalPlatformDocumentsPageComponent implements OnInit {
     await this.service.editDraft(d.id, this.editorText, this.tipo());
   }
 
+  /** Publicar no envía el textarea — el backend publica el contenido ya
+   * persistido en la fila. Por eso se guarda el borrador con el texto
+   * actual antes de publicar: de lo contrario, si el admin escribió pero
+   * nunca le dio a "Guardar borrador", se publicaría el contenido viejo
+   * (o vacío) que ya estaba guardado. */
   async publish(d: PlatformLegalDocument): Promise<void> {
+    if (!(await this.service.editDraft(d.id, this.editorText, this.tipo()))) {
+      return;
+    }
     const iso = new Date(this.fechaVigencia).toISOString();
     if (await this.service.publish(d.id, iso, this.tipo())) {
       this.fechaVigencia = '';
@@ -303,6 +322,7 @@ export class LegalPlatformDocumentsPageComponent implements OnInit {
   async deleteDraft(id: string): Promise<void> {
     if (await this.service.deleteDraft(id, this.tipo())) {
       this.editorText = this.draft()?.contenido_markdown ?? '';
+      this.editorDirty = false;
     }
   }
 

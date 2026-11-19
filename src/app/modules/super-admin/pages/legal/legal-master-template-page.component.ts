@@ -67,6 +67,7 @@ const ESTADO_BADGE: Record<string, string> = {
             </div>
             <textarea
               [(ngModel)]="editorText"
+              (input)="onEditorInput()"
               rows="14"
               class="w-full rounded-xl border border-gray-200 p-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
               placeholder="Contenido en Markdown, usa las variables de la lista de arriba..."
@@ -74,7 +75,7 @@ const ESTADO_BADGE: Record<string, string> = {
             <div class="flex items-center gap-3">
               <button
                 (click)="saveDraft(d)"
-                [disabled]="service.isSubmitting()"
+                [disabled]="service.isSubmitting() || !editorText.trim()"
                 class="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 disabled:opacity-50"
               >
                 Guardar borrador
@@ -86,7 +87,7 @@ const ESTADO_BADGE: Record<string, string> = {
               />
               <button
                 (click)="publish(d)"
-                [disabled]="service.isSubmitting() || !fechaVigencia"
+                [disabled]="service.isSubmitting() || !fechaVigencia || !editorText.trim()"
                 class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 disabled:opacity-50"
               >
                 Publicar
@@ -251,9 +252,17 @@ export class LegalMasterTemplatePageComponent implements OnInit {
   protected readonly previewHtml = signal('');
   protected readonly previewVersion = signal<number | null>(null);
 
+  private editorDirty = false;
+
   async ngOnInit(): Promise<void> {
     await this.service.loadMasterTemplateHistory();
-    this.editorText = this.draft()?.contenido_markdown ?? '';
+    if (!this.editorDirty) {
+      this.editorText = this.draft()?.contenido_markdown ?? '';
+    }
+  }
+
+  onEditorInput(): void {
+    this.editorDirty = true;
   }
 
   /** Nuevo borrador precargado con el contenido de la versión publicada
@@ -265,6 +274,7 @@ export class LegalMasterTemplatePageComponent implements OnInit {
       this.history().find((t) => t.estado === 'publicado') ?? this.history()[0];
     if (await this.service.createMasterTemplateDraft(base?.contenido_markdown ?? '')) {
       this.editorText = this.draft()?.contenido_markdown ?? '';
+      this.editorDirty = false;
     }
   }
 
@@ -272,7 +282,15 @@ export class LegalMasterTemplatePageComponent implements OnInit {
     await this.service.editMasterTemplateDraft(d.id, this.editorText);
   }
 
+  /** Publicar no envía el textarea — el backend publica el contenido ya
+   * persistido en la fila. Por eso se guarda el borrador con el texto
+   * actual antes de publicar: de lo contrario, si el admin escribió pero
+   * nunca le dio a "Guardar borrador", se publicaría el contenido viejo
+   * (o vacío) que ya estaba guardado. */
   async publish(d: { id: string }): Promise<void> {
+    if (!(await this.service.editMasterTemplateDraft(d.id, this.editorText))) {
+      return;
+    }
     const iso = new Date(this.fechaVigencia).toISOString();
     if (await this.service.publishMasterTemplate(d.id, iso)) {
       this.fechaVigencia = '';
@@ -282,6 +300,7 @@ export class LegalMasterTemplatePageComponent implements OnInit {
   async deleteDraft(id: string): Promise<void> {
     if (await this.service.deleteMasterTemplateDraft(id)) {
       this.editorText = this.draft()?.contenido_markdown ?? '';
+      this.editorDirty = false;
     }
   }
 
