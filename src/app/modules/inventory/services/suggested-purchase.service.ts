@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { QueryClient } from '@tanstack/angular-query-experimental';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { Page } from '../../../core/interfaces/page.interface';
@@ -71,6 +72,7 @@ interface GenerateSuggestedPurchasesResponse {
 @Injectable({ providedIn: 'root' })
 export class SuggestedPurchaseService {
   private readonly http = inject(HttpClient);
+  private readonly queryClient = inject(QueryClient);
   private readonly baseUrl = `${environment.apiBaseUrl}/inventory/purchases/suggested`;
 
   readonly page = signal(1);
@@ -112,6 +114,7 @@ export class SuggestedPurchaseService {
           { ...payload, idempotency_key: idempotencyKey },
         ),
       );
+      await this.queryClient.invalidateQueries({ queryKey: ['suggested-purchases'] });
       return data.purchases.map((p) => this.toPurchase(p));
     } catch (err) {
       throw this.toGenerateError(err);

@@ -17,7 +17,6 @@ import { SupplierItem } from '../../supplier-items/interfaces/supplier-item.inte
 import {
   GenerateSuggestedPurchasesLinePayload,
   GenerateSuggestedPurchasesError,
-  Purchase,
   SuggestedPurchaseLine,
 } from '../interfaces/inventory.interface';
 import { ToastService } from '../../../shared/feedback/toast.service';
@@ -98,23 +97,6 @@ function lineStateFrom(line: SuggestedPurchaseLine): LineState {
         <div role="alert" class="flex items-start gap-2 px-4 py-3 rounded-xl bg-red-50 text-red-700 font-semibold text-sm">
           <app-mi-icon name="warning" [size]="16" />
           <span>{{ err }}</span>
-        </div>
-      }
-
-      @if (confirmation(); as purchases) {
-        <div class="flex flex-col gap-2 px-4 py-3 rounded-xl bg-emerald-50 text-emerald-800 text-sm">
-          <p class="font-semibold">
-            Se {{ purchases.length === 1 ? 'generó' : 'generaron' }} {{ purchases.length }}
-            {{ purchases.length === 1 ? 'orden de compra' : 'órdenes de compra' }}.
-          </p>
-          <div class="flex flex-wrap gap-3">
-            @for (p of purchases; track p.id) {
-              <button type="button" (click)="viewPurchase(p)"
-                class="underline font-semibold hover:text-emerald-900">
-                Ver orden {{ p.id.slice(0, 8) }}
-              </button>
-            }
-          </div>
         </div>
       }
 
@@ -295,7 +277,6 @@ export class SuggestedPurchasePageComponent {
   /** Resaltado de fila tras un 422 (FR-019): sobrevive mientras no se reintente. */
   private readonly lineErrors = signal(new Map<string, string>());
   readonly generateError = signal<string | null>(null);
-  readonly confirmation = signal<Purchase[] | null>(null);
 
   /** Una sola clave por intento de envío (T025): se regenera solo tras éxito, para que un
    *  reintento sin recargar la pantalla (p. ej. tras un error de red) use la misma. */
@@ -447,10 +428,6 @@ export class SuggestedPurchasePageComponent {
     this.router.navigate(['/dashboard/inventario']);
   }
 
-  viewPurchase(purchase: Purchase): void {
-    this.router.navigate(['/dashboard/inventario/compras/nueva'], { state: { draft: purchase } });
-  }
-
   /** Pide confirmación antes de crear nada (el usuario pidió una ventana de confirmación
    *  explícita, no solo deshabilitar el botón mientras está en curso) y, si confirma, recién
    *  ahí llama al backend. */
@@ -475,8 +452,6 @@ export class SuggestedPurchasePageComponent {
   private async submitGeneration(entries: [string, LineState][]): Promise<void> {
     this.generateError.set(null);
     this.lineErrors.set(new Map());
-    this.confirmation.set(null);
-
     const lines: GenerateSuggestedPurchasesLinePayload[] = entries.map(([itemId, row]) => ({
       inventory_item_id: itemId,
       supplier_item_id: row.supplierItemId as string,
@@ -485,13 +460,15 @@ export class SuggestedPurchasePageComponent {
     }));
 
     try {
-      const purchases = await this.service.generate(this.idempotencyKey, {
+      await this.service.generate(this.idempotencyKey, {
         idempotency_key: this.idempotencyKey,
         lines,
       });
-      this.confirmation.set(purchases);
       this.toast.success('Órdenes de compra generadas.');
       this.idempotencyKey = this.newIdempotencyKey();
+      // Las órdenes ya nacen "recibidas" (spec 163) -- llevar al usuario directo al panel de
+      // compras para que las vea de inmediato, en vez de dejarlo en esta pantalla.
+      this.router.navigate(['/dashboard/inventario'], { queryParams: { tab: 'purchases' } });
     } catch (err) {
       const generateErr = err as GenerateSuggestedPurchasesError;
       if (generateErr.lines?.length) {

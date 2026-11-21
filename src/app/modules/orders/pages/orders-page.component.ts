@@ -117,7 +117,11 @@ const TYPE_ICON: Record<string, string> = {
 
         <div class="flex flex-col gap-1 text-xs font-semibold text-gray-500">
           FECHA
-          <app-order-date-filter [value]="svc.dateFrom()" (valueChange)="svc.setDate($event)" />
+          <app-order-date-filter
+            [from]="svc.dateFrom()"
+            [to]="svc.dateTo()"
+            (rangeChange)="svc.setDateRange($event.from, $event.to)"
+          />
         </div>
       </div>
 
@@ -228,7 +232,8 @@ export class OrdersPageComponent implements OnInit {
       !!this.svc.status() ||
       !!this.svc.orderType() ||
       !!this.svc.search().trim() ||
-      (this.svc.dateFrom() !== '' && this.svc.dateFrom() !== this.today()),
+      (this.svc.dateFrom() !== '' && this.svc.dateFrom() !== this.today()) ||
+      (this.svc.dateTo() !== '' && this.svc.dateTo() !== this.today()),
   );
 
   readonly ordCount = computed(() => {
@@ -256,8 +261,9 @@ export class OrdersPageComponent implements OnInit {
     this.svc.status.set((qp['status'] as OrdersStatusFilter) ?? '');
     this.svc.orderType.set((qp['orderType'] as OrdersTypeFilter) ?? '');
     this.svc.search.set(qp['search'] ?? '');
-    this.svc.dateFrom.set(qp['dateFrom'] ?? hoy);
-    this.svc.dateTo.set(qp['dateFrom'] ?? hoy);
+    const dateFrom = qp['dateFrom'] ?? hoy;
+    this.svc.dateFrom.set(dateFrom);
+    this.svc.dateTo.set(qp['dateTo'] ?? dateFrom);
     this.svc.list(Number(qp['page']) || 1);
   }
 
@@ -268,6 +274,7 @@ export class OrdersPageComponent implements OnInit {
     orderType: this.svc.orderType() || null,
     search: this.svc.search().trim() || null,
     dateFrom: this.svc.dateFrom() || null,
+    dateTo: this.svc.dateTo() || null,
     page: this.svc.page() !== 1 ? this.svc.page() : null,
   }));
 

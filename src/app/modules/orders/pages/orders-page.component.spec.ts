@@ -50,9 +50,9 @@ class FakeOrdersListService {
   setStatus = vi.fn((v: string) => this.status.set(v as never));
   setOrderType = vi.fn((v: string) => this.orderType.set(v as never));
   setSearch = vi.fn((v: string) => this.search.set(v));
-  setDate = vi.fn((v: string) => {
-    this.dateFrom.set(v);
-    this.dateTo.set(v);
+  setDateRange = vi.fn((from: string, to: string) => {
+    this.dateFrom.set(from);
+    this.dateTo.set(to);
   });
   setEntregadasSinCobrar = vi.fn((v: boolean) => this.entregadasSinCobrar.set(v));
 }
@@ -231,11 +231,11 @@ describe('OrdersPageComponent', () => {
     expect(svc.setSearch).toHaveBeenCalledWith('Deimer');
   });
 
-  it('(valueChange) de app-order-date-filter llama svc.setDate (FR-005)', () => {
+  it('(rangeChange) de app-order-date-filter llama svc.setDateRange (FR-005)', () => {
     fixture.detectChanges();
     const dateFilter = fixture.debugElement.query(By.css('app-order-date-filter'));
-    dateFilter.componentInstance.valueChange.emit('2026-10-14');
-    expect(svc.setDate).toHaveBeenCalledWith('2026-10-14');
+    dateFilter.componentInstance.rangeChange.emit({ from: '2026-10-14', to: '2026-10-20' });
+    expect(svc.setDateRange).toHaveBeenCalledWith('2026-10-14', '2026-10-20');
   });
 
   it('cada tarjeta sin mesa muestra "Mostrador" como ubicación, también para order_type null (FR-017/FR-018, data-model.md)', () => {

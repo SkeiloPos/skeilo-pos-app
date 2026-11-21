@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { HttpErrorResponse, HttpHeaders, HttpResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
@@ -467,5 +468,80 @@ describe('InventoryPageComponent — pestaña «Compras» sin indicador propio (
 
     expect(fixture.componentInstance.tab()).toBe('purchases');
     expect(el.textContent).toMatch(/Cargando compras|Aún no hay compras registradas/);
+  });
+});
+
+describe('InventoryPageComponent — redirección desde compra sugerida (spec 163, FR-010)', () => {
+  function crear(queryParams: Record<string, string>) {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [InventoryPageComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParamMap: convertToParamMap(queryParams) } },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(InventoryPageComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('`?tab=purchases` abre directo la pestaña «Compras»', () => {
+    const fixture = crear({ tab: 'purchases' });
+    expect(fixture.componentInstance.tab()).toBe('purchases');
+  });
+
+  it('sin ese query param, sigue abriendo en «Insumos» (sin cambios)', () => {
+    const fixture = crear({});
+    expect(fixture.componentInstance.tab()).toBe('items');
+  });
+});
+
+describe('InventoryPageComponent — botón «Compra sugerida» solo con insumos bajo mínimo', () => {
+  function crear() {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [InventoryPageComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideTanStackQuery(
+          new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }),
+        ),
+      ],
+    });
+    const fixture = TestBed.createComponent(InventoryPageComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function boton(fixture: ReturnType<typeof crear>): HTMLButtonElement | undefined {
+    return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+      .find((b) => b.textContent?.includes('Compra sugerida'));
+  }
+
+  it('sin insumos bajo mínimo (0), el botón no aparece', () => {
+    const fixture = crear();
+    TestBed.inject(InventoryService).lowStockItems.set([]);
+    fixture.detectChanges();
+
+    expect(boton(fixture)).toBeUndefined();
+  });
+
+  it('con al menos un insumo bajo mínimo, el botón sí aparece', () => {
+    const fixture = crear();
+    TestBed.inject(InventoryService).lowStockItems.set([
+      { id: 'item-1', name: 'Almendras', current_stock: 10, min_stock: 500 },
+    ]);
+    fixture.detectChanges();
+
+    expect(boton(fixture)).toBeDefined();
   });
 });
