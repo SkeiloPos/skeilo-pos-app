@@ -3,21 +3,33 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { RoleName, InvitationForm } from '../interfaces/user-profile.interface';
 import { InvitationsService } from '../services/invitations.service';
 import { fullNameValidator } from '../../../shared/validators/full-name.validator';
+import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 
 @Component({
   selector: 'app-invitation-form',
   standalone: true,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, IconMiComponent],
   template: `
-    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div class="px-5 py-4 border-b border-gray-100">
-        <h2 class="text-sm font-semibold text-gray-800">Invitar usuario</h2>
-        <p class="text-xs text-gray-400 mt-0.5">
-          Enviamos un correo con el enlace de acceso y una contraseña temporal — nadie más la conoce.
-        </p>
-      </div>
+    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-800">Invitar usuario</h2>
+            <p class="text-xs text-gray-400 mt-0.5">
+              Enviamos un correo con el enlace de acceso y una contraseña temporal — nadie más la conoce.
+            </p>
+          </div>
+          <button
+            type="button"
+            (click)="onCancel()"
+            [disabled]="invitationsService.isSubmitting()"
+            class="text-gray-400 hover:text-gray-600 transition-colors shrink-0 ml-3"
+          >
+            <app-mi-icon name="close" ariaLabel="Cerrar" [size]="20" />
+          </button>
+        </div>
 
-      <form [formGroup]="form" (ngSubmit)="submit()" class="px-5 py-4 space-y-4">
+        <form [formGroup]="form" (ngSubmit)="submit()" class="px-5 py-4 space-y-4">
         @if (invitationsService.error()) {
           <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
             {{ invitationsService.error() }}
@@ -93,6 +105,7 @@ import { fullNameValidator } from '../../../shared/validators/full-name.validato
           </button>
         </div>
       </form>
+      </div>
     </div>
   `,
 })

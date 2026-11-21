@@ -1,16 +1,23 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
+import { Component } from '@angular/core';
+import { Router, provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it, vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { ConfirmService } from '../../../shared/feedback/confirm.service';
+import { ToastService } from '../../../shared/feedback/toast.service';
 import { SuggestedPurchasePageComponent } from './suggested-purchase-page.component';
 
 const BASE = `${environment.apiBaseUrl}/inventory/purchases/suggested`;
 const ITEMS_BASE = `${environment.apiBaseUrl}/inventory/items`;
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/** spec 163: `generate()` exitoso navega a `/dashboard/inventario` (panel de compras) --
+ *  necesita una ruta real en el harness o el router rechaza la navegación (NG04002). */
+@Component({ template: '' })
+class StubInventoryPageComponent {}
 
 /** `injectPagedQuery` (TanStack Query) tarda más de un ciclo de microtareas en asentar
  *  `isFetching()`/`data()` tras un `flush()` en este harness -- varias vueltas de
@@ -57,7 +64,7 @@ async function crear() {
   TestBed.configureTestingModule({
     imports: [SuggestedPurchasePageComponent],
     providers: [
-      provideRouter([]),
+      provideRouter([{ path: 'dashboard/inventario', component: StubInventoryPageComponent }]),
       provideHttpClient(),
       provideHttpClientTesting(),
       provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })),
@@ -75,6 +82,20 @@ async function cargarConDosFilas(http: HttpTestingController, fixture: ReturnTyp
     items: [makeLine(), LINE_SIN_PROVEEDOR], total: 2, page: 1, size: 20, pages: 1,
   });
   await settle(fixture);
+}
+
+/** `generate()` exitoso invalida `['suggested-purchases']` (FR-011a), lo que dispara un
+ *  refetch del listado activo -- hay que satisfacerlo o queda una petición pendiente y
+ *  `invalidateQueries()` nunca resuelve, colgando el `await` del `generate()` del test. */
+async function flushInvalidationRefetch(http: HttpTestingController): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    await tick();
+    const pending = http.match((r) => r.url === BASE);
+    if (pending.length > 0) {
+      pending.forEach((r) => r.flush({ items: [], total: 0, page: 1, size: 20, pages: 0 }));
+      return;
+    }
+  }
 }
 
 describe('SuggestedPurchasePageComponent', () => {
@@ -227,11 +248,12 @@ describe('SuggestedPurchasePageComponent', () => {
       http.expectNone(`${BASE}/generate`);
     });
 
-    it('generación exitosa (tras confirmar) muestra confirmación con un enlace por orden creada', async () => {
+    it('generación exitosa (tras confirmar) envía las líneas y avisa con un toast', async () => {
       const { fixture, http } = await crear();
       await cargarConDosFilas(http, fixture);
       const component = fixture.componentInstance;
       vi.spyOn(TestBed.inject(ConfirmService), 'ask').mockResolvedValue(true);
+      const toastSpy = vi.spyOn(TestBed.inject(ToastService), 'success');
 
       const genPromise = component.generate();
       await tick();
@@ -241,15 +263,36 @@ describe('SuggestedPurchasePageComponent', () => {
         presentation_quantity: 1, presentation_unit_cost: 8000,
       }]);
       req.flush(
-        { purchases: [{ id: 'purchase-1', supplier_id: 'sup-1', invoice_number: null, status: 'draft', is_incomplete: false, total: '8000.00', purchased_at: '2026-11-15T00:00:00', voided_at: null, voided_by: null, items: [] }] },
+        { purchases: [{ id: 'purchase-1', supplier_id: 'sup-1', invoice_number: null, status: 'received', is_incomplete: false, total: '8000.00', purchased_at: '2026-11-15T00:00:00', voided_at: null, voided_by: null, items: [] }] },
         { status: 201, statusText: 'Created' },
       );
+      await flushInvalidationRefetch(http);
       await genPromise;
-      await settle(fixture);
 
-      expect(component.confirmation()?.length).toBe(1);
-      const el = fixture.nativeElement as HTMLElement;
-      expect(el.textContent).toContain('Ver orden purchas');
+      expect(toastSpy).toHaveBeenCalledWith('Órdenes de compra generadas.');
+    });
+
+    it('generación exitosa redirige al panel de compras (tab=purchases)', async () => {
+      const { fixture, http } = await crear();
+      await cargarConDosFilas(http, fixture);
+      const component = fixture.componentInstance;
+      vi.spyOn(TestBed.inject(ConfirmService), 'ask').mockResolvedValue(true);
+      const router = TestBed.inject(Router);
+      const navigateSpy = vi.spyOn(router, 'navigate');
+
+      const genPromise = component.generate();
+      await tick();
+      const req = http.expectOne(`${BASE}/generate`);
+      req.flush(
+        { purchases: [{ id: 'purchase-1', supplier_id: 'sup-1', invoice_number: null, status: 'received', is_incomplete: false, total: '8000.00', purchased_at: '2026-11-15T00:00:00', voided_at: null, voided_by: null, items: [] }] },
+        { status: 201, statusText: 'Created' },
+      );
+      await flushInvalidationRefetch(http);
+      await genPromise;
+
+      expect(navigateSpy).toHaveBeenCalledWith(
+        ['/dashboard/inventario'], { queryParams: { tab: 'purchases' } },
+      );
     });
 
     it('línea inválida resalta la fila con su mensaje y no limpia el formulario', async () => {
@@ -290,6 +333,7 @@ describe('SuggestedPurchasePageComponent', () => {
 
       const req = http.expectOne(`${BASE}/generate`);
       req.flush({ purchases: [] }, { status: 201, statusText: 'Created' });
+      await flushInvalidationRefetch(http);
       await genPromise;
       expect(component.service.isGenerating()).toBe(false);
     });

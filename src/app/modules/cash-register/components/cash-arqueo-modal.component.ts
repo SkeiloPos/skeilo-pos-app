@@ -19,7 +19,7 @@ import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
   imports: [IconMiComponent, RouterLink, TenantDatePipe],
   template: `
     <div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div class="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-[90vh]">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-md sm:max-w-xl lg:max-w-2xl flex flex-col max-h-[90vh]">
         <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-none">
           <h2 class="text-base font-bold text-gray-900">Arqueo de caja</h2>
           <button type="button" (click)="store.closeModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
@@ -59,9 +59,8 @@ import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
           }
 
           <p class="text-sm text-gray-500">
-            Cuenta el efectivo físico e indica cuántos billetes/monedas hay de cada denominación.
-            Los valores que ves aquí son una estimación: el servidor suma el conteo y calcula el total
-            y la diferencia oficiales al cerrar el turno (efectivo esperado
+            Cuenta el efectivo físico por denominación; es una estimación.
+            El servidor calcula el total y la diferencia oficiales al cerrar (esperado
             {{ store.fmt(store.efectivoEsperado()) }}).
           </p>
 
@@ -87,26 +86,26 @@ import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
             </div>
 
             <!-- Grid de denominaciones (una fila por denominación del catálogo) -->
-            <div class="grid grid-cols-3 gap-px bg-gray-100 border-2 border-gray-100 rounded-lg overflow-hidden">
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-px bg-gray-100 border-2 border-gray-100 rounded-lg overflow-hidden">
               @for (d of store.denominaciones(); track d.value) {
-                <div class="bg-white p-2 flex flex-col gap-1">
+                <div class="bg-white p-3 flex flex-col gap-1.5">
                   <div class="flex justify-between items-baseline">
-                    <span class="font-bold text-xs text-gray-900">{{ d.label }}</span>
-                    <span class="text-[10px] text-gray-400">{{ d.subtotalFmt }}</span>
+                    <span class="font-bold text-sm text-gray-900">{{ d.label }}</span>
+                    <span class="text-xs text-gray-400">{{ d.subtotalFmt }}</span>
                   </div>
                   <span class="text-[10px] uppercase tracking-wide text-gray-400">{{ d.kindLabel }}</span>
-                  <div class="flex items-center gap-1">
+                  <div class="flex items-center gap-1.5">
                     <button type="button" (click)="store.stepDenom(d.value, -1)"
-                      class="w-[26px] h-[26px] flex-none flex items-center justify-center border border-gray-200 rounded text-sm font-bold text-gray-700 hover:bg-gray-50">−</button>
+                      class="w-9 h-9 flex-none flex items-center justify-center border border-gray-200 rounded-lg text-base font-bold text-gray-700 hover:bg-gray-50">−</button>
                     <input
                       type="number" min="0" step="1"
                       [value]="d.cantidad || ''"
                       (input)="store.setDenom(d.value, $any($event.target).value)"
                       placeholder="0"
-                      class="flex-1 w-full text-center h-[26px] px-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      class="flex-1 w-full min-w-0 text-center h-9 px-1 border border-gray-200 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     />
                     <button type="button" (click)="store.stepDenom(d.value, 1)"
-                      class="w-[26px] h-[26px] flex-none flex items-center justify-center border border-gray-200 rounded text-sm font-bold text-gray-700 hover:bg-gray-50">+</button>
+                      class="w-9 h-9 flex-none flex items-center justify-center border border-gray-200 rounded-lg text-base font-bold text-gray-700 hover:bg-gray-50">+</button>
                   </div>
                 </div>
               }

@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   CdkConnectedOverlay,
   CdkOverlayOrigin,
@@ -153,15 +153,18 @@ type ActiveFilter = '' | 'active' | 'inactive';
             <p class="text-2xl font-bold text-amber-800 mt-1">{{ service.lowStockItems().length }}</p>
           </button>
           <!-- spec 158: punto de entrada visible a la pantalla de compra sugerida, al lado de
-               la tarjeta de bajo mínimo que ya resume lo mismo. -->
-          <button
-            type="button"
-            (click)="goToSuggestedPurchase()"
-            class="h-[72px] px-4 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold text-sm hover:bg-indigo-100 transition-colors flex items-center gap-2"
-          >
-            <app-mi-icon name="shopping_cart" [size]="18" />
-            Compra sugerida
-          </button>
+               la tarjeta de bajo mínimo que ya resume lo mismo -- oculto cuando no hay ningún
+               insumo bajo mínimo (nada que comprar). -->
+          @if (service.lowStockItems().length > 0) {
+            <button
+              type="button"
+              (click)="goToSuggestedPurchase()"
+              class="h-[72px] px-4 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold text-sm hover:bg-indigo-100 transition-colors flex items-center gap-2"
+            >
+              <app-mi-icon name="shopping_cart" [size]="18" />
+              Compra sugerida
+            </button>
+          }
         </div>
 
         <!-- Table -->
@@ -864,6 +867,10 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly confirm = inject(ConfirmService);
   private readonly router = inject(Router);
+  // `optional: true` (spec 163): algunos specs de esta pantalla la montan sin enrutamiento
+  // configurado (sin `provideRouter`), donde `ActivatedRoute` no tiene proveedor -- a
+  // diferencia de `Router`, que sí resuelve solo por ser `providedIn: 'root'`.
+  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly overlay = inject(Overlay);
   private readonly tenantInfo = inject(TenantInfoService);
 
@@ -952,6 +959,14 @@ export class InventoryPageComponent implements OnInit, OnDestroy {
   );
 
   async ngOnInit(): Promise<void> {
+    // spec 163: compra sugerida redirige acá con `?tab=purchases` tras generar, para que la
+    // orden recién creada (ya "recibida") quede visible de inmediato en el panel de compras --
+    // antes de cualquier `await`, para no depender de que las cargas de abajo resuelvan.
+    const requestedTab = this.route?.snapshot.queryParamMap.get('tab');
+    if (requestedTab === 'purchases') {
+      this.setTab('purchases');
+    }
+
     this.service.loadItems();
     this.service.loadAllItems();
     this.planSummaryService.load();

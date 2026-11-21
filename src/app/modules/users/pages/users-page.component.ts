@@ -54,11 +54,6 @@ const PAGE_SIZES = [10, 20, 50, 100];
         }
       </div>
 
-      <!-- Formulario de invitación -->
-      @if (showForm()) {
-        <app-invitation-form (saved)="onUserSaved()" (cancelled)="showForm.set(false)" />
-      }
-
       <!-- Error global -->
       @if (usersService.error() && !showForm() && !roleModalUser()) {
         <div class="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 text-sm text-red-700">
@@ -224,6 +219,11 @@ const PAGE_SIZES = [10, 20, 50, 100];
       <!-- Invitaciones pendientes (US3) -->
       <app-pending-invitations-list />
     </div>
+
+    <!-- Modal invitar usuario -->
+    @if (showForm()) {
+      <app-invitation-form (saved)="onUserSaved()" (cancelled)="showForm.set(false)" />
+    }
 
     <!-- Modal cambiar rol -->
     @if (roleModalUser()) {

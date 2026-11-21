@@ -134,6 +134,13 @@ export class OrdersListService {
     this.list(1);
   }
 
+  /** Filtro de rango de fechas: fija `dateFrom`/`dateTo` en una sola petición. */
+  setDateRange(from: string, to: string): void {
+    this.dateFrom.set(from);
+    this.dateTo.set(to);
+    this.list(1);
+  }
+
   /** Spec 147 (FR-014/SC-003): alterna el filtro "Entregadas sin cobrar". */
   setEntregadasSinCobrar(value: boolean): void {
     this.entregadasSinCobrar.set(value);

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CashSessionStore } from '../services/cash-session.store';
 import { MoneyInputComponent } from '../../../shared/money-input/money-input.component';
@@ -79,12 +79,13 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">Fondo inicial (base de efectivo)</label>
             <app-money-input
-              [ngModel]="store.openingAmount()"
-              (ngModelChange)="store.openingAmount.set($event ?? 0)"
-              [invalid]="store.openingAmount() <= 0"
+              [ngModel]="store.openingAmount() || null"
+              (ngModelChange)="onAmountChange($event)"
+              (blurred)="amountTouched.set(true)"
+              [invalid]="amountTouched() && store.openingAmount() <= 0"
               sizeClass="px-3 py-2 rounded-lg text-sm"
             />
-            @if (store.openingAmount() <= 0) {
+            @if (amountTouched() && store.openingAmount() <= 0) {
               <p class="text-red-500 text-xs mt-1">El saldo inicial debe ser mayor a cero para abrir la caja</p>
             }
           </div>
@@ -103,4 +104,12 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
 })
 export class CashOpenComponent {
   readonly store = inject(CashSessionStore);
+
+  /** Evita mostrar el error de "monto inválido" antes de que el usuario interactúe con el campo. */
+  readonly amountTouched = signal(false);
+
+  onAmountChange(value: number | null): void {
+    this.amountTouched.set(true);
+    this.store.openingAmount.set(value ?? 0);
+  }
 }

@@ -5,11 +5,26 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
-import { describe, expect, it, afterEach, beforeEach } from 'vitest';
+import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { SuggestedPurchaseService } from './suggested-purchase.service';
 
 const base = `${environment.apiBaseUrl}/inventory/purchases/suggested`;
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/** `generate()` exitoso invalida `['suggested-purchases']` (FR-011a), lo que dispara un
+ *  refetch del `listQuery` activo del propio servicio -- hay que satisfacerlo o la petición
+ *  queda pendiente (`http.verify()` en el `afterEach`) y `invalidateQueries()` nunca resuelve. */
+async function flushInvalidationRefetch(http: HttpTestingController): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    await tick();
+    const pending = http.match((r) => r.url === base);
+    if (pending.length > 0) {
+      pending.forEach((r) => r.flush({ items: [], total: 0, page: 1, size: 20, pages: 0 }));
+      return;
+    }
+  }
+}
 
 function makeLineResponse(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -146,6 +161,7 @@ describe('SuggestedPurchaseService', () => {
           voided_at: null, voided_by: null, items: [],
         }],
       }, { status: 201, statusText: 'Created' });
+      await flushInvalidationRefetch(http);
 
       const purchases = await promise;
       expect(purchases.length).toBe(1);
@@ -173,6 +189,33 @@ describe('SuggestedPurchaseService', () => {
         message: 'No se pudo generar la compra sugerida',
         lines: [{ inventory_item_id: 'item-1', reason: 'unit_price_zero' }],
       });
+    });
+
+    it('invalida la query de listado tras un generate() exitoso', async () => {
+      const queryClient = TestBed.inject(QueryClient);
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+      const promise = service.generate('idem-4', {
+        idempotency_key: 'idem-4',
+        lines: [{
+          inventory_item_id: 'item-1', supplier_item_id: 'rel-1',
+          presentation_quantity: 1, presentation_unit_cost: 8000,
+        }],
+      });
+
+      const req = http.expectOne(`${base}/generate`);
+      req.flush({
+        purchases: [{
+          id: 'p-1', supplier_id: 'sup-1', invoice_number: null, status: 'received',
+          is_incomplete: false, total: '8000.00', purchased_at: '2026-11-21T00:00:00',
+          voided_at: null, voided_by: null, items: [],
+        }],
+      }, { status: 201, statusText: 'Created' });
+      await flushInvalidationRefetch(http);
+
+      await promise;
+
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['suggested-purchases'] });
     });
 
     it('un error 5xx se propaga como mensaje genérico con lines: []', async () => {

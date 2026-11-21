@@ -104,6 +104,12 @@ const TOAST_FALLO_AL_COPIAR = 'No se pudieron copiar los datos';
                   <p class="text-xs text-gray-400">Hora</p>
                   <p class="font-medium text-gray-800">{{ order()!.created_at | tenantDate: 'HH:mm' | to12HourTime }}</p>
                 </div>
+                @if (order()!.staff_user_name) {
+                  <div>
+                    <p class="text-xs text-gray-400">Creado por</p>
+                    <p class="font-medium text-gray-800">{{ order()!.staff_user_name }}</p>
+                  </div>
+                }
               </div>
             </div>
 
