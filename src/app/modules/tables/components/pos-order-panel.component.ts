@@ -357,16 +357,16 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                   <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0 space-y-1.5">
                       <div class="flex items-center gap-1.5 flex-wrap">
-                        <span class="font-bold text-[14px]" style="color:var(--terminal-color-text-primary)">{{ parts.product }}</span>
+                        <span class="font-bold text-[18px]" style="color:var(--terminal-color-text-primary)">{{ parts.product }}</span>
                         @if (parts.variant) {
                           <span
-                            class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                            class="text-[14px] font-semibold px-1.5 py-0.5 rounded-full"
                             style="background:var(--terminal-color-surface-elevated);color:var(--terminal-color-text-secondary)"
                             >{{ parts.variant }}</span
                           >
                         }
                       </div>
-                      <div class="text-[11px]" style="color:var(--terminal-color-text-muted)">{{ store.fmt(it.unitPrice) }} c/u</div>
+                      <div class="text-[15px]" style="color:var(--terminal-color-text-muted)">{{ store.fmt(it.unitPrice) }} c/u</div>
                       @if (it.promo; as promo) {
                         <!-- spec 115 (A-129): mismo formato de condición que ya usa
                              product-select.component.ts (data-testid="variant-promo"), en vez
@@ -398,7 +398,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                         <!-- Mockup de referencia (tDetOn, l.sub): el importe de
                              la línea siempre va en el color de marca, con o
                              sin promoción -- no solo cuando hay descuento. -->
-                        <div class="font-bold text-[14px]" style="color:var(--terminal-color-primary-text)">{{ store.fmt(it.subtotal) }}</div>
+                        <div class="font-bold text-[18px]" style="color:var(--terminal-color-primary-text)">{{ store.fmt(it.subtotal) }}</div>
                       }
                     </div>
                   </div>
