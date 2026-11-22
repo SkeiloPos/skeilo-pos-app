@@ -4,7 +4,7 @@ import { environment } from '../../../../environments/environment';
 import { AdminAuditLogItem, AuditLogFilters } from '../interfaces/admin-user.interface';
 import { PageWithEmptyReason } from '../interfaces/page.interface';
 import { injectPagedQuery } from '../../../core/query/paged-query';
-import { firstValueFrom } from 'rxjs';
+import { abortableFirstValueFrom } from '../../../core/query/abortable-request';
 
 /** Auditoría administrativa de alcance plataforma (spec 159, User Story 7,
  * FR-033 a FR-038). Mismo patrón que `SuperAdminUsersService` (listado con
@@ -23,7 +23,7 @@ export class SuperAdminAuditService {
       'super-admin-audit-logs', 'page',
       { page: this.page(), size: this.size(), filters: this.filters() },
     ],
-    queryFn: () => this.fetchAuditLogsPage(this.page(), this.size(), this.filters()),
+    queryFn: (signal) => this.fetchAuditLogsPage(this.page(), this.size(), this.filters(), signal),
     enabled: () => true,
   });
 
@@ -37,7 +37,7 @@ export class SuperAdminAuditService {
   readonly hasError = computed(() => this.logsQuery.isError());
 
   private fetchAuditLogsPage(
-    page: number, size: number, filters: AuditLogFilters,
+    page: number, size: number, filters: AuditLogFilters, signal?: AbortSignal,
   ): Promise<PageWithEmptyReason<AdminAuditLogItem>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (filters.affected_user_id) params = params.set('affected_user_id', filters.affected_user_id);
@@ -47,8 +47,9 @@ export class SuperAdminAuditService {
     if (filters.date_from) params = params.set('date_from', filters.date_from);
     if (filters.date_to) params = params.set('date_to', filters.date_to);
 
-    return firstValueFrom(
+    return abortableFirstValueFrom(
       this.http.get<PageWithEmptyReason<AdminAuditLogItem>>(this.baseUrl, { params }),
+      signal,
     );
   }
 

@@ -11,12 +11,16 @@ import type { Page } from '../interfaces/page.interface';
  */
 export function injectPagedQuery<T>(config: {
   queryKey: () => readonly unknown[];
-  queryFn: () => Promise<Page<T>>;
+  queryFn: (signal: AbortSignal) => Promise<Page<T>>;
   enabled: () => boolean;
 }) {
   return injectQuery(() => ({
     queryKey: config.queryKey(),
-    queryFn: config.queryFn,
+    // Reenvía el `signal` de TanStack Query al `queryFn` para que un cambio de
+    // query key (p. ej. tecleo en el buscador) cancele de verdad la petición
+    // HTTP anterior en vuelo, en vez de dejarla terminar sola y duplicar filas
+    // en el Network tab en conexiones lentas.
+    queryFn: ({ signal }: { signal: AbortSignal }) => config.queryFn(signal),
     enabled: config.enabled(),
     placeholderData: (prev: Page<T> | undefined) => prev,
   }));

@@ -1,8 +1,8 @@
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { Page } from '../../../core/interfaces/page.interface';
+import { abortableFirstValueFrom } from '../../../core/query/abortable-request';
 import { injectPagedQuery } from '../../../core/query/paged-query';
 import { DiningOrder } from '../../tables/interfaces/dining.interface';
 
@@ -55,10 +55,11 @@ export class OrdersListService {
         entregadasSinCobrar: this.entregadasSinCobrar(),
       },
     ],
-    queryFn: () =>
+    queryFn: (signal) =>
       this.fetchOrdersPage(
         this.page(), this.size(), this.status(), this.orderType(),
         this.search().trim(), this.dateFrom(), this.dateTo(), this.entregadasSinCobrar(),
+        signal,
       ),
     enabled: () => this.wantsPage(),
   });
@@ -82,6 +83,7 @@ export class OrdersListService {
     dateFrom: string,
     dateTo: string,
     entregadasSinCobrar: boolean,
+    signal?: AbortSignal,
   ): Promise<Page<DiningOrder>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (status) params = params.set('status', status);
@@ -90,7 +92,7 @@ export class OrdersListService {
     if (dateFrom) params = params.set('date_from', dateFrom);
     if (dateTo) params = params.set('date_to', dateTo);
     if (entregadasSinCobrar) params = params.set('entregadas_sin_cobrar', 'true');
-    return firstValueFrom(this.http.get<Page<DiningOrder>>(this.baseUrl, { params }));
+    return abortableFirstValueFrom(this.http.get<Page<DiningOrder>>(this.baseUrl, { params }), signal);
   }
 
   /** Setter síncrono: dispara (o re-dispara) la query paginada. */
