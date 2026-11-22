@@ -11,6 +11,7 @@ import {
 } from '../interfaces/admin-user.interface';
 import { PageWithEmptyReason } from '../interfaces/page.interface';
 import { injectPagedQuery } from '../../../core/query/paged-query';
+import { abortableFirstValueFrom } from '../../../core/query/abortable-request';
 
 const DEFAULT_FILTERS: UserListFilters = { sort_by: 'created_at', sort_dir: 'desc' };
 
@@ -30,7 +31,7 @@ export class SuperAdminUsersService {
       'super-admin-users', 'page',
       { page: this.page(), size: this.size(), filters: this.filters() },
     ],
-    queryFn: () => this.fetchUsersPage(this.page(), this.size(), this.filters()),
+    queryFn: (signal) => this.fetchUsersPage(this.page(), this.size(), this.filters(), signal),
     enabled: () => true,
   });
 
@@ -45,7 +46,7 @@ export class SuperAdminUsersService {
   readonly listHasError = computed(() => this.listQuery.isError());
 
   private fetchUsersPage(
-    page: number, size: number, filters: UserListFilters,
+    page: number, size: number, filters: UserListFilters, signal?: AbortSignal,
   ): Promise<PageWithEmptyReason<UserListItem>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (filters.search) params = params.set('search', filters.search);
@@ -57,8 +58,9 @@ export class SuperAdminUsersService {
     params = params.set('sort_by', filters.sort_by ?? 'created_at');
     params = params.set('sort_dir', filters.sort_dir ?? 'desc');
 
-    return firstValueFrom(
+    return abortableFirstValueFrom(
       this.http.get<PageWithEmptyReason<UserListItem>>(this.baseUrl, { params }),
+      signal,
     );
   }
 

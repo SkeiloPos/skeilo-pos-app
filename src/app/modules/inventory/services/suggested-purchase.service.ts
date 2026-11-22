@@ -4,6 +4,7 @@ import { QueryClient } from '@tanstack/angular-query-experimental';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { Page } from '../../../core/interfaces/page.interface';
+import { abortableFirstValueFrom } from '../../../core/query/abortable-request';
 import { injectPagedQuery } from '../../../core/query/paged-query';
 import {
   GenerateSuggestedPurchasesError,
@@ -81,7 +82,7 @@ export class SuggestedPurchaseService {
 
   private readonly listQuery = injectPagedQuery<SuggestedPurchaseLineResponse>({
     queryKey: () => ['suggested-purchases', 'page', { page: this.page(), size: this.size() }],
-    queryFn: () => this.fetchPage(this.page(), this.size()),
+    queryFn: (signal) => this.fetchPage(this.page(), this.size(), signal),
     enabled: () => true,
   });
 
@@ -90,10 +91,15 @@ export class SuggestedPurchaseService {
   readonly totalPages = computed(() => this.listQuery.data()?.pages ?? 0);
   readonly isLoading = computed(() => this.listQuery.isFetching());
 
-  private fetchPage(page: number, size: number): Promise<Page<SuggestedPurchaseLineResponse>> {
+  private fetchPage(
+    page: number,
+    size: number,
+    signal?: AbortSignal,
+  ): Promise<Page<SuggestedPurchaseLineResponse>> {
     const params = new HttpParams().set('page', page).set('size', size);
-    return firstValueFrom(
+    return abortableFirstValueFrom(
       this.http.get<Page<SuggestedPurchaseLineResponse>>(this.baseUrl, { params }),
+      signal,
     );
   }
 
