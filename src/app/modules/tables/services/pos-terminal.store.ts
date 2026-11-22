@@ -2861,6 +2861,66 @@ export class PosTerminalStore {
   }
 
   /**
+   * Spec 164 (US1): divide la orden `orderId` en una cuenta independiente
+   * por línea, y elimina la original. `reload()` ya resincroniza
+   * `selectedOrderId` (`resyncSelectedOrder()`) si la orden seleccionada
+   * desapareció -- no hace falta limpiarla aquí a mano.
+   */
+  async splitOrder(orderId: string): Promise<void> {
+    const ok = await this.confirm.ask({
+      title: 'Dividir cuenta',
+      message: '¿Dividir este pedido en una cuenta independiente por cada producto?',
+      confirmText: 'Dividir',
+    });
+    if (!ok) return;
+    this.submitting.set(true);
+    try {
+      await this.tableService.splitOrder(orderId);
+      await this.reload();
+    } catch (err) {
+      this.toast.error(this.api.extractError(err, 'No se pudo dividir la cuenta.'));
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /**
+   * Spec 164 (US2): mueve un ítem (completo o parcial) de `orderId` hacia
+   * `targetOrderId`, dentro de la misma mesa. Mismo patrón que
+   * `splitOrder()` -- `reload()` resincroniza la selección si la orden
+   * origen quedó vacía y se eliminó.
+   */
+  async moveItem(
+    orderId: string, itemId: string, targetOrderId: string, quantity?: number,
+  ): Promise<void> {
+    this.submitting.set(true);
+    try {
+      await this.tableService.moveItem(orderId, itemId, targetOrderId, quantity);
+      await this.reload();
+    } catch (err) {
+      this.toast.error(this.api.extractError(err, 'No se pudo mover el ítem.'));
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /**
+   * Spec 164 (US3): separa un ítem (completo o parcial) de `orderId` en una
+   * cuenta nueva de la misma mesa. Mismo patrón que `splitOrder()`/`moveItem()`.
+   */
+  async splitItemToNewOrder(orderId: string, itemId: string, quantity?: number): Promise<void> {
+    this.submitting.set(true);
+    try {
+      await this.tableService.splitItemToNewOrder(orderId, itemId, quantity);
+      await this.reload();
+    } catch (err) {
+      this.toast.error(this.api.extractError(err, 'No se pudo crear la cuenta nueva.'));
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /**
    * Grupos/opciones configurados para una variante, leídos del catálogo ya
    * cacheado (`MenuService.categories()`) -- TODAS las categorías, no solo
    * `catalogProducts()` (acotada a la categoría que el cajero tiene abierta

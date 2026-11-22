@@ -187,6 +187,20 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                   Enviar a cocina
                 </button>
               }
+              <!-- Spec 164 (US1): convierte cada línea de este pedido en una
+                   cuenta independiente -- solo tiene sentido con más de 1
+                   línea, y nunca sobre un pedido ya cobrado. -->
+              @if (!o.paid && (o.items?.length ?? 0) > 1) {
+                <button
+                  type="button"
+                  (click)="store.splitOrder(o.id)"
+                  [disabled]="store.submitting()"
+                  class="shrink-0 px-4 py-2 rounded-[8px] border text-[13px] font-semibold transition-colors disabled:opacity-40"
+                  style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-secondary);background:var(--terminal-color-surface)"
+                >
+                  Dividir cuenta
+                </button>
+              }
             }
           </div>
 
@@ -460,6 +474,31 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                            lista en un pedido sin pagar aún mostraba el botón.
                            Mismo tratamiento outline que "Marcar listo", en su
                            color de peligro. -->
+                        <!-- Spec 164 (US2/US3): "Mover a cuenta…"/"Nueva
+                             cuenta" por ítem -- solo líneas sueltas (no
+                             combos, fuera de alcance de esta feature) de un
+                             pedido sin cobrar. "Mover" exige al menos otra
+                             cuenta en la mesa; "Nueva cuenta" no. -->
+                        @if (!store.selectedOrder()?.paid && !it.ready && !it.comboId) {
+                          @if (otherOrderTabs().length > 0) {
+                            <button
+                              type="button"
+                              (click)="toggleMovePicker(it.key, it.itemIds)"
+                              class="min-h-11 px-3.5 rounded-[8px] border text-[13px] font-semibold transition-colors"
+                              style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-secondary);background:var(--terminal-color-surface)"
+                            >
+                              Mover a cuenta…
+                            </button>
+                          }
+                          <button
+                            type="button"
+                            (click)="toggleSplitPicker(it.key, it.itemIds)"
+                            class="min-h-11 px-3.5 rounded-[8px] border text-[13px] font-semibold transition-colors"
+                            style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-secondary);background:var(--terminal-color-surface)"
+                          >
+                            Nueva cuenta
+                          </button>
+                        }
                         @if (!store.selectedOrder()?.paid && !it.ready) {
                           <button
                             (click)="
@@ -475,6 +514,94 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                         }
                       </div>
                     </div>
+                    <!-- Picker inline de "Mover a cuenta…": destino (otra
+                         pestaña de la mesa) + cantidad si la línea tiene
+                         más de 1 unidad. -->
+                    @if (movingItemKey() === it.key) {
+                      <div
+                        class="mt-2 p-3 rounded-[8px] border flex flex-col gap-2"
+                        style="border-color:var(--terminal-color-border)"
+                      >
+                        <label class="text-[11px] font-semibold" style="color:var(--terminal-color-text-secondary)">
+                          Mover a
+                        </label>
+                        <select
+                          (change)="onTransferTargetChange($event)"
+                          class="text-[13px] rounded-[6px] border px-2 py-1.5 bg-transparent"
+                          style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-primary)"
+                        >
+                          @for (t of otherOrderTabs(); track t.id) {
+                            <option [value]="t.id">{{ t.label }}</option>
+                          }
+                        </select>
+                        @if (itemQuantity(it.itemIds) > 1) {
+                          <label class="text-[11px] font-semibold" style="color:var(--terminal-color-text-secondary)">
+                            Cantidad (máx. {{ itemQuantity(it.itemIds) }})
+                          </label>
+                          <input
+                            type="number" min="1" [max]="itemQuantity(it.itemIds)"
+                            [value]="transferQuantity()"
+                            (input)="onTransferQuantityInput($event)"
+                            class="text-[13px] rounded-[6px] border px-2 py-1.5 bg-transparent"
+                            style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-primary)"
+                          />
+                        }
+                        <div class="flex items-center gap-2 pt-1">
+                          <button
+                            type="button" (click)="confirmMove(it.itemIds)" [disabled]="store.submitting()"
+                            class="flex-1 py-2 rounded-[6px] text-white text-[12px] font-semibold disabled:opacity-40"
+                            style="background:var(--terminal-color-primary)"
+                          >
+                            Confirmar
+                          </button>
+                          <button
+                            type="button" (click)="movingItemKey.set(null)"
+                            class="flex-1 py-2 rounded-[6px] border text-[12px] font-semibold"
+                            style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-secondary)"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    }
+                    <!-- Picker inline de "Nueva cuenta": solo cantidad si la
+                         línea tiene más de 1 unidad -- el backend rechaza
+                         (400) mover el 100% si es la única línea restante. -->
+                    @if (splittingItemKey() === it.key) {
+                      <div
+                        class="mt-2 p-3 rounded-[8px] border flex flex-col gap-2"
+                        style="border-color:var(--terminal-color-border)"
+                      >
+                        @if (itemQuantity(it.itemIds) > 1) {
+                          <label class="text-[11px] font-semibold" style="color:var(--terminal-color-text-secondary)">
+                            Cantidad (máx. {{ itemQuantity(it.itemIds) }})
+                          </label>
+                          <input
+                            type="number" min="1" [max]="itemQuantity(it.itemIds)"
+                            [value]="transferQuantity()"
+                            (input)="onTransferQuantityInput($event)"
+                            class="text-[13px] rounded-[6px] border px-2 py-1.5 bg-transparent"
+                            style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-primary)"
+                          />
+                        }
+                        <div class="flex items-center gap-2 pt-1">
+                          <button
+                            type="button" (click)="confirmSplitToNew(it.itemIds)" [disabled]="store.submitting()"
+                            class="flex-1 py-2 rounded-[6px] text-white text-[12px] font-semibold disabled:opacity-40"
+                            style="background:var(--terminal-color-primary)"
+                          >
+                            Confirmar
+                          </button>
+                          <button
+                            type="button" (click)="splittingItemKey.set(null)"
+                            class="flex-1 py-2 rounded-[6px] border text-[12px] font-semibold"
+                            style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-secondary)"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    }
                   }
                   <!-- 'pending-review' (pago QR sin confirmar): sin fila de
                        acciones -- el pedido todavía no se envió a cocina (eso
@@ -694,5 +821,94 @@ export class PosOrderPanelComponent {
   /** Spec 148 (US2, T049): solo las filas de BORRADOR llevan `soldOut`. */
   rowSoldOut(it: ReturnType<PosTerminalStore['cartView']>[number]): string | null {
     return it.kind === 'draft' ? it.soldOut : null;
+  }
+
+  // ---------------------------------------------------------------------
+  // Spec 164 (US2/US3): "Mover a cuenta…" / "Nueva cuenta" por ítem.
+  // ---------------------------------------------------------------------
+
+  /** Clave de la fila (`cartView()` key) cuyo picker de "Mover a cuenta…"
+   *  está abierto; `null` si ninguno. */
+  readonly movingItemKey = signal<string | null>(null);
+  /** Clave de la fila cuyo picker de "Nueva cuenta" está abierto. */
+  readonly splittingItemKey = signal<string | null>(null);
+  /** Cantidad elegida en el picker abierto (de "Mover" o "Nueva cuenta");
+   *  por defecto la cantidad total de la línea (mover/separar todo). */
+  readonly transferQuantity = signal<number>(1);
+  /** Orden destino elegida en el picker de "Mover a cuenta…". */
+  readonly transferTargetOrderId = signal<string>('');
+
+  /** Pestañas de la mesa que no son la seleccionada ni ya están pagadas --
+   *  universo de destinos válidos para "Mover a cuenta…" (`_assert_not_paid`
+   *  del backend rechaza mover hacia una ya cobrada). */
+  otherOrderTabs() {
+    const current = this.store.selectedOrderId();
+    return this.store.orderTabs().filter((t) => t.id !== current && !t.paid);
+  }
+
+  /** Cantidad real de la línea (`OrderItem.quantity`), resuelta contra
+   *  `store.orders()` -- para una card agrupada (spec 118), la cantidad de
+   *  **una** de sus filas (`itemIds[0]`), igual que `voidPersistedItem`. */
+  itemQuantity(itemIds: string[]): number {
+    const id = itemIds[0];
+    for (const o of this.store.orders()) {
+      const item = (o.items ?? []).find((i) => i.id === id);
+      if (item) return item.quantity;
+    }
+    return 1;
+  }
+
+  toggleMovePicker(key: string, itemIds: string[]): void {
+    if (this.movingItemKey() === key) {
+      this.movingItemKey.set(null);
+      return;
+    }
+    this.splittingItemKey.set(null);
+    this.movingItemKey.set(key);
+    this.transferQuantity.set(this.itemQuantity(itemIds));
+    this.transferTargetOrderId.set(this.otherOrderTabs()[0]?.id ?? '');
+  }
+
+  toggleSplitPicker(key: string, itemIds: string[]): void {
+    if (this.splittingItemKey() === key) {
+      this.splittingItemKey.set(null);
+      return;
+    }
+    this.movingItemKey.set(null);
+    this.splittingItemKey.set(key);
+    this.transferQuantity.set(this.itemQuantity(itemIds));
+  }
+
+  onTransferQuantityInput(ev: Event): void {
+    const value = Number((ev.target as HTMLInputElement).value);
+    if (Number.isFinite(value) && value > 0) this.transferQuantity.set(value);
+  }
+
+  onTransferTargetChange(ev: Event): void {
+    this.transferTargetOrderId.set((ev.target as HTMLSelectElement).value);
+  }
+
+  /** `undefined` cuando la cantidad elegida es el total de la línea (mover
+   *  todo) -- el contrato del backend trata `quantity` ausente como "mover
+   *  la cantidad total", y acepta igual el valor explícito completo. */
+  private quantityOrFull(itemIds: string[]): number | undefined {
+    const full = this.itemQuantity(itemIds);
+    const chosen = this.transferQuantity();
+    return chosen === full ? undefined : chosen;
+  }
+
+  confirmMove(itemIds: string[]): void {
+    const orderId = this.store.selectedOrderId();
+    const targetOrderId = this.transferTargetOrderId();
+    if (!orderId || !targetOrderId) return;
+    void this.store.moveItem(orderId, itemIds[0], targetOrderId, this.quantityOrFull(itemIds));
+    this.movingItemKey.set(null);
+  }
+
+  confirmSplitToNew(itemIds: string[]): void {
+    const orderId = this.store.selectedOrderId();
+    if (!orderId) return;
+    void this.store.splitItemToNewOrder(orderId, itemIds[0], this.quantityOrFull(itemIds));
+    this.splittingItemKey.set(null);
   }
 }
