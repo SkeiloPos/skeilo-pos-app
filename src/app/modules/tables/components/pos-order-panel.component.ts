@@ -146,61 +146,66 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                  FR-001/FR-002a/FR-011, única acción de entrega para todo el
                  pedido, idempotente -- también sirve como "re-entregar" con
                  ítems nuevos tras una primera entrega) solo se habilita
-                 después de recibir, nunca directo desde pendiente. A su
-                 propia columna a la derecha (no junto a los chips de
-                 estado): ahí se confundía visualmente con ellos. -->
+                 después de recibir, nunca directo desde pendiente. Todas las
+                 acciones del pedido (Recibir/Entregar, Enviar a cocina,
+                 Dividir cuenta) van agrupadas en un único clúster a la
+                 derecha (a pedido del usuario) -- antes eran hijos sueltos
+                 del row con justify-between, que los separaba visualmente
+                 en vez de mostrarlos como un grupo. -->
             @if (store.selectedOrder(); as o) {
-              @if (o.status === 'pendiente' && o.channel === 'QR_MENU') {
-                <button
-                  type="button"
-                  (click)="store.receiveOrder(o.id)"
-                  [disabled]="store.submitting()"
-                  class="shrink-0 px-4 py-2 rounded-[8px] text-white text-[13px] font-semibold transition-colors disabled:opacity-40"
-                  style="background:var(--terminal-color-primary,#7c3aed)"
-                >
-                  Recibir
-                </button>
-              } @else if (o.status !== 'cancelada' && canDeliver(o)) {
-                <button
-                  type="button"
-                  (click)="store.deliverOrder(o.id)"
-                  [disabled]="store.submitting()"
-                  class="shrink-0 px-4 py-2 rounded-[8px] text-white text-[13px] font-semibold transition-colors disabled:opacity-40"
-                  style="background:var(--terminal-color-primary,#7c3aed)"
-                >
-                  Entregar
-                </button>
-              }
-              <!-- Spec 150 (FR-001/FR-002/FR-006): independiente de
-                   "Recibir"/"Entregar" -- un pedido puede necesitar enviarse
-                   a cocina sin importar si ya se "recibió" o se "entregó".
-                   Desaparece apenas se envía (!o.kitchen_status, dentro de
-                   canSendToKitchen). -->
-              @if (canSendToKitchen(o)) {
-                <button
-                  type="button"
-                  (click)="store.sendToKitchen(o.id)"
-                  [disabled]="store.submitting()"
-                  class="shrink-0 px-4 py-2 rounded-[8px] text-white text-[13px] font-semibold transition-colors disabled:opacity-40"
-                  style="background:var(--terminal-color-primary,#7c3aed)"
-                >
-                  Enviar a cocina
-                </button>
-              }
-              <!-- Spec 164 (US1): convierte cada línea de este pedido en una
-                   cuenta independiente -- solo tiene sentido con más de 1
-                   línea, y nunca sobre un pedido ya cobrado. -->
-              @if (!o.paid && (o.items?.length ?? 0) > 1) {
-                <button
-                  type="button"
-                  (click)="store.splitOrder(o.id)"
-                  [disabled]="store.submitting()"
-                  class="shrink-0 px-4 py-2 rounded-[8px] border text-[13px] font-semibold transition-colors disabled:opacity-40"
-                  style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-secondary);background:var(--terminal-color-surface)"
-                >
-                  Dividir cuenta
-                </button>
-              }
+              <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                @if (o.status === 'pendiente' && o.channel === 'QR_MENU') {
+                  <button
+                    type="button"
+                    (click)="store.receiveOrder(o.id)"
+                    [disabled]="store.submitting()"
+                    class="shrink-0 px-4 py-2 rounded-[8px] text-white text-[13px] font-semibold transition-colors disabled:opacity-40"
+                    style="background:var(--terminal-color-primary,#7c3aed)"
+                  >
+                    Recibir
+                  </button>
+                } @else if (o.status !== 'cancelada' && canDeliver(o)) {
+                  <button
+                    type="button"
+                    (click)="store.deliverOrder(o.id)"
+                    [disabled]="store.submitting()"
+                    class="shrink-0 px-4 py-2 rounded-[8px] text-white text-[13px] font-semibold transition-colors disabled:opacity-40"
+                    style="background:var(--terminal-color-primary,#7c3aed)"
+                  >
+                    Entregar
+                  </button>
+                }
+                <!-- Spec 150 (FR-001/FR-002/FR-006): independiente de
+                     "Recibir"/"Entregar" -- un pedido puede necesitar enviarse
+                     a cocina sin importar si ya se "recibió" o se "entregó".
+                     Desaparece apenas se envía (!o.kitchen_status, dentro de
+                     canSendToKitchen). -->
+                @if (canSendToKitchen(o)) {
+                  <button
+                    type="button"
+                    (click)="store.sendToKitchen(o.id)"
+                    [disabled]="store.submitting()"
+                    class="shrink-0 px-4 py-2 rounded-[8px] text-white text-[13px] font-semibold transition-colors disabled:opacity-40"
+                    style="background:var(--terminal-color-primary,#7c3aed)"
+                  >
+                    Enviar a cocina
+                  </button>
+                }
+                <!-- Spec 164 (US1): convierte cada línea de este pedido en una
+                     cuenta independiente -- solo tiene sentido con más de 1
+                     línea, y nunca sobre un pedido ya cobrado. -->
+                @if (!o.paid && (o.items?.length ?? 0) > 1) {
+                  <button
+                    type="button"
+                    (click)="store.splitOrder(o.id)"
+                    [disabled]="store.submitting()"
+                    class="shrink-0 px-4 py-2 rounded-[8px] border text-[13px] font-semibold transition-colors disabled:opacity-40"
+                    style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-secondary);background:var(--terminal-color-surface)"
+                  >
+                    Dividir cuenta
+                  </button>
+                }
+              </div>
             }
           </div>
 
@@ -460,11 +465,6 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                         <!-- Spec 147 (FR-002): ya no hay "Marcar listo" por
                            línea/ítem -- la entrega es una sola acción para
                            todo el pedido (botón "Entregar" del header). -->
-                        @if (it.ready) {
-                          <span class="text-[11px]" style="color:var(--terminal-color-text-muted)" title="Producto ya entregado: agrega un producto nuevo">
-                            Producto ya entregado
-                          </span>
-                        }
                         <!-- Un pedido ya pagado se asume entregado: no se anula
                            (spec 029, FR-007). Tampoco una línea ya lista: una
                            vez preparada ya consumió su inventario y el cajero
@@ -477,9 +477,28 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                         <!-- Spec 164 (US2/US3): "Mover a cuenta…"/"Nueva
                              cuenta" por ítem -- solo líneas sueltas (no
                              combos, fuera de alcance de esta feature) de un
-                             pedido sin cobrar. "Mover" exige al menos otra
-                             cuenta en la mesa; "Nueva cuenta" no. -->
-                        @if (!store.selectedOrder()?.paid && !it.ready && !it.comboId) {
+                             pedido sin cobrar. A pedido del usuario: siguen
+                             disponibles aunque la línea ya esté "entregada"
+                             (!it.ready ya no las bloquea) -- a diferencia de
+                             "Anular", mover/repartir una línea entregada
+                             sigue teniendo sentido (no desconsume inventario,
+                             solo cambia a qué cuenta se factura). "Mover"
+                             exige al menos otra cuenta en la mesa.
+                             "Nueva cuenta" solo con qty > 1 (a pedido del
+                             usuario): "Dividir cuenta" del header (US1)
+                             reparte TODO el pedido en cuentas independientes,
+                             una por línea, pero no toca unidades DENTRO de
+                             una misma línea -- con una sola línea de 3
+                             unidades ("3x producto"), "Dividir cuenta" no
+                             aparece (1 sola línea, nada que repartir por
+                             línea) y sin esto no había forma de separar esas
+                             3 unidades en cuentas aparte. Con qty === 1 no
+                             hay nada que repartir dentro de la línea (el
+                             100% de 1 unidad ya es la línea completa, lo
+                             mismo que ya resuelve "Dividir cuenta" si hay más
+                             líneas), así que se oculta para no duplicar esa
+                             otra entrada. -->
+                        @if (!store.selectedOrder()?.paid && !it.comboId) {
                           @if (otherOrderTabs().length > 0) {
                             <button
                               type="button"
@@ -490,14 +509,16 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                               Mover a cuenta…
                             </button>
                           }
-                          <button
-                            type="button"
-                            (click)="toggleSplitPicker(it.key, it.itemIds)"
-                            class="min-h-11 px-3.5 rounded-[8px] border text-[13px] font-semibold transition-colors"
-                            style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-secondary);background:var(--terminal-color-surface)"
-                          >
-                            Nueva cuenta
-                          </button>
+                          @if (it.qty > 1) {
+                            <button
+                              type="button"
+                              (click)="toggleSplitPicker(it.key, it.itemIds)"
+                              class="min-h-11 px-3.5 rounded-[8px] border text-[13px] font-semibold transition-colors"
+                              style="border-color:var(--terminal-color-border-strong);color:var(--terminal-color-text-secondary);background:var(--terminal-color-surface)"
+                            >
+                              Nueva cuenta
+                            </button>
+                          }
                         }
                         @if (!store.selectedOrder()?.paid && !it.ready) {
                           <button

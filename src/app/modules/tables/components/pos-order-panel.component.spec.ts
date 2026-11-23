@@ -891,13 +891,20 @@ describe('PosOrderPanelComponent — selección de cobro por pedido (spec 156)',
 
   afterEach(() => http.verify());
 
-  it('sin elegir ninguna pestaña, chargeOrderIdsParam() es undefined (cobra todo, T022)', () => {
+  it('con 2+ pedidos, sin tocar ninguna pestaña, chargeOrderIdsParam() ya acota al pedido que se está viendo (a pedido del usuario)', () => {
+    // Antes "sin elegir ninguna pestaña" cobraba TODA la mesa por defecto
+    // (T022 original) -- a pedido del usuario eso se invirtió: con 2+
+    // cuentas, el cobro por defecto es por-pedido (el que se está viendo),
+    // para que al cajero no se le olvide elegir una pestaña y termine
+    // cobrando todo junto con un solo método de pago. "Cobrar toda la mesa"
+    // (chargeAllOrders()) es ahora la única forma explícita de llegar a
+    // "todos".
     store.orders.set([pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID')]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
     fixture.detectChanges();
 
-    expect(store.chargeOrderIdsParam()).toBeUndefined();
+    expect(store.chargeOrderIdsParam()).toEqual(['o1']);
   });
 
   it('elegir "Pedido 2" acota chargeOrderIdsParam() a ese único pedido (US1, T022)', () => {
@@ -960,19 +967,46 @@ describe('PosOrderPanelComponent — selección de cobro por pedido (spec 156)',
     expect(store.chargeOrderIdsParam()).toBeUndefined();
   });
 
-  it('un pedido nuevo en la misma mesa sí resetea la selección a "todos" (bugfix spec 153/156)', () => {
+  it('un pedido nuevo en la misma mesa NO desarma una selección acotada activa (a pedido del usuario)', () => {
+    // Antes, cualquier cambio real del conjunto de pedidos cobrables
+    // (incluido uno nuevo llegando) reseteaba la selección a "todos" --
+    // a pedido del usuario eso se invirtió: si el cajero ya tiene acotado el
+    // cobro a un pedido puntual y ese pedido sigue siendo cobrable, un
+    // pedido nuevo en la misma mesa no debe ampliar el cobro en silencio.
     store.orders.set([pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID')]);
     store.selectedTableId.set('t1');
     store.selectedOrderId.set('o1');
     fixture.detectChanges();
+    store.selectOrder('o2');
     store.selectChargeOrderOnly('o2');
     http.expectOne(`${API}/table-sessions`).flush([]);
     expect(store.chargeOrderIdsParam()).toEqual(['o2']);
 
     // Llega un tercer pedido cobrable a la misma mesa -- el conjunto de
-    // `chargeableOrderIds` sí cambió de verdad, así que la selección vuelve
-    // a "todos" (sin disparar ningún fetch: el efecto de reset solo
+    // `chargeableOrderIds` sí cambió de verdad, pero "o2" (el pedido
+    // enfocado) sigue siendo cobrable, así que la selección se mantiene
+    // acotada a él (sin disparar ningún fetch: el efecto de reset solo
     // sincroniza el `Set` local).
+    store.orders.set([pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID'), pedido('o3', 'UNPAID')]);
+    fixture.detectChanges();
+
+    expect(store.chargeOrderIdsParam()).toEqual(['o2']);
+  });
+
+  it('chargeAllOrders() cobra toda la mesa y lo mantiene aunque llegue un pedido nuevo', () => {
+    store.orders.set([pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID')]);
+    store.selectedTableId.set('t1');
+    store.selectedOrderId.set('o1');
+    fixture.detectChanges();
+    expect(store.chargeOrderIdsParam()).toEqual(['o1']);
+
+    store.chargeAllOrders();
+    http.expectOne(`${API}/table-sessions`).flush([]);
+    expect(store.chargeOrderIdsParam()).toBeUndefined();
+
+    // La elección explícita de "cobrar toda la mesa" sobrevive a un cambio
+    // real del conjunto (p. ej. llega un pedido nuevo) -- no vuelve a
+    // acotarse sola al pedido enfocado.
     store.orders.set([pedido('o1', 'UNPAID'), pedido('o2', 'UNPAID'), pedido('o3', 'UNPAID')]);
     fixture.detectChanges();
 

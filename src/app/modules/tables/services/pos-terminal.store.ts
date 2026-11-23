@@ -406,27 +406,37 @@ export class PosTerminalStore {
       this.pollHandle?.setPeriod(abierto ? ORDERS_POLL_SSE_MS : ORDERS_POLL_MS);
     });
 
-    // Spec 156 (D7 de research.md): la selección de cobro se reinicia a
-    // "todos los pedidos sin cobrar" al cambiar de mesa, o cuando el CONJUNTO
-    // de pedidos cobrables de la mesa actual cambia de verdad (uno nuevo
-    // llega, o uno se paga en otra terminal) -- `chargeableOrderIds()` ya
-    // tiene igualdad por contenido (ver su definición), así que un refresco
-    // en segundo plano sin cambios reales ya no dispara este reset. Bugfix:
-    // sin esa igualdad por contenido, CUALQUIER recarga de `orders()`
-    // (sondeo, o un evento de tiempo real de OTRA mesa del negocio) producía
-    // un arreglo nuevo aunque el conjunto de ids no cambiara, y este efecto
-    // lo tomaba como "cambió de verdad" -- borraba la selección de un pedido
-    // específico a mitad de que el cajero revisaba su pago (spec 153,
-    // "cobrar sin entregar": esa revisión alarga la ventana de la carrera) y
-    // terminaba cobrando TODOS los pedidos en vez de solo el elegido. Se lee
-    // `selectedTableId()` fuera de `untracked` a propósito: cambiar de mesa
-    // debe resetear siempre, incluso en el caso límite de que ambas mesas
-    // tengan el mismo conjunto (vacío) de pedidos cobrables. Sin red: solo
-    // sincroniza un `Set` local, no dispara ningún fetch.
+    // Spec 156 (D7 de research.md), redefinido a pedido del usuario: la
+    // selección de cobro se resincroniza al cambiar de mesa, o cuando el
+    // CONJUNTO de pedidos cobrables de la mesa actual cambia de verdad (uno
+    // nuevo llega, uno se paga en otra terminal, o "Dividir cuenta"/"Mover a
+    // cuenta..." borra pedidos viejos y crea otros) -- `chargeableOrderIds()`
+    // ya tiene igualdad por contenido (ver su definición), así que un
+    // refresco en segundo plano sin cambios reales ya no dispara este reset.
+    //
+    // A diferencia de antes, el destino NO es siempre "todos": con la mesa
+    // dividida en 2+ pedidos, se acota al pedido que se está viendo
+    // (`selectedOrderId()`) -- a menos que el cajero haya elegido
+    // explícitamente "Cobrar toda la mesa" (`chargeAllExplicit()`), en cuyo
+    // caso un cambio real del conjunto sigue incluyendo a todos los pedidos
+    // actuales. Se lee `selectedTableId()` fuera de `untracked` a propósito:
+    // cambiar de mesa debe resincronizar siempre, incluso en el caso límite
+    // de que ambas mesas tengan el mismo conjunto (vacío) de pedidos
+    // cobrables -- y apaga `chargeAllExplicit`, que es por-mesa. Sin red:
+    // solo sincroniza un `Set` local, no dispara ningún fetch.
     effect(() => {
       this.selectedTableId();
       const unpaidIds = this.chargeableOrderIds();
-      untracked(() => this.selectedChargeOrderIds.set(new Set(unpaidIds)));
+      untracked(() => {
+        if (!this.chargeAllExplicit()) {
+          const viewed = this.selectedOrderId();
+          if (unpaidIds.length > 1 && viewed != null && unpaidIds.includes(viewed)) {
+            this.selectedChargeOrderIds.set(new Set([viewed]));
+            return;
+          }
+        }
+        this.selectedChargeOrderIds.set(new Set(unpaidIds));
+      });
     });
 
     // Spec 134 (FR-019, M6): el borrador solo vive en memoria; una recarga automática
@@ -502,13 +512,25 @@ export class PosTerminalStore {
   readonly selectedOrderId = signal<string | null>(null);
   /**
    * Spec 156 (US1/US2): pedidos de la mesa seleccionada que el cajero quiere
-   * incluir en la próxima transacción de cobro. Se reinicia a "todos los
-   * `orderTabs()` pendientes" cada vez que cambia `sessionBill()` (ver efecto
-   * en el constructor) -- mismo criterio de reset que ya usa `ngOnChanges` en
-   * `session-bill-panel.component.ts` al cambiar `bill`, para que "cobrar
-   * todo" siga siendo el comportamiento por defecto (Principio II).
+   * incluir en la próxima transacción de cobro. Con un único pedido da igual
+   * (`chargeableOrderIds()` tiene como mucho ese id).
+   *
+   * A pedido del usuario: con la mesa dividida en 2+ pedidos, el valor por
+   * defecto ya NO es "todos" -- es el pedido que se está viendo
+   * (`selectedOrderId()`). Antes, si el cajero olvidaba elegir una pestaña
+   * antes de cobrar, terminaba cobrando TODA la mesa de una sola vez con un
+   * solo método de pago, aunque cada cuenta debía pagarse aparte. "Todos" solo
+   * se vuelve a elegir de forma explícita con `chargeAllOrders()` (ver
+   * `chargeAllExplicit`) -- ya no es el resultado de "no elegir ninguna
+   * pestaña".
    */
   readonly selectedChargeOrderIds = signal<Set<string>>(new Set());
+  /** true solo tras `chargeAllOrders()` (el cajero eligió explícitamente
+   *  "Cobrar toda la mesa") -- mientras esté activo, el efecto de reset de
+   *  abajo mantiene la selección en "todos" incluso si el conjunto de
+   *  pedidos cobrables cambia de verdad. Se apaga al cambiar de mesa o al
+   *  volver a acotar a un solo pedido (`selectChargeOrderOnly`). */
+  private readonly chargeAllExplicit = signal(false);
   readonly draftLines = signal<DraftLine[]>([]);
   readonly customerName = signal('');
   /** Datos de entrega del borrador "Domicilio" (spec 056) — solo relevantes
@@ -1073,8 +1095,10 @@ export class PosTerminalStore {
   /**
    * Acota la selección a un único pedido (spec 156, US1): elegir una pestaña
    * "Pedido N" para verla no solo enfoca su carrito (`selectOrder()`) --
-   * también deja ESE pedido como el único a cobrar. Sin ninguna pestaña
-   * elegida, la selección sigue siendo "todos" (comportamiento por defecto).
+   * también deja ESE pedido como el único a cobrar. Con 2+ pedidos esto ya
+   * era el comportamiento por defecto (ver el efecto de reset del
+   * constructor) -- este método vuelve a acotar si antes se había elegido
+   * "Cobrar toda la mesa" (`chargeAllOrders()`).
    *
    * Bugfix (a pedido del usuario): si el pedido ya está pagado, no hay nada
    * que cobrar de él -- no toca la selección (ni dispara un refresco). Sin
@@ -1085,17 +1109,33 @@ export class PosTerminalStore {
    */
   selectChargeOrderOnly(orderId: string): void {
     if (!this.chargeableOrderIds().includes(orderId)) return;
+    this.chargeAllExplicit.set(false);
     this.selectedChargeOrderIds.set(new Set([orderId]));
+    void this.loadSessionBill(this.selectedTableId());
+  }
+
+  /**
+   * Cobra TODOS los pedidos pendientes de la mesa juntos, en una sola
+   * transacción (spec 156, US2) -- a pedido del usuario, ahora es la ÚNICA
+   * forma de llegar a "todos" con 2+ pedidos: ya no basta con no elegir
+   * ninguna pestaña, porque eso cobraba por accidente toda la mesa de una
+   * vez (con un solo método de pago) cuando el cajero solo quería cobrar el
+   * pedido que tenía abierto. Marca `chargeAllExplicit` para que el efecto
+   * de reset del constructor no lo vuelva a acotar si el conjunto de
+   * pedidos cobrables cambia de verdad mientras tanto.
+   */
+  chargeAllOrders(): void {
+    this.chargeAllExplicit.set(true);
+    this.selectedChargeOrderIds.set(new Set(this.chargeableOrderIds()));
     void this.loadSessionBill(this.selectedTableId());
   }
 
   /**
    * `order_ids` a mandar en el próximo `/bill`/`/charge` (spec 156).
    * `undefined` si la selección cubre exactamente todos los pedidos
-   * facturables actuales (incluido el caso sin selección explícita, p. ej.
-   * antes de la primera carga) -- para no romper el caso por defecto
-   * "cobrar todo" (Principio II). El arreglo de ids seleccionados en
-   * cualquier otro caso (hoy, solo el de `selectChargeOrderOnly`).
+   * facturables actuales -- para no romper el contrato existente del
+   * backend ("sin `order_ids`" = cobrar todo). El arreglo de ids
+   * seleccionados en cualquier otro caso.
    */
   readonly chargeOrderIdsParam = computed<string[] | undefined>(() => {
     const selected = this.selectedChargeOrderIds();
@@ -1116,6 +1156,26 @@ export class PosTerminalStore {
    * el del resto del panel).
    */
   readonly selectedOrderTotal = computed(() => (this.orderTabs().length > 0 ? this.subtotal() : null));
+
+  /**
+   * A pedido del usuario: suma de referencia de TODOS los pedidos sin cobrar
+   * de la mesa, independiente de a cuál(es) esté acotado el cobro
+   * (`chargeOrderIdsParam()`/`selectedChargeOrderIds`) -- desde que el
+   * cobro por defecto con 2+ pedidos pasó a ser por-pedido en vez de toda la
+   * mesa junta, "Total a cobrar" ya no refleja necesariamente el consumo
+   * completo de la mesa, y el cajero no debe perder de vista cuánto suma en
+   * total mientras cobra cuenta por cuenta. `null` con 0 o 1 pedido (ahí
+   * "Total a cobrar" YA es el total de la mesa, mostrar esto sería
+   * redundante). Mismo criterio de `subtotal()` (neto, con descuentos por
+   * ítem ya aplicados), pero sumado sobre cada pedido no pagado en vez de
+   * solo el enfocado.
+   */
+  readonly tableSubtotalAllOrders = computed(() => {
+    if (this.orderTabs().length <= 1) return null;
+    return this.ordersView()
+      .filter((v) => !v.order.paid)
+      .reduce((sum, v) => sum + v.items.reduce((s, it) => s + it.subtotal, 0), 0);
+  });
 
   /**
    * Vista "Todos los pedidos" activa (spec 049, FR-009/FR-011): por defecto
@@ -2214,6 +2274,9 @@ export class PosTerminalStore {
     this.billingCustomerName.set('Consumidor Final');
     this.centralPanelTab.set('validar-pago');
     this.showAllOrders.set(false);
+    // "Cobrar toda la mesa" es una elección explícita por-mesa -- no debe
+    // sobrevivir a entrar a otra mesa/pedido.
+    this.chargeAllExplicit.set(false);
   }
 
   /** El pedido seleccionado ya trae un cliente real (domicilio/para llevar,
