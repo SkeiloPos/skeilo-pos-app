@@ -6,6 +6,7 @@ import { environment } from '../../../../environments/environment';
 import { Page } from '../../../core/interfaces/page.interface';
 
 import { MenuService } from '../../../core/services/menu.service';
+import { abortableFirstValueFrom } from '../../../core/query/abortable-request';
 import { injectPagedQuery } from '../../../core/query/paged-query';
 import { OptionGroupService } from '../../option-groups/services/option-group.service';
 import {
@@ -220,7 +221,7 @@ export class ProductService {
         category: this.categoryFilter(),
       },
     ],
-    queryFn: () =>
+    queryFn: (signal) =>
       this.fetchProductsPage(
         this.page(),
         this.size(),
@@ -228,6 +229,7 @@ export class ProductService {
         this.activeFilter(),
         this.availabilityFilter(),
         this.categoryFilter(),
+        signal,
       ),
     enabled: () => this.wantsPage(),
   });
@@ -257,6 +259,7 @@ export class ProductService {
     activeFilter: '' | 'active' | 'inactive',
     availabilityFilter: '' | 'available' | 'sold_out' = '',
     categoryId: string = '',
+    signal?: AbortSignal,
   ): Promise<Page<ProductListItemResponse>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (search) params = params.set('search', search);
@@ -265,8 +268,9 @@ export class ProductService {
     if (availabilityFilter === 'available') params = params.set('available', 'true');
     if (availabilityFilter === 'sold_out') params = params.set('available', 'false');
     if (categoryId) params = params.set('category_id', categoryId);
-    return firstValueFrom(
+    return abortableFirstValueFrom(
       this.http.get<Page<ProductListItemResponse>>(this.productsUrl, { params }),
+      signal,
     );
   }
 

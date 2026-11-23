@@ -80,9 +80,9 @@ import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
             </div>
           } @else {
             <!-- Total contado (estimado) -->
-            <div class="bg-gray-900 text-white px-3 py-2 flex items-center justify-between rounded-lg">
-              <span class="text-[10px] uppercase tracking-wider opacity-70">Total contado (estimado)</span>
-              <span class="text-2xl font-extrabold leading-none">{{ store.fmt(store.totalContado()) }}</span>
+            <div class="bg-[#111827] text-[#ffffff] px-3 py-2 flex items-center justify-between rounded-lg">
+              <span class="text-[10px] uppercase tracking-wider text-[#ffffff] opacity-70">Total contado (estimado)</span>
+              <span class="text-2xl font-extrabold leading-none text-[#ffffff]">{{ store.fmt(store.totalContado()) }}</span>
             </div>
 
             <!-- Grid de denominaciones (una fila por denominación del catálogo) -->

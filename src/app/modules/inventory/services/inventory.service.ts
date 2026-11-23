@@ -5,6 +5,7 @@ import { Observable, firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { ApiErrorBody } from '../../../core/auth/auth.models';
 import { Page } from '../../../core/interfaces/page.interface';
+import { abortableFirstValueFrom } from '../../../core/query/abortable-request';
 import { injectPagedQuery } from '../../../core/query/paged-query';
 import {
   AdjustForm,
@@ -135,7 +136,7 @@ export class InventoryService {
         supplierId: this.itemsSupplierId(),
       },
     ],
-    queryFn: () =>
+    queryFn: (signal) =>
       this.fetchItemsPage(
         this.itemsPage(),
         this.itemsSize(),
@@ -144,6 +145,7 @@ export class InventoryService {
         this.itemsActive(),
         this.itemsLowStock(),
         this.itemsSupplierId(),
+        signal,
       ),
     enabled: () => this.wantsItemsPage(),
   });
@@ -151,9 +153,10 @@ export class InventoryService {
   /** Lista completa (tope 100) para pickers: select de compras y de kardex. */
   private readonly allItemsQuery = injectPagedQuery<InventoryItemResponse>({
     queryKey: () => ['inventory-items', 'all'],
-    queryFn: () =>
-      firstValueFrom(
+    queryFn: (signal) =>
+      abortableFirstValueFrom(
         this.http.get<Page<InventoryItemResponse>>(`${this.baseUrl}/items`, { params: { size: 100 } }),
+        signal,
       ),
     enabled: () => this.wantsAllItems(),
   });
@@ -180,6 +183,7 @@ export class InventoryService {
     active: '' | 'active' | 'inactive',
     lowStock: boolean,
     supplierId: string = '',
+    signal?: AbortSignal,
   ): Promise<Page<InventoryItemResponse>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (search) params = params.set('search', search);
@@ -188,7 +192,10 @@ export class InventoryService {
     if (active === 'inactive') params = params.set('active', 'false');
     if (lowStock) params = params.set('low_stock', 'true');
     if (supplierId) params = params.set('supplier_id', supplierId);
-    return firstValueFrom(this.http.get<Page<InventoryItemResponse>>(`${this.baseUrl}/items`, { params }));
+    return abortableFirstValueFrom(
+      this.http.get<Page<InventoryItemResponse>>(`${this.baseUrl}/items`, { params }),
+      signal,
+    );
   }
 
   /** Antes: async, esperaba el round-trip. Ahora: setter síncrono. */

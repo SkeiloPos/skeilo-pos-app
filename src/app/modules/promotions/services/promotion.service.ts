@@ -4,6 +4,7 @@ import { QueryClient } from '@tanstack/angular-query-experimental';
 import { Observable, firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { Page } from '../../../core/interfaces/page.interface';
+import { abortableFirstValueFrom } from '../../../core/query/abortable-request';
 import { injectPagedQuery } from '../../../core/query/paged-query';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { businessToday } from '../../../shared/date-format.util';
@@ -73,11 +74,12 @@ export class PromotionService {
         status: this.statusFilter(),
       },
     ],
-    queryFn: () =>
-      firstValueFrom(
+    queryFn: (signal) =>
+      abortableFirstValueFrom(
         this.http.get<Page<Promotion>>(this.baseUrl, {
           params: this.listParams(this.page(), this.size(), this.search().trim(), this.statusFilter()),
         }),
+        signal,
       ),
     enabled: () => this.wantsPage(),
   });
@@ -85,12 +87,13 @@ export class PromotionService {
   /** Promociones vigentes para vender, la que consume el POS (tope 100). */
   private readonly activeQuery = injectPagedQuery<Promotion>({
     queryKey: () => ['promotions', 'active'],
-    queryFn: () =>
-      firstValueFrom(
+    queryFn: (signal) =>
+      abortableFirstValueFrom(
         this.http.get<Page<Promotion>>(this.baseUrl, {
           params: { status: 'active', size: 100 },
           observe: 'response',
         }),
+        signal,
       ).then((res) => {
         const serverTime = res.headers.get('X-Server-Time');
         if (serverTime) this.serverTimeOffsetMs.set(new Date(serverTime).getTime() - Date.now());
@@ -105,11 +108,12 @@ export class PromotionService {
    */
   private readonly closedByRefactorQuery = injectPagedQuery<Promotion>({
     queryKey: () => ['promotions', 'closed-by-refactor'],
-    queryFn: () =>
-      firstValueFrom(
+    queryFn: (signal) =>
+      abortableFirstValueFrom(
         this.http.get<Page<Promotion>>(this.baseUrl, {
           params: { closed_by_refactor: true, size: 100 },
         }),
+        signal,
       ),
     enabled: () => this.wantsClosedByRefactor(),
   });

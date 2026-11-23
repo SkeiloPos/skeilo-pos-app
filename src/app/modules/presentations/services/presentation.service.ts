@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { ApiErrorBody } from '../../../core/auth/auth.models';
 import { Page } from '../../../core/interfaces/page.interface';
+import { abortableFirstValueFrom } from '../../../core/query/abortable-request';
 import { injectPagedQuery } from '../../../core/query/paged-query';
 import {
   Presentation,
@@ -38,15 +39,19 @@ export class PresentationService {
       'page',
       { page: this.page(), size: this.size(), search: this.search().trim(), active: this.activeFilter() },
     ],
-    queryFn: () => this.fetchPresentationsPage(this.page(), this.size(), this.search().trim(), this.activeFilter()),
+    queryFn: (signal) =>
+      this.fetchPresentationsPage(this.page(), this.size(), this.search().trim(), this.activeFilter(), signal),
     enabled: () => this.wantsPage(),
   });
 
   /** Lista completa (tope 100), para el picker de presentaciones de Categorías (US2). */
   private readonly allQuery = injectPagedQuery<Presentation>({
     queryKey: () => ['presentations', 'all'],
-    queryFn: () =>
-      firstValueFrom(this.http.get<Page<Presentation>>(this.baseUrl, { params: { size: 100 } })),
+    queryFn: (signal) =>
+      abortableFirstValueFrom(
+        this.http.get<Page<Presentation>>(this.baseUrl, { params: { size: 100 } }),
+        signal,
+      ),
     enabled: () => this.wantsAll(),
   });
 
@@ -69,12 +74,13 @@ export class PresentationService {
     size: number,
     search: string,
     activeFilter: '' | 'active' | 'inactive',
+    signal?: AbortSignal,
   ): Promise<Page<Presentation>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (search) params = params.set('search', search);
     if (activeFilter === 'active') params = params.set('active', 'true');
     if (activeFilter === 'inactive') params = params.set('active', 'false');
-    return firstValueFrom(this.http.get<Page<Presentation>>(this.baseUrl, { params }));
+    return abortableFirstValueFrom(this.http.get<Page<Presentation>>(this.baseUrl, { params }), signal);
   }
 
   loadPresentations(page: number = this.page(), size: number = this.size()): void {

@@ -3,6 +3,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { Page } from '../../../core/interfaces/page.interface';
+import { abortableFirstValueFrom } from '../../../core/query/abortable-request';
 import { injectPagedQuery } from '../../../core/query/paged-query';
 import { Sale, SaleCreatePayload, SaleStatus } from '../interfaces/sales.interface';
 
@@ -40,7 +41,7 @@ export class SalesService {
         invoiceReference: this.invoiceReference().trim().replaceAll('-', ''),
       },
     ],
-    queryFn: () =>
+    queryFn: (signal) =>
       this.fetchSalesPage(
         this.page(),
         this.size(),
@@ -48,6 +49,7 @@ export class SalesService {
         this.dateFrom(),
         this.dateTo(),
         this.invoiceReference().trim().replaceAll('-', ''),
+        signal,
       ),
     enabled: () => this.wantsPage(),
   });
@@ -69,13 +71,14 @@ export class SalesService {
     dateFrom: string,
     dateTo: string,
     invoiceReference: string,
+    signal?: AbortSignal,
   ): Promise<Page<Sale>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (status) params = params.set('status', status);
     if (dateFrom) params = params.set('date_from', dateFrom);
     if (dateTo) params = params.set('date_to', dateTo);
     if (invoiceReference) params = params.set('invoice_reference', invoiceReference);
-    return firstValueFrom(this.http.get<Page<Sale>>(this.baseUrl, { params }));
+    return abortableFirstValueFrom(this.http.get<Page<Sale>>(this.baseUrl, { params }), signal);
   }
 
   /** Antes: async, esperaba el round-trip. Ahora: setter síncrono. */

@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { ApiErrorBody } from '../../../core/auth/auth.models';
 import { Page } from '../../../core/interfaces/page.interface';
+import { abortableFirstValueFrom } from '../../../core/query/abortable-request';
 import { injectPagedQuery } from '../../../core/query/paged-query';
 import {
   Category,
@@ -45,9 +46,10 @@ export class CategoryService {
         active: this.activeFilter(), visibleQr: this.visibleQrFilter(),
       },
     ],
-    queryFn: () =>
+    queryFn: (signal) =>
       this.fetchCategoriesPage(
         this.page(), this.size(), this.search().trim(), this.activeFilter(), this.visibleQrFilter(),
+        signal,
       ),
     enabled: () => this.wantsPage(),
   });
@@ -55,8 +57,8 @@ export class CategoryService {
   /** Lista completa (tope 100), para pickers/validaciones en otros módulos. */
   private readonly allQuery = injectPagedQuery<Category>({
     queryKey: () => ['categories', 'all'],
-    queryFn: () =>
-      firstValueFrom(this.http.get<Page<Category>>(this.baseUrl, { params: { size: 100 } })),
+    queryFn: (signal) =>
+      abortableFirstValueFrom(this.http.get<Page<Category>>(this.baseUrl, { params: { size: 100 } }), signal),
     enabled: () => this.wantsAll(),
   });
 
@@ -80,6 +82,7 @@ export class CategoryService {
     search: string,
     activeFilter: '' | 'active' | 'inactive',
     visibleQrFilter: '' | 'hidden' = '',
+    signal?: AbortSignal,
   ): Promise<Page<Category>> {
     let params = new HttpParams().set('page', page).set('size', size);
     if (search) params = params.set('search', search);
@@ -87,7 +90,7 @@ export class CategoryService {
     if (activeFilter === 'inactive') params = params.set('active', 'false');
     // spec 128 (FR-011): "Ocultas en QR" -> visible_en_qr=false.
     if (visibleQrFilter === 'hidden') params = params.set('visible_en_qr', 'false');
-    return firstValueFrom(this.http.get<Page<Category>>(this.baseUrl, { params }));
+    return abortableFirstValueFrom(this.http.get<Page<Category>>(this.baseUrl, { params }), signal);
   }
 
   loadCategories(page: number = this.page(), size: number = this.size()): void {
