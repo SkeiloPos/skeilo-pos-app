@@ -160,6 +160,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
             [paidSummary]="store.selectedTablePaidSummary()"
             [selectedOrderTotal]="store.selectedOrderTotal()"
             [chargeOrderIds]="store.chargeOrderIdsParam()"
+            [tableSubtotalAllOrders]="store.tableSubtotalAllOrders()"
             [readOnly]="true"
           />
         } @else if (store.selectedOrder() && showSessionCharge()) {
@@ -193,6 +194,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
               [paidSummary]="store.selectedTablePaidSummary()"
               [selectedOrderTotal]="store.selectedOrderTotal()"
               [chargeOrderIds]="store.chargeOrderIdsParam()"
+              [tableSubtotalAllOrders]="store.tableSubtotalAllOrders()"
               [beforeCharge]="store.ensureReadyToCharge"
               [keepTableOpen]="true"
               [prefillPayment]="prefillPayment()"

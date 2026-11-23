@@ -13,6 +13,13 @@ import {
   TableStatus,
   TableUpdatePayload,
 } from '../interfaces/table.interface';
+import {
+  MoveItemRequest,
+  MoveItemResponse,
+  SplitItemToNewRequest,
+  SplitItemToNewResponse,
+  SplitOrderResponse,
+} from '../interfaces/dining.interface';
 
 @Injectable({ providedIn: 'root' })
 export class TableService {
@@ -182,6 +189,38 @@ export class TableService {
   /** Cuenta consolidada de un grupo de mesas (RF-053). */
   async groupBill(groupId: string): Promise<GroupBill> {
     return firstValueFrom(this.http.get<GroupBill>(`${this.ordersUrl}/group/${groupId}/bill`));
+  }
+
+  /** Dividir una orden en una cuenta independiente por línea (spec 164).
+   *  Throws `HttpErrorResponse`. */
+  async splitOrder(orderId: string): Promise<SplitOrderResponse> {
+    return firstValueFrom(
+      this.http.post<SplitOrderResponse>(`${this.ordersUrl}/${orderId}/split`, {}),
+    );
+  }
+
+  /** Mover un ítem (completo o parcial) hacia otra orden de la misma mesa
+   *  (spec 164). Throws `HttpErrorResponse`. */
+  async moveItem(
+    orderId: string, itemId: string, targetOrderId: string, quantity?: number,
+  ): Promise<MoveItemResponse> {
+    const body: MoveItemRequest = { target_order_id: targetOrderId, quantity };
+    return firstValueFrom(
+      this.http.post<MoveItemResponse>(`${this.ordersUrl}/${orderId}/items/${itemId}/move`, body),
+    );
+  }
+
+  /** Crear una cuenta nueva a partir de un ítem (spec 164). Throws
+   *  `HttpErrorResponse`. */
+  async splitItemToNewOrder(
+    orderId: string, itemId: string, quantity?: number,
+  ): Promise<SplitItemToNewResponse> {
+    const body: SplitItemToNewRequest = { quantity };
+    return firstValueFrom(
+      this.http.post<SplitItemToNewResponse>(
+        `${this.ordersUrl}/${orderId}/items/${itemId}/split-to-new`, body,
+      ),
+    );
   }
 
   private extractError(err: unknown): string {

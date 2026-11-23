@@ -699,3 +699,64 @@ export interface CloseSessionResponse {
   /** Una venta en `unified`, una por comensal en `split`. */
   sale_ids: string[];
 }
+
+// ---------- División automática de cuenta por ítem (spec 164) ----------
+
+/** Total recalculado de una orden afectada por una de las 3 operaciones
+ *  nuevas (`OrderTotalSummary` del backend). `deleted: true` cuando la orden
+ *  quedó sin ítems y se eliminó (FR-007/SC-002) -- `total` en ese caso es
+ *  siempre `"0"`, no un valor real a mostrar. */
+export interface OrderTotalSummary {
+  order_id: string;
+  deleted: boolean;
+  total: string;
+}
+
+/** Una de las órdenes nuevas creadas por `POST /orders/{id}/split`. */
+export interface SplitOrderCreatedItem {
+  order_id: string;
+  table_order_number: number | null;
+  item: {
+    product_variant_id: string;
+    quantity: number;
+    unit_price: string;
+  };
+}
+
+/** Respuesta de `POST /orders/{id}/split` (contracts/orders-item-transfer.md §1). */
+export interface SplitOrderResponse {
+  original_order_id: string;
+  created_orders: SplitOrderCreatedItem[];
+}
+
+/** Body de `POST /orders/{id}/items/{itemId}/move`. */
+export interface MoveItemRequest {
+  target_order_id: string;
+  /** Si se omite, se mueve la cantidad total de la línea. */
+  quantity?: number;
+}
+
+/** Respuesta de `POST /orders/{id}/items/{itemId}/move` (contracts/orders-item-transfer.md §2). */
+export interface MoveItemResponse {
+  source_order: OrderTotalSummary;
+  target_order: OrderTotalSummary;
+  /** `true` cuando la cantidad se fusionó con una línea compatible existente
+   *  en la orden destino, en vez de crear una línea nueva. */
+  merged: boolean;
+}
+
+/** Body de `POST /orders/{id}/items/{itemId}/split-to-new`. */
+export interface SplitItemToNewRequest {
+  /** Si se omite, se separa la cantidad total de la línea. */
+  quantity?: number;
+}
+
+/** Respuesta de `POST /orders/{id}/items/{itemId}/split-to-new` (contracts/orders-item-transfer.md §3). */
+export interface SplitItemToNewResponse {
+  source_order: OrderTotalSummary;
+  new_order: {
+    order_id: string;
+    table_order_number: number | null;
+    total: string;
+  };
+}
