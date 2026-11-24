@@ -16,6 +16,7 @@ import {
   PaymentLine,
   SessionBill,
 } from '../interfaces/dining.interface';
+import { formatMoney } from '../../../shared/money';
 import { PaymentMethodCheckoutOption } from '../../sales/interfaces/sales.interface';
 import { TableSessionService } from '../services/table-session.service';
 import { PaymentInputComponent } from './payment-input.component';
@@ -59,6 +60,18 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
         </div>
       }
 
+      @if (tableSubtotalAllOrders !== null) {
+        <!-- A pedido del usuario: desde que "Cobrar" por defecto acota a un
+             solo pedido con 2+ cuentas, "Total a cobrar" de abajo deja de ser
+             el consumo completo de la mesa -- esta línea de solo lectura
+             mantiene esa referencia a la vista, sin mezclarla con lo que
+             realmente se va a cobrar en esta transacción. -->
+        <div class="mb-3 pb-3 border-b flex items-center justify-between" style="border-color:var(--terminal-color-border,#e5e7eb)">
+          <span class="text-[12px]" style="color:var(--terminal-color-text-muted,#6b7280)">Consumo total de la mesa (referencia)</span>
+          <span class="text-[13px] font-semibold" style="color:var(--terminal-color-text-secondary,#374151)">{{ fmt(tableSubtotalAllOrders) }}</span>
+        </div>
+      }
+
       @if (paidSummary; as pagado) {
         <!-- Bugfix reportado sobre spec 049: la mesa puede tener pedidos ya
              cobrados (p. ej. mostrador pagado por adelantado) que el total
@@ -94,23 +107,27 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
           <p class="text-[14px] py-6 text-center" style="color:var(--terminal-color-text-muted,#9ca3af)">Selecciona una mesa con consumo.</p>
         }
       } @else {
-        <!-- Total de TODA la mesa -- lo que realmente cobra el botón de
-             abajo. El detalle producto por producto de cada pedido se ve
-             tabulando a su pestaña "Pedido N" en el pedido (a la
-             izquierda), no aquí. Si no queda nada por cobrar (p. ej. mesa
+        <!-- Total de la transacción que realmente cobra el botón de abajo --
+             YA NO es siempre "toda la mesa" (a pedido del usuario, ver
+             tableSubtotalAllOrders arriba): con chargeOrderIds acotado a
+             un subconjunto, bill llega ya filtrado por el backend
+             (loadSessionBill/spec 156), así que este total es el de esos
+             pedidos nada más. El detalle producto por producto de cada
+             pedido se ve tabulando a su pestaña "Pedido N" en el carrito (a
+             la izquierda), no aquí. Si no queda nada por cobrar (p. ej. mesa
              pagada entera por QR, ya cubierto arriba por "Ya pagado"), este
              bloque y el aviso de solo-lectura de abajo se omiten: repetir
              un $0 no aporta nada. -->
         @if (+bill.total > 0) {
           <div class="mb-4">
             @let summary = billSummary();
-            <!-- spec 115 (A-132): sin la fila "Descuento" -- "Subtotal mesa" ya se muestra neto,
+            <!-- spec 115 (A-132): sin la fila "Descuento" -- el subtotal ya se muestra neto,
                  igual que A-125/A-127/A-131. -->
             <app-bill-summary
               [subtotal]="summary ? summary.subtotal - summary.discount : undefined"
-              subtotalLabel="Subtotal mesa"
+              [subtotalLabel]="chargeOrderIds?.length ? 'Subtotal de este pedido' : 'Subtotal mesa'"
               [total]="+bill.total"
-              totalLabel="Total a cobrar"
+              [totalLabel]="chargeOrderIds?.length ? 'Total a cobrar (este pedido)' : 'Total a cobrar'"
               size="sm"
             />
           </div>
@@ -228,6 +245,15 @@ export class SessionBillPanelComponent implements OnChanges {
    * cobra todo (D2 de research.md).
    */
   @Input() chargeOrderIds: string[] | undefined;
+  /**
+   * A pedido del usuario: suma de referencia de TODOS los pedidos sin cobrar
+   * de la mesa, independiente de a cuáles esté acotado `chargeOrderIds` --
+   * desde que el cobro por defecto con 2+ pedidos pasó a ser por-pedido en
+   * vez de toda la mesa junta, "Total a cobrar" de abajo ya no es
+   * necesariamente el consumo completo de la mesa. `null` con 0 o 1 pedido
+   * (ahí "Total a cobrar" YA es el total de la mesa).
+   */
+  @Input() tableSubtotalAllOrders: number | null = null;
   /** Cierre completo: sus `sale_ids` son la fuente de la factura impresa. */
   @Output() charged = new EventEmitter<CloseSessionResponse>();
 
@@ -270,6 +296,10 @@ export class SessionBillPanelComponent implements OnChanges {
       discount: bill.split.reduce((s, l) => s + Number(l.discount), 0),
     };
   });
+
+  /** Mismo formato de dinero que `app-bill-summary` -- esta fila de
+   *  referencia es texto plano, no otro desglose. */
+  readonly fmt = formatMoney;
 
   /**
    * Solo se cobra si el bloque de pago no tiene incidencia: método sin
