@@ -17,6 +17,7 @@ import { AvailabilitySyncService } from '../../../core/availability/availability
 import { MenuService } from '../../../core/services/menu.service';
 import { PlatformAcceptanceModalComponent } from './platform-acceptance-modal.component';
 import { PlatformAcceptanceService } from './platform-acceptance.service';
+import { SoundService } from '../../../shared/feedback/sound.service';
 
 @Component({
   selector: 'app-dashboard-layout',
@@ -155,7 +156,9 @@ export class DashboardLayoutComponent implements OnInit, OnDestroy {
   private readonly availabilitySync = inject(AvailabilitySyncService);
   private readonly menuService = inject(MenuService);
   private readonly platformAcceptanceService = inject(PlatformAcceptanceService);
+  private readonly sound = inject(SoundService);
   private unregisterAvailabilityTarget: (() => void) | null = null;
+  private rtOff: (() => void)[] = [];
 
   /** Único uso restante: Super Admin nunca tiene tenant, así que no abre el
    *  SSE del staff (`ngOnInit`, abajo). Ya no gobierna qué sidebar/header se
@@ -189,6 +192,16 @@ export class DashboardLayoutComponent implements OnInit, OnDestroy {
       // pintar ninguna otra pantalla -- el modal bloquea hasta que
       // `pendientes` queda vacío (ver `app-platform-acceptance-modal`).
       void this.platformAcceptanceService.loadPending();
+      // La campanita de "pedido nuevo por QR" vive aquí, no en
+      // `PosTerminalStore` -- sobrevive a la navegación entre páginas del POS
+      // (Terminal de Mesas ahora separa grilla y detalle por ruta, cada una
+      // con su propia instancia de store) y no depende de ningún `GET
+      // /orders` completo: `order.created` solo lo emite el carrito del
+      // comensal (`app/api/v1/cart/router.py`, nunca la creación manual del
+      // cajero), así que cada aparición del evento es, siempre, un pedido
+      // nuevo que amerita sonar -- sin reconciliación REST de por medio, no
+      // hace falta deduplicar contra un snapshot anterior.
+      this.rtOff.push(this.realtime.on('order.created', () => this.sound.bell()));
     }
     // Spec 148: el sincronizador de disponibilidad vive aquí, junto a la
     // conexión SSE del staff, por la misma razón (sobrevive a la navegación
@@ -202,6 +215,8 @@ export class DashboardLayoutComponent implements OnInit, OnDestroy {
     this.availabilitySync.stop();
     this.unregisterAvailabilityTarget?.();
     this.unregisterAvailabilityTarget = null;
+    for (const off of this.rtOff) off();
+    this.rtOff = [];
   }
 
   constructor() {

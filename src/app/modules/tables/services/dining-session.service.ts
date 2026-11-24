@@ -41,10 +41,13 @@ export class DiningSessionService {
    * anterior con la sesión activa de la misma mesa física — ver
    * `orders/service.py::list_orders` en el backend.
    */
-  async listOrders(status?: DiningOrderStatus, activeSessionsOnly?: boolean): Promise<DiningOrder[]> {
+  async listOrders(
+    status?: DiningOrderStatus, activeSessionsOnly?: boolean, tableId?: string,
+  ): Promise<DiningOrder[]> {
     const params: Record<string, string> = {};
     if (status) params['status'] = status;
     if (activeSessionsOnly) params['active_sessions_only'] = 'true';
+    if (tableId) params['dining_table_id'] = tableId;
     return firstValueFrom(
       this.http.get<DiningOrder[]>(`${this.api}/orders`, { params }),
     );

@@ -62,8 +62,6 @@ export interface ReceiptContext {
   businessName: string;
   logoUrl: string | null;
   message: string;
-  /** Resuelve el nombre del método de pago a partir de su id. */
-  methodName: (paymentMethodId: string) => string;
 }
 
 /**
@@ -96,7 +94,7 @@ export function saleToReceipt(sale: Sale, ctx: ReceiptContext): ReceiptData {
     tip: Number(sale.tip),
     total: Number(sale.total),
     payments: (sale.payments ?? []).map((p) => ({
-      name: ctx.methodName(p.payment_method_id),
+      name: p.payment_method_name,
       amount: Number(p.amount),
     })),
     change: sale.change_given != null ? Number(sale.change_given) : null,

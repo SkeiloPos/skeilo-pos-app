@@ -148,7 +148,9 @@ describe('saleToReceipt', () => {
           line_total: '12000',
         },
       ],
-      payments: [{ id: 'p1', payment_method_id: 'pm1', amount: '15000' }],
+      payments: [
+        { id: 'p1', payment_method_id: 'pm1', payment_method_name: 'Efectivo', is_cash: true, amount: '15000' },
+      ],
       invoice: { prefix: '', number: 7 },
       dining_table: { id: 't1', number: 5, name: 'Terraza' },
       ...patch,
@@ -159,7 +161,6 @@ describe('saleToReceipt', () => {
     businessName: 'Heladería Skeilo',
     logoUrl: null,
     message: '¡Gracias!',
-    methodName: (id: string) => (id === 'pm1' ? 'Efectivo' : 'Otro'),
   };
 
   it('convierte importes, líneas y pagos de la venta', () => {
@@ -169,7 +170,7 @@ describe('saleToReceipt', () => {
     expect(receipt.lines).toEqual([
       { quantity: 2, description: 'Helado de vainilla', lineTotal: 12000, options: [] },
     ]);
-    // El nombre del método lo resuelve quien llama; la venta solo trae el id.
+    // El nombre del método ya viene resuelto en la venta (`payment_method_name`).
     expect(receipt.payments).toEqual([{ name: 'Efectivo', amount: 15000 }]);
     expect(receipt.change).toBe(3000);
     expect(receipt.invoice).toEqual({ prefix: '', number: 7 });
@@ -178,8 +179,8 @@ describe('saleToReceipt', () => {
   it('spec 112: convierte las N líneas de `sale.payments` a N entradas de `receipt.payments`, cada una con su propio nombre y monto', () => {
     const sale = makeSale({
       payments: [
-        { id: 'p1', payment_method_id: 'pm1', amount: '8000' },
-        { id: 'p2', payment_method_id: 'pm2', amount: '6000' },
+        { id: 'p1', payment_method_id: 'pm1', payment_method_name: 'Efectivo', is_cash: true, amount: '8000' },
+        { id: 'p2', payment_method_id: 'pm2', payment_method_name: 'Otro', is_cash: false, amount: '6000' },
       ],
     });
 

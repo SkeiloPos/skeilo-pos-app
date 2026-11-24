@@ -96,6 +96,38 @@ export class TableService {
     }
   }
 
+  /**
+   * Carga solo una mesa (`?dining_table_id=`) -- usado al entrar directo al
+   * detalle de un pedido por URL, donde la grilla queda oculta y no hace
+   * falta el negocio completo (spec: Terminal, carga acotada al deep-link).
+   *
+   * Nunca reemplaza `tables()` por completo -- hace upsert de esta fila sola.
+   * `tables` es `providedIn: 'root'` y otras pantallas (detalle de orden,
+   * listado de órdenes, hoja de QR) lo consumen completo; si alguna ya lo
+   * cargó entero en esta pestaña, acotar una mesa no debe borrarle el resto.
+   */
+  async loadTable(tableId: string): Promise<void> {
+    this.loading.set(true);
+    this.error.set(null);
+    try {
+      const params = new HttpParams().set('dining_table_id', tableId);
+      const [row] = await firstValueFrom(this.http.get<Table[]>(this.baseUrl, { params }));
+      if (row) {
+        this.tables.update((list) => {
+          const idx = list.findIndex((t) => t.id === row.id);
+          if (idx === -1) return [...list, row].sort((a, b) => a.number - b.number);
+          const copy = [...list];
+          copy[idx] = row;
+          return copy;
+        });
+      }
+    } catch (err) {
+      this.error.set(this.extractError(err));
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
   async createTable(data: TableForm): Promise<void> {
     this.isSubmitting.set(true);
     this.error.set(null);

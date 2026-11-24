@@ -219,6 +219,29 @@ export const dashboardRoutes: Routes = [
         canActivate: [roleGuard([UserRole.ADMIN, UserRole.CASHIER, UserRole.MESERO])],
       },
       {
+        // Pedido de mostrador/domicilio sin mesa, en su propia ruta -- mismo
+        // componente de detalle que `mesas-sesiones/:mesa`, sin mesa. Debe
+        // quedar ANTES de `mesas-sesiones/:mesa` en este arreglo: dos
+        // segmentos literales ("pedido" + id) no compiten con esa ruta de un
+        // solo segmento, pero el orden de las rutas de abajo (`orden-manual`)
+        // sí importa frente a `:mesa` -- Angular usa la primera que matchee.
+        path: 'mesas-sesiones/pedido/:pedido',
+        loadComponent: () =>
+          import('../tables/pages/table-order-detail.component').then((m) => m.TableOrderDetailComponent),
+        canActivate: [roleGuard([UserRole.ADMIN, UserRole.CASHIER, UserRole.MESERO])],
+      },
+      {
+        // Detalle de un pedido de mesa, en su propia ruta (ya no es la misma
+        // grilla con la columna oculta por CSS) -- DEBE ir después de
+        // `mesas-sesiones/orden-manual` y `mesas-sesiones/pedido/:pedido`:
+        // `:mesa` matchea cualquier segmento único, así que si fuera antes
+        // "capturaría" esas rutas literales también.
+        path: 'mesas-sesiones/:mesa',
+        loadComponent: () =>
+          import('../tables/pages/table-order-detail.component').then((m) => m.TableOrderDetailComponent),
+        canActivate: [roleGuard([UserRole.ADMIN, UserRole.CASHIER, UserRole.MESERO])],
+      },
+      {
         path: 'orders',
         loadComponent: () =>
           import('../orders/pages/orders-page.component').then((m) => m.OrdersPageComponent),

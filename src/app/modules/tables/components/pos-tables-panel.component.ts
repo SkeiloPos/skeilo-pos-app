@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { OrderSummaryCardComponent } from './order-summary-card.component';
 import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.component';
@@ -52,7 +53,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                 [attendedByValue]="t.attendedByValue"
                 [channelLabel]="t.channelLabel"
                 [selected]="t.selected"
-                (select)="store.selectTable(t.id)"
+                (select)="goToTable(t.id)"
               />
             }
           </div>
@@ -84,7 +85,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                 [attendedByValue]="o.attendedByValue"
                 [channelLabel]="o.channelLabel"
                 [selected]="o.id === store.selectedOrderId() && !store.selectedTableId()"
-                (select)="store.selectStandaloneOrder(o.id)"
+                (select)="goToStandaloneOrder(o.id)"
               />
             }
           </div>
@@ -106,4 +107,17 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
 })
 export class PosTablesPanelComponent {
   readonly store = inject(PosTerminalStore);
+  private readonly router = inject(Router);
+
+  /** El detalle de un pedido de mesa vive en su propia ruta
+   *  (`table-order-detail.component.ts`) -- ya no se selecciona en memoria
+   *  dentro de esta misma instancia de store. */
+  goToTable(tableId: string): void {
+    this.router.navigate(['/dashboard/mesas-sesiones', tableId]);
+  }
+
+  /** Mismo criterio para un pedido sin mesa (Domicilio/Para llevar). */
+  goToStandaloneOrder(orderId: string): void {
+    this.router.navigate(['/dashboard/mesas-sesiones', 'pedido', orderId]);
+  }
 }

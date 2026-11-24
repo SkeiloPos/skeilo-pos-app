@@ -1087,8 +1087,12 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
     // cada apertura -- sin esto, abrir "Nueva orden" para la siguiente orden conservaría el
     // nombre de la anterior (FR-011).
     this.store.customerName.set('');
-    await this.store.init();
     const tableId = this.route.snapshot.paramMap.get('tableId');
+    // Carga acotada a esta mesa sola cuando ya se sabe cuál es (viene con
+    // `:tableId` en la ruta) -- sin mesa (flujo "elegir en el formulario",
+    // o Domicilios/Para-llevar) sigue pidiendo el negocio completo, porque
+    // ahí sí hace falta el picker de mesas completo.
+    await this.store.init(tableId ? { tableId } : undefined);
     if (tableId) this.selectTable(tableId);
     // spec 078 (US2, research.md D3): tipo preseleccionado desde la pestaña de
     // origen de la Terminal. Valor ausente / `'mesas'` / inválido → no hace
@@ -1199,26 +1203,20 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
 
     const ok = await this.store.createManualOrderFromDraft();
     if (!ok) return;
-    // spec 111 (FR-001/FR-002, RN1): vuelve a la terminal con el pedido recién creado ya
-    // seleccionado (en vez de la pestaña Mesas por defecto) — `pestana`/`mesa`/`pedido` le dicen a
-    // `TableSessionsComponent` qué mostrar, porque su store no es singleton y por defecto arranca
-    // sin nada seleccionado (ver spec.md, causa raíz).
+    // spec 111 (FR-001/FR-002, RN1): va directo al detalle del pedido recién
+    // creado -- ya no vuelve a la grilla con `pestana`/`mesa`/`pedido` como
+    // query params (esa pantalla era la misma que el detalle, con la grilla
+    // oculta por CSS); ahora el detalle vive en su propia ruta.
     const id = this.store.selectedOrderId();
     if (!id) {
       await this.router.navigate(['/dashboard/mesas-sesiones']);
       return;
     }
-    const pestana =
-      this.store.orderTypeTab() === 'domicilios'
-        ? 'domicilios'
-        : this.store.orderTypeTab() === 'para-llevar'
-          ? 'para-llevar'
-          : 'mesas';
-    const queryParams: Record<string, string> = { pestana, pedido: id };
-    if (pestana === 'mesas') {
-      const tableId = this.store.selectedTableId();
-      if (tableId) queryParams['mesa'] = tableId;
+    const tableId = this.store.selectedTableId();
+    if (tableId) {
+      await this.router.navigate(['/dashboard/mesas-sesiones', tableId], { queryParams: { pedido: id } });
+    } else {
+      await this.router.navigate(['/dashboard/mesas-sesiones', 'pedido', id]);
     }
-    await this.router.navigate(['/dashboard/mesas-sesiones'], { queryParams });
   }
 }

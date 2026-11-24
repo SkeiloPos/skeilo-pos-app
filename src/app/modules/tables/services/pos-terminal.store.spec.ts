@@ -7,9 +7,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { environment } from '../../../../environments/environment';
 import {
   PosTerminalStore,
-  currentNow,
   deriveTableStatus,
-  newPendingIds,
   normalizeSearchTerm,
 } from './pos-terminal.store';
 import { CheckoutPreview, DiningOrder, DiningOrderItem } from '../interfaces/dining.interface';
@@ -46,9 +44,7 @@ function checkoutDataAlreadyLoadedProviders() {
     {
       provide: PaymentMethodService,
       useValue: {
-        methods: () => [{ id: 'pm-cash', name: 'Efectivo' }],
         checkoutOptions: () => [{ id: 'pm-cash', name: 'Efectivo', is_cash: true }],
-        load: () => Promise.resolve(),
         loadAvailableForCheckout: () => Promise.resolve(),
       },
     },
@@ -84,39 +80,6 @@ function order(
     })) as DiningOrderItem[],
   } as DiningOrder;
 }
-
-describe('newPendingIds', () => {
-  it('detecta el pedido que aún no se había visto', () => {
-    const nuevos = newPendingIds(new Set(['o1']), [
-      order('o1', 'pendiente'),
-      order('o2', 'pendiente'),
-    ]);
-
-    expect(nuevos).toEqual(['o2']);
-  });
-
-  it('no repite el aviso de un pedido ya conocido', () => {
-    expect(newPendingIds(new Set(['o1']), [order('o1', 'pendiente')])).toEqual([]);
-  });
-
-  it('ignora los pedidos que no esperan confirmación', () => {
-    // Spec 147: 'pendiente' cubre tanto "recién llegado" como "ya
-    // confirmado, aún sin entregar" -- ya no hay un estado intermedio
-    // "abierta" que distinguir. Solo entregada/cancelada se ignoran.
-    const nuevos = newPendingIds(new Set(), [
-      order('o1', 'pendiente'),
-      order('o2', 'entregada'),
-      order('o3', 'cancelada'),
-    ]);
-
-    expect(nuevos).toEqual(['o1']);
-  });
-
-  it('no avisa cuando un pedido conocido se confirma', () => {
-    // El contador baja, pero eso no es un pedido nuevo.
-    expect(newPendingIds(new Set(['o1']), [order('o1', 'pendiente')])).toEqual([]);
-  });
-});
 
 describe('deriveTableStatus', () => {
   it('marca por confirmar la mesa con un pedido del QR sin aceptar', () => {
@@ -240,66 +203,6 @@ describe('deriveTableStatus', () => {
   });
 });
 
-/**
- * La campana tras reconectar.
- *
- * `announcePending` es lo único que puede sonar, y decide comparando **ids**
- * contra los ya vistos. El tiempo real no la alimenta directamente: un evento
- * dispara una recarga y la recarga pasa por aquí. Estos tests fijan esa
- * propiedad, que es la que evita que el replay de eventos tras una reconexión
- * vuelva a sonar por pedidos que el cajero ya atendió.
- */
-describe('newPendingIds tras una reconexión', () => {
-  it('el replay de un pedido ya visto no vuelve a sonar', () => {
-    const vistos = new Set(['o1', 'o2']);
-    const orders = [order('o1', 'pendiente'), order('o2', 'pendiente')];
-
-    // Lo que llega en el replay es exactamente lo que ya estaba.
-    expect(newPendingIds(vistos, orders)).toEqual([]);
-  });
-
-  it('pero un pedido nuevo entre los repetidos sí suena, y solo ese', () => {
-    const vistos = new Set(['o1']);
-    const orders = [order('o1', 'pendiente'), order('o2', 'pendiente')];
-
-    expect(newPendingIds(vistos, orders)).toEqual(['o2']);
-  });
-
-  it('un pedido que entró y se confirmó dentro de la misma ventana ya no cuenta', () => {
-    // Es el motivo de comparar ids y no cantidades: el contador vuelve a su
-    // sitio, pero el aviso debió sonar cuando entró.
-    expect(newPendingIds(new Set(['o1']), [order('o1', 'pendiente')])).toEqual([]);
-  });
-});
-
-describe('currentNow — A-09, guarda usada por combos/cartView/orderSubtotal', () => {
-  it('antes del primer sync (ready() false), devuelve null en vez del reloj del dispositivo', () => {
-    const promotionService = { ready: () => false, now: () => new Date('2026-01-01T00:00:00Z') };
-
-    expect(currentNow(promotionService)).toBeNull();
-  });
-
-  it('tras el sync, devuelve promotionService.now(), no el reloj del sistema de pruebas', () => {
-    // Reloj real del entorno de pruebas: 2026-08-18T22:30 UTC. `now()` del
-    // doble de PromotionService dice otra cosa — la única forma de que el
-    // resultado coincida con el doble es que currentNow no use Date.now().
-    const serverInstant = new Date('2026-08-15T17:30:00Z');
-    const promotionService = { ready: () => true, now: () => serverInstant };
-
-    expect(currentNow(promotionService)).toBe(serverInstant);
-  });
-});
-
-describe('currentNow — A-09: sin sync, el cliente no previsualiza descuento (spec 063 FR-023)', () => {
-  it('sin sync (ready() false), currentNow devuelve null', () => {
-    expect(currentNow({ ready: () => false, now: () => new Date() })).toBeNull();
-  });
-
-  it('tras sync, currentNow usa la hora del servicio', () => {
-    const t = new Date('2026-08-15T17:30:00');
-    expect(currentNow({ ready: () => true, now: () => t })).toEqual(t);
-  });
-});
 
 /**
  * Bugfix (gap de spec 035, A-52): una orden `'entregada'` con toda la cocina en
@@ -3230,9 +3133,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
 
   function expectNoCheckoutDataRequests(): void {
     http.expectNone(
-      (r) => r.url === `${API}/sales/payment-methods` && !r.params.has('available'),
-    );
-    http.expectNone(
       (r) => r.url === `${API}/sales/payment-methods` && r.params.get('available') === 'true',
     );
     http.expectNone((r) => r.url === `${API}/cash/shifts/current`);
@@ -3265,13 +3165,10 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
 
     store.selectTable('t1');
     http.expectOne((r) => r.url === `${API}/table-sessions`).flush([]);
-    // Respuestas no vacías a propósito: la condición de caché es
-    // `methods().length === 0`, así que flushear con `[]` no la satisface y
-    // el segundo `selectTable()` volvería a pedirlos — justo lo que esta
-    // prueba necesita descartar.
-    http
-      .expectOne((r) => r.url === `${API}/sales/payment-methods` && !r.params.has('available'))
-      .flush([{ id: 'pm-cash', name: 'Efectivo' }]);
+    // Respuesta no vacía a propósito: la condición de caché es
+    // `checkoutOptions().length === 0`, así que flushear con `[]` no la
+    // satisface y el segundo `selectTable()` volvería a pedirlos — justo lo
+    // que esta prueba necesita descartar.
     http
       .expectOne((r) => r.url === `${API}/sales/payment-methods` && r.params.get('available') === 'true')
       .flush([{ id: 'pm-cash', name: 'Efectivo', is_cash: true }]);
@@ -3280,7 +3177,7 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
       .flush({ id: 'shift-1' });
     await Promise.resolve();
 
-    // Segunda mesa con pedido: mismos tres datos ya en caché, no se repiten.
+    // Segunda mesa con pedido: mismos dos datos ya en caché, no se repiten.
     store.selectTable('t2');
     http.expectOne((r) => r.url === `${API}/table-sessions`).flush([]);
 
@@ -3304,9 +3201,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
       { ...order('o1', 'pendiente', ['pendiente']), dining_table_id: 't1' },
     ]);
     await new Promise((r) => setTimeout(r, 0));
-    http
-      .expectOne((r) => r.url === `${API}/sales/payment-methods` && !r.params.has('available'))
-      .flush([{ id: 'pm-cash', name: 'Efectivo' }]);
     http
       .expectOne((r) => r.url === `${API}/sales/payment-methods` && r.params.get('available') === 'true')
       .flush([{ id: 'pm-cash', name: 'Efectivo', is_cash: true }]);
@@ -3332,9 +3226,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
       { ...order('o1', 'pendiente', ['pendiente']), dining_table_id: 't1' },
     ]);
     await new Promise((r) => setTimeout(r, 0));
-    http
-      .expectOne((r) => r.url === `${API}/sales/payment-methods` && !r.params.has('available'))
-      .flush([{ id: 'pm-cash', name: 'Efectivo' }]);
     http
       .expectOne((r) => r.url === `${API}/sales/payment-methods` && r.params.get('available') === 'true')
       .flush([{ id: 'pm-cash', name: 'Efectivo', is_cash: true }]);
@@ -3363,9 +3254,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
     ]);
     await new Promise((r) => setTimeout(r, 0));
     http
-      .expectOne((r) => r.url === `${API}/sales/payment-methods` && !r.params.has('available'))
-      .flush([{ id: 'pm-cash', name: 'Efectivo' }]);
-    http
       .expectOne((r) => r.url === `${API}/sales/payment-methods` && r.params.get('available') === 'true')
       .flush([{ id: 'pm-cash', name: 'Efectivo', is_cash: true }]);
     http.expectOne(`${API}/cash/registers`).flush([
@@ -3389,103 +3277,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
  * Spec 059, Historia 2 (FR-005/FR-006/FR-008): filtra `orders()` por tipo,
  * excluyendo lo ya cobrado/cancelado — sin ningún endpoint nuevo.
  */
-/**
- * Spec 141 (FR-011/FR-014, research H1): la Terminal de mesas pide las promociones activas en todos los
- * negocios. Con el aviso global de «módulo perdido» eso expulsaría a cualquier negocio sin Promociones al
- * abrir la terminal; ahora `init()` solo las pide si el plan incluye Promociones, y la terminal carga y
- * cobra igual sin ellas (sin descuentos de promoción, como hoy).
- */
-describe('PosTerminalStore.init — promociones activas según el plan (spec 141)', () => {
-  let store: PosTerminalStore;
-  let http: HttpTestingController;
-  let loadActive: ReturnType<typeof vi.fn>;
-
-  function planConPromociones(promociones: boolean): PlanSummary {
-    return {
-      plan_name: 'Plan de prueba',
-      ciclo_facturacion: null,
-      plan_vence_en: null,
-      vencido: false,
-      resources: {},
-      modules: { inventario: false, promociones, cocina: false },
-    };
-  }
-
-  function montar(summary: PlanSummary | null): void {
-    loadActive = vi.fn();
-    TestBed.resetTestingModule();
-    TestBed.configureTestingModule({
-      providers: [
-        PosTerminalStore,
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        provideTanStackQuery(new QueryClient()),
-        { provide: PromotionService, useValue: { loadActive, activePromotions: () => [], ready: () => false, now: () => new Date() } },
-        { provide: TableService, useValue: { loadTables: () => Promise.resolve(), tables: () => [] } },
-        { provide: MenuService, useValue: { loadMenu: () => Promise.resolve(), categories: () => [] } },
-        { provide: RealtimeService, useValue: { status: () => 'closed', on: () => () => {}, connectStaff: () => {}, disconnect: () => {} } },
-      ],
-    });
-    TestBed.inject(PlanSummaryService).summary.set(summary);
-    store = TestBed.inject(PosTerminalStore);
-    http = TestBed.inject(HttpTestingController);
-  }
-
-  afterEach(() => http.verify());
-
-  async function iniciar(): Promise<void> {
-    const initPromise = store.init();
-    http.expectOne((r) => r.url === `${API}/orders`).flush([]);
-    await initPromise;
-  }
-
-  it('sin Promociones: init() NO pide las promociones activas y la terminal carga sin error', async () => {
-    montar(planConPromociones(false));
-
-    await iniciar();
-
-    expect(loadActive).not.toHaveBeenCalled();
-    expect(store.error()).toBeNull();
-    expect(store.loading()).toBe(false);
-    // Sin promociones cargadas el cálculo local de descuentos usa la lista vacía, exactamente como hoy.
-  });
-
-  it('con Promociones: init() las pide una sola vez', async () => {
-    montar(planConPromociones(true));
-
-    await iniciar();
-    TestBed.tick();
-
-    expect(loadActive).toHaveBeenCalledTimes(1);
-  });
-
-  it('con el plan desconocido no las pide; si el resumen llega después de init(), las pide una vez al llegar', async () => {
-    montar(null);
-
-    await iniciar();
-    TestBed.tick();
-    expect(loadActive).not.toHaveBeenCalled();
-    expect(store.error()).toBeNull();
-
-    TestBed.inject(PlanSummaryService).summary.set(planConPromociones(true));
-    TestBed.tick();
-
-    expect(loadActive).toHaveBeenCalledTimes(1);
-
-    // un cambio posterior del resumen no repite la petición
-    TestBed.inject(PlanSummaryService).summary.set({ ...planConPromociones(true), plan_name: 'Otro' });
-    TestBed.tick();
-    expect(loadActive).toHaveBeenCalledTimes(1);
-  });
-
-  it('antes de init() el efecto no pide nada aunque el plan ya incluya Promociones', () => {
-    montar(planConPromociones(true));
-    TestBed.tick();
-
-    expect(loadActive).not.toHaveBeenCalled();
-  });
-});
-
 describe('PosTerminalStore.ordersByType (spec 059, Historia 2)', () => {
   let store: PosTerminalStore;
 
