@@ -722,9 +722,20 @@ type ActiveFilter = '' | 'active' | 'inactive';
                       <td class="px-4 py-3 text-gray-600">{{ m.type }}</td>
                       <td
                         class="px-4 py-3 text-right font-semibold"
-                        [class]="m.quantity < 0 ? 'text-red-600' : 'text-green-600'"
+                        [class]="
+                          m.signed_quantity === null
+                            ? 'text-gray-500'
+                            : m.signed_quantity < 0
+                              ? 'text-red-600'
+                              : 'text-green-600'
+                        "
                       >
-                        {{ m.quantity | number: '1.0-3' }}
+                        @if (m.signed_quantity === null) {
+                          {{ m.quantity | number: '1.0-3' }}
+                          <span class="text-xs text-gray-400">(sin dirección)</span>
+                        } @else {
+                          {{ m.signed_quantity > 0 ? '+' : '' }}{{ m.signed_quantity | number: '1.0-3' }}
+                        }
                       </td>
                       <td class="px-4 py-3 text-gray-500">{{ m.reason || '—' }}</td>
                     </tr>
