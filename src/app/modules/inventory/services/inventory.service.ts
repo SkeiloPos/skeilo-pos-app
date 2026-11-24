@@ -45,6 +45,7 @@ interface MovementResponse {
   inventory_item_id: string;
   type: string;
   quantity: string;
+  signed_quantity: string | null;
   reason: string | null;
   reference_type: string | null;
   reference_id: string | null;
@@ -662,6 +663,7 @@ export class InventoryService {
       inventory_item_id: m.inventory_item_id,
       type: m.type,
       quantity: Number(m.quantity),
+      signed_quantity: m.signed_quantity === null ? null : Number(m.signed_quantity),
       reason: m.reason,
       reference_type: m.reference_type,
       reference_id: m.reference_id,

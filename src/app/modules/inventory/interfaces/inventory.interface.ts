@@ -54,6 +54,9 @@ export interface InventoryMovement {
   inventory_item_id: string;
   type: string;
   quantity: number;
+  /** Positivo = entrada/aumento, negativo = salida/disminución. Null en
+   *  movimientos de ajuste anteriores a este campo (sentido desconocido). */
+  signed_quantity: number | null;
   reason: string | null;
   reference_type: string | null;
   reference_id: string | null;
