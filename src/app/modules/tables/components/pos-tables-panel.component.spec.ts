@@ -189,17 +189,23 @@ describe('PosTablesPanelComponent', () => {
       (b as HTMLButtonElement).textContent?.includes(label),
     ) as HTMLButtonElement | undefined;
 
-  // La selección de mesa se reactivó a pedido del usuario: tocar una mesa
-  // (libre u ocupada) selecciona su detalle en el panel derecho, mismo
-  // mecanismo (select) que ya usan las tarjetas de Para Llevar/Domicilio.
-  it('tocar una mesa libre navega al detalle de esa mesa, en su propia ruta', () => {
+  // A pedido del usuario: una mesa libre (sin ningún pedido) no tiene ningún
+  // detalle al que navegar -- tocarla solo la selecciona en esta misma
+  // instancia de store (resalta la tarjeta), igual que antes del refactor
+  // por rutas. El CTA "Crear pedido nuevo" de la sub-barra (fuera de este
+  // componente) es el que usa esa selección para llevar la mesa
+  // preseleccionada al formulario de orden manual.
+  it('tocar una mesa libre (sin pedidos) solo la selecciona, sin navegar', () => {
     tableService.tables.set([table({ id: 't1', number: 3, status: 'libre' })]);
     fixture.detectChanges();
     const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    const selectTableSpy = vi.spyOn(store, 'selectTable');
 
     tableCard('Mesa 3')!.click();
 
-    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones', 't1']);
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(selectTableSpy).toHaveBeenCalledWith('t1');
+    expect(store.selectedTableId()).toBe('t1');
   });
 
   it('tocar una mesa ocupada también navega a su detalle', () => {

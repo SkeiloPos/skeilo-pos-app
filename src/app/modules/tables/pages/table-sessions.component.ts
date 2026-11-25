@@ -12,7 +12,6 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { PosTablesPanelComponent } from '../components/pos-tables-panel.component';
-import { PosTerminalHeaderComponent } from '../components/pos-terminal-header.component';
 import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.component';
 
 /**
@@ -37,7 +36,6 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
   providers: [PosTerminalStore],
   imports: [
     PosTablesPanelComponent,
-    PosTerminalHeaderComponent,
     IconLucideComponent,
   ],
   template: `
@@ -59,17 +57,6 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
           class="flex-1 flex flex-col min-h-0 rounded-[16px] border overflow-hidden"
           style="background:var(--terminal-color-surface);border-color:var(--terminal-color-border)"
         >
-          <!-- Encabezado: estado de terminal, turno, reloj y acciones de sesión
-               (extraído a un componente compartido con manual-order-page.component.ts).
-               Oculto en móvil (solo en esta terminal) -- en pantallas angostas
-               la sub-barra ya trae todo lo accionable, y este encabezado solo
-               resta alto útil a la grilla de mesas. El detalle de un pedido
-               vive en su propia ruta (table-order-detail.component.ts) y ya
-               no pasa por aquí. -->
-          <div class="hidden sm:contents">
-            <app-pos-terminal-header />
-          </div>
-
           <!-- Sub-barra: pestañas de tipo de orden + resumen de salón + CTA
                "Crear pedido nuevo" -- el detalle de un pedido vive en su
                propia ruta (table-order-detail.component.ts), así que esta
@@ -372,7 +359,19 @@ export class TableSessionsComponent implements OnInit, OnDestroy {
     }
     const tableId = this.store.newOrderTableId();
     if (tableId) {
-      this.router.navigate(['/dashboard/mesas-sesiones', tableId, 'orden-manual']);
+      // `existente: '1'` solo si esta mesa YA tiene un pedido vivo --
+      // `newOrderTableId()` no distingue mesa libre de ocupada (es solo
+      // `selectedTableId()`), así que se calcula acá con lo que el tablero ya
+      // tiene cargado (`store.orders()`), sin pedir nada nuevo. Mismo aviso
+      // que manda `pos-order-panel.component.ts::createNewOrderForTable()`
+      // para que `orden-manual` no tenga que volver a preguntarlo.
+      const tieneOrden = this.store.orders().some((o) => o.dining_table_id === tableId);
+      const ruta = ['/dashboard/mesas-sesiones', tableId, 'orden-manual'];
+      if (tieneOrden) {
+        this.router.navigate(ruta, { queryParams: { existente: '1' } });
+      } else {
+        this.router.navigate(ruta);
+      }
     } else {
       this.router.navigate(['/dashboard/mesas-sesiones/orden-manual']);
     }

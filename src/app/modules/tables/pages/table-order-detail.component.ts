@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, HostListener, OnDestroy, OnInit, effect, inject, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, OnDestroy, OnInit, effect, inject, signal, untracked } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PosTerminalStore } from '../services/pos-terminal.store';
 import { PosOrderPanelComponent } from '../components/pos-order-panel.component';
@@ -58,6 +58,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
           @if (!store.selectedTableId()) {
             <button
               type="button"
+              data-testid="standalone-new-order-cta"
               (click)="goToNewOrder()"
               class="h-9 px-3 rounded-[8px] text-[13px] font-semibold flex items-center justify-center gap-2 whitespace-nowrap transition-colors shrink-0"
               style="background:var(--terminal-color-primary);color:var(--terminal-color-on-primary)"
@@ -179,13 +180,21 @@ export class TableOrderDetailComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
+  /** `true` recién después de la primera selección (éxito del `.then()` de
+   *  `ngOnInit`). Antes de eso, `hasActiveSelection()` también es `false`
+   *  -- simplemente todavía no hubo tiempo de seleccionar nada -- y el
+   *  `effect()` de abajo no debe confundir "todavía cargando" con "la
+   *  selección se perdió de verdad" (bug real: sin este flag, rebotaba a la
+   *  grilla ANTES de que `selectTable()` llegara a correr). */
+  private readonly selectedOnce = signal(false);
+
   constructor() {
     // Vuelve a la grilla en cuanto la selección se pierde -- cubre los casos
     // donde antes `cancelSelection()` "expulsaba" dentro de la misma
     // instancia (liberar mesa, pedido sin mesa resuelto, A-138): ahora es
     // una navegación real, no solo un cambio de signal.
     effect(() => {
-      if (!this.store.hasActiveSelection()) {
+      if (this.selectedOnce() && !this.store.hasActiveSelection()) {
         untracked(() => void this.router.navigate(['/dashboard/mesas-sesiones']));
       }
     });
@@ -195,13 +204,24 @@ export class TableOrderDetailComponent implements OnInit, OnDestroy {
     const mesa = this.route.snapshot.paramMap.get('mesa');
     const pedidoParam = this.route.snapshot.paramMap.get('pedido');
     const pedidoQuery = this.route.snapshot.queryParamMap.get('pedido');
-    void this.store.init(mesa ? { tableId: mesa } : { orderId: pedidoParam! });
-    if (mesa) {
-      this.store.selectTable(mesa);
-      if (pedidoQuery) this.store.selectOrder(pedidoQuery);
-    } else {
-      this.store.selectStandaloneOrder(pedidoParam!);
-    }
+    // Hay que ESPERAR a que init() resuelva antes de seleccionar: a
+    // diferencia de la grilla (que ya tenía `orders()` cargado de antes),
+    // esta instancia del store siempre nace vacía -- `selectTable()` lee
+    // `tableOrders(tableId)` de forma síncrona, así que si se llama antes de
+    // que la carga acotada responda, encuentra la lista vacía, fija
+    // `selectedOrderId` en `null` y nunca vuelve a intentarlo (no reacciona
+    // a que `orders()` se llene después). Bug real, confirmado en vivo: la
+    // mesa quedaba mostrando "todavía no tiene ningún pedido" aunque el
+    // pedido sí estuviera en la respuesta del backend.
+    void this.store.init(mesa ? { tableId: mesa } : { orderId: pedidoParam! }).then(() => {
+      if (mesa) {
+        this.store.selectTable(mesa);
+        if (pedidoQuery) this.store.selectOrder(pedidoQuery);
+      } else {
+        this.store.selectStandaloneOrder(pedidoParam!);
+      }
+      this.selectedOnce.set(true);
+    });
   }
 
   ngOnDestroy(): void {

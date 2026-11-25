@@ -655,6 +655,20 @@ export class PosTerminalStore {
    * separar rutas).
    */
   private readonly scope = signal<{ tableId: string } | { orderId: string } | null>(null);
+  /**
+   * Sesión activa de la mesa acotada -- la puebla `reloadOrders()` junto con
+   * `tables()`/`orders()`, de la misma respuesta agregada
+   * (`TableService.getTableDetail`), en vez de pedir `/table-sessions` sin
+   * filtro para buscarla. Asume una instancia acotada a una mesa de verdad:
+   * la instancia de la grilla nunca selecciona ninguna mesa, así que nunca
+   * ejercita `loadSessionBill()` con un `tableId` real y este signal se queda
+   * en su default `null` sin que nadie lo note.
+   *
+   * Público (no `private`) a propósito, mismo criterio que `orders`/
+   * `selectedTableId`: los tests de este store simulan escenarios fijando
+   * signals directo, sin pasar por `reloadOrders()`/HTTP real.
+   */
+  readonly activeSessionId = signal<string | null>(null);
 
   // ─── Derivados ───────────────────────────────────────────────────────────────
   readonly tables = this.tableService.tables;
@@ -1759,8 +1773,31 @@ export class PosTerminalStore {
    * pedido real seleccionado (`ensureCheckoutDataLoaded()`, invocado desde
    * `selectTable()`/`selectStandaloneOrder()`). Diferirlos evita una
    * petición HTTP que, en este punto, el cajero todavía no va a usar.
+   *
+   * `live` (default `true`): arranca el sondeo y la suscripción en tiempo
+   * real tras la carga inicial. `ManualOrderPageComponent` pasa `false` --
+   * esa pantalla siempre arma un pedido NUEVO desde cero, nunca sigue uno ya
+   * creado, así que no hay nada vivo que sincronizar; mantener el sondeo ahí
+   * solo gastaba red y, peor, podía deshabilitarle al cajero a mitad de
+   * llenado los campos de mesa/tipo de orden si otra mesa cambiaba de estado
+   * (`mesaConPedidoExistente()`, ver manual-order-page.component.ts).
+   *
+   * `skipOrders` (default `false`): no pide `reloadOrders()` -- `orders()`
+   * queda tal cual estaba (vacío, normalmente). `ManualOrderPageComponent`
+   * también pasa `true`: esta pantalla arma siempre un pedido nuevo, nunca
+   * lee el negocio de pedidos para nada propio -- lo único que lo
+   * necesitaba (si la mesa de la URL ya tenía otro pedido) ya se lo dice
+   * quien navegó aquí por `?existente=1` (ver doc de
+   * `mesaConPedidoExistente` en ese componente), así que pedirlo de nuevo acá
+   * sería puro sobre-fetch.
    */
-  async init(opts?: { tableId?: string; orderId?: string }): Promise<void> {
+  async init(opts?: {
+    tableId?: string;
+    orderId?: string;
+    live?: boolean;
+    skipOrders?: boolean;
+  }): Promise<void> {
+    const live = opts?.live ?? true;
     this.timer ??= startVisibleInterval(() => this.nowTick.set(Date.now()), 30000);
     this.loading.set(true);
     this.error.set(null);
@@ -1770,15 +1807,14 @@ export class PosTerminalStore {
         ? { orderId: opts.orderId }
         : null;
     this.scope.set(scope);
-    const loadTables = scope === null
-      ? this.tableService.loadTables()
-      : 'tableId' in scope
-        ? this.tableService.loadTable(scope.tableId)
-        : Promise.resolve(); // pedido sin mesa: nada que traer de `tableService`.
+    // Con `tableId`, la mesa llega junto con los pedidos y la sesión en la
+    // misma respuesta agregada -- ver `reloadOrders()`. Sin eso no hace falta
+    // ningún fetch aparte de `tableService` acá.
+    const loadTables = scope === null ? this.tableService.loadTables() : Promise.resolve();
     try {
       await Promise.all([
         loadTables,
-        this.reloadOrders(),
+        opts?.skipOrders ? Promise.resolve() : this.reloadOrders(),
         this.menuService.categories().length === 0 ? this.menuService.loadMenu() : null,
       ]);
       const cats = this.menuService.categories();
@@ -1788,8 +1824,10 @@ export class PosTerminalStore {
     } finally {
       this.loading.set(false);
     }
-    this.startPolling();
-    this.connectRealtime();
+    if (live) {
+      this.startPolling();
+      this.connectRealtime();
+    }
   }
 
   /**
@@ -1845,15 +1883,13 @@ export class PosTerminalStore {
     );
   }
 
-  /** Recarga `tables()` acotada a `scope()` (ver su doc) -- único punto que
-   *  decide esa rama, lo reutilizan el sondeo, los eventos de tiempo real y
-   *  `reload()`. Un pedido sin mesa no tiene nada que traer de `tableService`. */
+  /** Recarga `tables()` completa cuando `scope()` es `null` (grilla). Con
+   *  `tableId` no hace nada a propósito: `reloadOrders()` ya trae la mesa (y
+   *  la sesión) en la misma respuesta agregada -- ver su doc. Con `orderId`
+   *  (pedido sin mesa) tampoco hay nada que traer de `tableService`. */
   private async reloadTables(): Promise<void> {
-    const scope = this.scope();
-    if (scope === null) {
+    if (this.scope() === null) {
       await this.tableService.loadTables();
-    } else if ('tableId' in scope) {
-      await this.tableService.loadTable(scope.tableId);
     }
   }
 
@@ -1957,22 +1993,30 @@ export class PosTerminalStore {
 
   /**
    * Acota por `scope()`: la instancia de la grilla (`scope() === null`) trae
-   * todos los pedidos activos del negocio, igual que siempre; la del detalle
-   * trae solo los de su mesa (`dining_table_id`, spec: detalle en su propia
-   * ruta) o, para un pedido sin mesa, solo ese pedido (`DiningSessionService.getOrder`,
-   * ya existe para la reimpresión/detalle puntual).
+   * todos los pedidos activos del negocio, igual que siempre. La del detalle
+   * de una mesa trae mesa + sesión activa + pedidos en una sola petición
+   * agregada (`TableService.getTableDetail`, reemplaza 3 peticiones sueltas
+   * que siempre se pedían juntas) -- de ahí sale también `activeSessionId`,
+   * que `loadSessionBill()` usa en vez de pedir `/table-sessions` sin filtro
+   * para buscarla. Para un pedido sin mesa, solo ese pedido
+   * (`DiningSessionService.getOrder`, ya existe para la reimpresión/detalle
+   * puntual).
    */
   private async reloadOrders(): Promise<void> {
     const scope = this.scope();
-    const orders = scope === null
-      ? // Spec 029, hotfix: `activeSessionsOnly` evita que un pedido ya cobrado
-        // de una visita anterior (mesa ya liberada y reabierta por QR) vuelva
-        // a mezclarse con la sesión activa de la misma mesa física.
-        await this.api.listOrders(undefined, true)
-      : 'tableId' in scope
-        ? await this.api.listOrders(undefined, true, scope.tableId)
-        : [await this.api.getOrder(scope.orderId)];
-    this.orders.set(orders);
+    if (scope === null) {
+      // Spec 029, hotfix: `activeSessionsOnly` evita que un pedido ya cobrado
+      // de una visita anterior (mesa ya liberada y reabierta por QR) vuelva
+      // a mezclarse con la sesión activa de la misma mesa física.
+      this.orders.set(await this.api.listOrders(undefined, true));
+    } else if ('tableId' in scope) {
+      const detail = await this.tableService.getTableDetail(scope.tableId);
+      this.tableService.upsertTable(detail.table);
+      this.activeSessionId.set(detail.session?.id ?? null);
+      this.orders.set(detail.orders);
+    } else {
+      this.orders.set([await this.api.getOrder(scope.orderId)]);
+    }
     // spec 072 (FR-005 a FR-007): el pedido puede llegar por esta misma
     // recarga (sondeo o tiempo real) a una mesa que el cajero ya tenía
     // seleccionada vacía — sin esto, el chequeo de turno de caja solo se
@@ -3260,13 +3304,15 @@ export class PosTerminalStore {
     }
     this.billLoading.set(true);
     try {
-      const sessions = await this.tableSessions.list();
-      const session = sessions.find((s) => s.dining_table_id === tableId);
+      // `activeSessionId` ya viene poblado por `reloadOrders()` (parte de la
+      // misma respuesta agregada de `TableService.getTableDetail`) -- ya no
+      // hace falta pedir `/table-sessions` sin filtro para buscarla acá.
+      const sessionId = this.activeSessionId();
       // Spec 156 (D5 de research.md): acota el preview al subconjunto que el
       // cajero tenga seleccionado -- `undefined` (selección = "todos") deja
       // el comportamiento actual sin cambios.
       this.sessionBill.set(
-        session ? await this.tableSessions.bill(session.id, this.chargeOrderIdsParam()) : null,
+        sessionId ? await this.tableSessions.bill(sessionId, this.chargeOrderIdsParam()) : null,
       );
       // Sin sesión pero con pedidos vivos SIN PAGAR: la mesa no se puede
       // cobrar y hay que decirlo, no dejar el panel como si estuviera vacía.
@@ -3274,7 +3320,7 @@ export class PosTerminalStore {
       // mirar `paid` — un pedido QR/mostrador ya pagado nunca llega a
       // `status === 'pagada'` (research.md D2), así que se marcaba huérfano
       // aunque ya estuviera resuelto.
-      this.billOrphan.set(!session && this.tableOrders(tableId).some((o) => !o.paid));
+      this.billOrphan.set(!sessionId && this.tableOrders(tableId).some((o) => !o.paid));
     } catch (err) {
       this.sessionBill.set(null);
       // Spec 156 (bugfix A-156): antes fijo en `false` sin condición -- un

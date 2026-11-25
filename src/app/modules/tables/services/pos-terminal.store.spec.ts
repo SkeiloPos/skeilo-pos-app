@@ -572,10 +572,10 @@ describe('PosTerminalStore.loadSessionBill — billOrphan (hotfix spec 029)', ()
   it('sin sesión pero con un pedido ya pagado → NO marca huérfano', async () => {
     store.orders.set([{ ...order('o1', 'pendiente', ['entregado'], true), dining_table_id: 't1' }]);
 
-    const promise = store.loadSessionBill('t1');
-    const req = http.expectOne(`${API}/table-sessions`);
-    req.flush([]); // sin sesiones activas para esta mesa
-    await promise;
+    // `activeSessionId` sin poblar (default `null`) == "sin sesión" -- ya no
+    // hay ningún `GET /table-sessions` que mockear, `loadSessionBill` lo lee
+    // directo del signal (ver su doc en el store).
+    await store.loadSessionBill('t1');
 
     expect(store.billOrphan()).toBe(false);
   });
@@ -583,10 +583,7 @@ describe('PosTerminalStore.loadSessionBill — billOrphan (hotfix spec 029)', ()
   it('sin sesión y con un pedido genuinamente sin pagar → sí marca huérfano', async () => {
     store.orders.set([{ ...order('o1', 'pendiente', ['entregado'], false), dining_table_id: 't1' }]);
 
-    const promise = store.loadSessionBill('t1');
-    const req = http.expectOne(`${API}/table-sessions`);
-    req.flush([]);
-    await promise;
+    await store.loadSessionBill('t1');
 
     expect(store.billOrphan()).toBe(true);
   });
@@ -635,6 +632,7 @@ describe('PosTerminalStore.onCharged — refresca sessionBill tras cobrar (bugfi
 
   it('deja sessionBill recargado (no null) para la mesa seleccionada', async () => {
     store.selectedTableId.set('t1');
+    store.activeSessionId.set('ts1');
 
     const promise = store.onCharged({ table_session: {} as never, sale_ids: [] });
 
@@ -642,16 +640,9 @@ describe('PosTerminalStore.onCharged — refresca sessionBill tras cobrar (bugfi
     // resuelven en un microtask) antes de llegar a su propio
     // `loadSessionBill` -- a diferencia de la llamada directa que existía
     // antes (spec 156, bugfix A-156), la petición ya no sale en el mismo
-    // tick que `onCharged`.
-    await new Promise((r) => setTimeout(r));
-    // Una sola secuencia de red: `expectOne` ya falla si hubiera una segunda
-    // coincidencia -- confirma que no compiten dos round-trips a la vez
-    // (antes había uno disparado por `reload()` y otro directo en el
-    // `Promise.all` de `onCharged`).
-    const sessionsReq = http.expectOne(`${API}/table-sessions`);
-    sessionsReq.flush([{ id: 'ts1', dining_table_id: 't1', status: 'active' } as never]);
-    // `loadSessionBill` pide .../bill recién después de resolver la lista de
-    // sesiones -- hace falta otro tick de microtarea antes de que exista.
+    // tick que `onCharged`. `loadSessionBill` ya no pide la lista de
+    // sesiones (lee `activeSessionId()` directo), así que el único
+    // round-trip real es `.../bill`.
     await new Promise((r) => setTimeout(r));
     const billReq = http.expectOne(`${API}/table-sessions/ts1/bill`);
     billReq.flush({ table_session_id: 'ts1', dining_table_id: 't1', total: '0', order_ids: [], split: [] });
@@ -673,9 +664,8 @@ describe('PosTerminalStore.onCharged — refresca sessionBill tras cobrar (bugfi
     expect(store.selectedChargeOrderIds().size).toBe(0);
     expect(store.chargeOrderIdsParam()).toBeUndefined();
 
-    // Drena las peticiones pendientes para no dejar el test con handles sueltos.
-    await new Promise((r) => setTimeout(r));
-    http.expectOne(`${API}/table-sessions`).flush([]);
+    // Sin `activeSessionId`, `loadSessionBill` no dispara ninguna petición --
+    // nada que drenar.
     await promise;
   });
 });
@@ -717,7 +707,6 @@ describe('PosTerminalStore.selectTable', () => {
     ]);
 
     store.selectTable('t1');
-    http.expectOne(`${API}/table-sessions`).flush([]);
 
     expect(store.selectedOrder()?.id).toBe('o1');
   });
@@ -728,7 +717,6 @@ describe('PosTerminalStore.selectTable', () => {
     ]);
 
     store.selectTable('t1');
-    http.expectOne(`${API}/table-sessions`).flush([]);
 
     expect(store.selectedOrder()?.id).toBe('o1');
     expect(store.selectedOrderPending()).toBe(true);
@@ -738,7 +726,6 @@ describe('PosTerminalStore.selectTable', () => {
     store.orders.set([]);
 
     store.selectTable('t1');
-    http.expectOne(`${API}/table-sessions`).flush([]);
 
     expect(store.selectedOrder()).toBeNull();
   });
@@ -746,7 +733,6 @@ describe('PosTerminalStore.selectTable', () => {
   it('sin options, cambiar de mesa vacía el borrador (draftLines) — comportamiento de la Terminal de Mesas', () => {
     store.orders.set([]);
     store.selectTable('t1');
-    http.expectOne(`${API}/table-sessions`).flush([]);
     store.addDraftFromSelection({
       product: { id: 'p1', name: 'Mango Tropical' } as never,
       variant: { id: 'v1', price: 5000, option_groups: [] } as never,
@@ -757,7 +743,6 @@ describe('PosTerminalStore.selectTable', () => {
     expect(store.draftLines().length).toBe(1);
 
     store.selectTable('t2');
-    http.expectOne(`${API}/table-sessions`).flush([]);
 
     expect(store.draftLines().length).toBe(0);
   });
@@ -765,7 +750,6 @@ describe('PosTerminalStore.selectTable', () => {
   it('con { preserveDraft: true }, cambiar de mesa conserva el borrador (draftLines) — uso de "Nueva orden"', () => {
     store.orders.set([]);
     store.selectTable('t1');
-    http.expectOne(`${API}/table-sessions`).flush([]);
     store.addDraftFromSelection({
       product: { id: 'p1', name: 'Mango Tropical' } as never,
       variant: { id: 'v1', price: 5000, option_groups: [] } as never,
@@ -776,7 +760,6 @@ describe('PosTerminalStore.selectTable', () => {
     expect(store.draftLines().length).toBe(1);
 
     store.selectTable('t2', { preserveDraft: true });
-    http.expectOne(`${API}/table-sessions`).flush([]);
 
     expect(store.draftLines().length).toBe(1);
   });
@@ -1079,7 +1062,6 @@ describe('PosTerminalStore.checkoutAndSend — spec 125 (confirmación única de
     // esperarla (`void`), la cuenta de sesión (mismo patrón que el resto de
     // este archivo: un tick extra antes de que la petición exista).
     await tick();
-    http.expectOne(`${API}/table-sessions`).flush([]);
 
     await expect(promise).resolves.toBe(true);
     expect(store.selectedTableId()).toBe('t1');
@@ -1238,7 +1220,6 @@ describe('PosTerminalStore.reload — resincroniza la selección tras confirmar 
       { ...order('o1', 'pendiente', ['pendiente']), channel: 'QR_MENU', dining_table_id: 't1' },
     ]);
     store.selectTable('t1');
-    http.expectOne(`${API}/table-sessions`).flush([]);
     // A pedido del usuario: `selectTable()` ya lo selecciona desde el
     // arranque (`tableOrders()` incluye los pagos QR por confirmar) -- de
     // sólo lectura mientras `selectedOrderPending()` sea `true`.
@@ -1251,7 +1232,6 @@ describe('PosTerminalStore.reload — resincroniza la selección tras confirmar 
       .expectOne((r) => r.url === `${API}/orders`)
       .flush([{ ...order('o1', 'entregada', ['entregado']), channel: 'QR_MENU', dining_table_id: 't1' }]);
     await tick();
-    http.expectOne(`${API}/table-sessions`).flush([]);
     await promise;
 
     // Tras confirmarse el pago (status ya no es 'pendiente'), sigue siendo el
@@ -1266,7 +1246,6 @@ describe('PosTerminalStore.reload — resincroniza la selección tras confirmar 
       { ...order('o2', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
     ]);
     store.selectTable('t1');
-    http.expectOne(`${API}/table-sessions`).flush([]);
     store.selectOrder('o2');
     expect(store.selectedOrder()?.id).toBe('o2');
 
@@ -1279,7 +1258,6 @@ describe('PosTerminalStore.reload — resincroniza la selección tras confirmar 
         { ...order('o2', 'pendiente', ['pendiente']), channel: 'POS', dining_table_id: 't1' },
       ]);
     await tick();
-    http.expectOne(`${API}/table-sessions`).flush([]);
     await promise;
 
     expect(store.selectedOrder()?.id).toBe('o2');
@@ -1328,7 +1306,6 @@ describe('PosTerminalStore.deliverOrder — pedido entregado sigue seleccionado 
       { ...order('o1', 'pendiente', ['pendiente'], true), channel: 'POS', dining_table_id: 't1' },
     ]);
     store.selectTable('t1');
-    http.expectOne(`${API}/table-sessions`).flush([]);
     // `selectTable()` de una mesa con un pedido `paid` precarga su venta real
     // (bugfix "Ya pagado" en Cuenta de la mesa) — sin sale encontrada aquí,
     // que es justo lo que este test no necesita.
@@ -1347,7 +1324,6 @@ describe('PosTerminalStore.deliverOrder — pedido entregado sigue seleccionado 
       .expectOne((r) => r.url === `${API}/orders`)
       .flush([{ ...order('o1', 'entregada', ['entregado'], true), channel: 'POS', dining_table_id: 't1' }]);
     await tick();
-    http.expectOne(`${API}/table-sessions`).flush([]);
 
     await promise;
 
@@ -3055,7 +3031,6 @@ describe('PosTerminalStore.selectedTablePaidSummary — "Ya pagado" (bugfix spec
     ]);
 
     store.selectTable('t1');
-    http.expectOne(`${API}/table-sessions`).flush([]);
     expect(store.selectedTablePaidSummary()).toBeNull(); // aún sin cargar
 
     http
@@ -3075,7 +3050,6 @@ describe('PosTerminalStore.selectedTablePaidSummary — "Ya pagado" (bugfix spec
     ]);
 
     store.selectTable('t1');
-    http.expectOne(`${API}/table-sessions`).flush([]);
     http.expectOne((r) => r.url === `${API}/sales`).flush({
       items: [{ id: 's1', subtotal: '8000', discount: '0', total: '8000' }],
       total: 1, page: 1, size: 1, pages: 1,
@@ -3083,7 +3057,6 @@ describe('PosTerminalStore.selectedTablePaidSummary — "Ya pagado" (bugfix spec
     await tick();
 
     store.selectTable('t1');
-    http.expectOne(`${API}/table-sessions`).flush([]);
     // Sin una segunda petición a /sales — ya se intentó para ese pedido.
 
     expect(store.selectedTablePaidSummary()).toEqual({ subtotal: 8000, discount: 0, total: 8000 });
@@ -3149,7 +3122,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
     store.orders.set([]);
 
     store.selectTable('t1');
-    http.expectOne((r) => r.url === `${API}/table-sessions`).flush([]);
     await Promise.resolve();
 
     expectNoCheckoutDataRequests();
@@ -3163,7 +3135,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
     ]);
 
     store.selectTable('t1');
-    http.expectOne((r) => r.url === `${API}/table-sessions`).flush([]);
     // Respuesta no vacía a propósito: la condición de caché es
     // `checkoutOptions().length === 0`, así que flushear con `[]` no la
     // satisface y el segundo `selectTable()` volvería a pedirlos — justo lo
@@ -3178,7 +3149,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
 
     // Segunda mesa con pedido: mismos dos datos ya en caché, no se repiten.
     store.selectTable('t2');
-    http.expectOne((r) => r.url === `${API}/table-sessions`).flush([]);
 
     expectNoCheckoutDataRequests();
   });
@@ -3189,7 +3159,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
 
     // El cajero deja la mesa vacía seleccionada, esperando el pedido.
     store.selectTable('t1');
-    http.expectOne((r) => r.url === `${API}/table-sessions`).flush([]);
     await Promise.resolve();
     expectNoCheckoutDataRequests();
 
@@ -3206,7 +3175,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
     http
       .expectOne((r) => r.url === `${API}/cash/shifts/current` && r.params.get('cash_register_id') === 'reg-1')
       .flush({ id: 'shift-1' });
-    http.expectOne((r) => r.url === `${API}/table-sessions`).flush([]); // loadSessionBill
     await reloadPromise;
 
     expect(store.cashShiftId()).toBe('shift-1');
@@ -3216,7 +3184,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
     // Sin `localStorage`: fuerza el descubrimiento completo (contracts/descubrimiento-turno-abierto.md).
     store.orders.set([]);
     store.selectTable('t1');
-    http.expectOne((r) => r.url === `${API}/table-sessions`).flush([]);
     await Promise.resolve();
     expectNoCheckoutDataRequests();
 
@@ -3234,7 +3201,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
     http
       .expectOne((r) => r.url === `${API}/cash/shifts/current`)
       .flush(null, { status: 404, statusText: 'Not Found' });
-    http.expectOne((r) => r.url === `${API}/table-sessions`).flush([]); // loadSessionBill
     await reloadPromise;
 
     expect(store.cashShiftId()).toBeNull();
@@ -3243,7 +3209,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
   it('spec 072 (US3, FR-004): con dos turnos de caja abiertos a la vez, el disparador reactivo sigue exigiendo elegir explícitamente', async () => {
     store.orders.set([]);
     store.selectTable('t1');
-    http.expectOne((r) => r.url === `${API}/table-sessions`).flush([]);
     await Promise.resolve();
     expectNoCheckoutDataRequests();
 
@@ -3265,7 +3230,6 @@ describe('PosTerminalStore — carga diferida de datos de cobro (spec 059, Histo
     for (const r of shiftReqs) {
       r.flush({ id: `shift-${r.request.params.get('cash_register_id')}`, cash_register_id: r.request.params.get('cash_register_id') });
     }
-    http.expectOne((r) => r.url === `${API}/table-sessions`).flush([]); // loadSessionBill
     await reloadPromise;
 
     expect(store.cashShiftId()).toBeNull();

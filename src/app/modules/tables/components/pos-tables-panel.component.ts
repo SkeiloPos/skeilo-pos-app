@@ -53,7 +53,7 @@ import { IconLucideComponent } from '../../../shared/icon-lucide/icon-lucide.com
                 [attendedByValue]="t.attendedByValue"
                 [channelLabel]="t.channelLabel"
                 [selected]="t.selected"
-                (select)="goToTable(t.id)"
+                (select)="goToTable(t)"
               />
             }
           </div>
@@ -110,10 +110,19 @@ export class PosTablesPanelComponent {
   private readonly router = inject(Router);
 
   /** El detalle de un pedido de mesa vive en su propia ruta
-   *  (`table-order-detail.component.ts`) -- ya no se selecciona en memoria
-   *  dentro de esta misma instancia de store. */
-  goToTable(tableId: string): void {
-    this.router.navigate(['/dashboard/mesas-sesiones', tableId]);
+   *  (`table-order-detail.component.ts`). Pero una mesa libre (sin ningún
+   *  pedido todavía) no tiene ningún detalle al que navegar -- a pedido del
+   *  usuario, el click ahí solo selecciona la mesa en esta misma instancia de
+   *  store (resalta la tarjeta vía `t.selected`), igual que antes del
+   *  refactor por rutas; el CTA "Crear pedido nuevo" de la sub-barra ya usa
+   *  `store.newOrderTableId()` (= `selectedTableId()`) para llevar esa mesa
+   *  preseleccionada al formulario de orden manual. */
+  goToTable(t: { id: string; ordersCount: number }): void {
+    if (t.ordersCount > 0) {
+      this.router.navigate(['/dashboard/mesas-sesiones', t.id]);
+    } else {
+      this.store.selectTable(t.id);
+    }
   }
 
   /** Mismo criterio para un pedido sin mesa (Domicilio/Para llevar). */

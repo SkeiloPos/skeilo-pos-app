@@ -60,36 +60,44 @@ function createComponent(params: {
 }
 
 describe('TableOrderDetailComponent — ruta mesas-sesiones/:mesa', () => {
-  it('llama a store.init({ tableId }) y store.selectTable(mesa)', () => {
+  it('llama a store.init({ tableId }) y, una vez resuelto, a store.selectTable(mesa)', async () => {
     const { fixture, store } = createComponent({ mesa: 't1' });
     const initSpy = vi.spyOn(store, 'init').mockResolvedValue(undefined);
     const selectTableSpy = vi.spyOn(store, 'selectTable');
 
     fixture.detectChanges();
-
     expect(initSpy).toHaveBeenCalledWith({ tableId: 't1' });
+    // selectTable() se llama DESPUÉS de que init() resuelve (encadenado con
+    // .then()), nunca en paralelo -- de lo contrario lee `orders()` todavía
+    // vacío y no vuelve a intentarlo (bug real, confirmado en vivo: la mesa
+    // quedaba "sin pedido" aunque el pedido sí estuviera en la respuesta).
+    expect(selectTableSpy).not.toHaveBeenCalled();
+    await Promise.resolve();
+
     expect(selectTableSpy).toHaveBeenCalledWith('t1');
   });
 
-  it('con ?pedido= además de :mesa, también llama a store.selectOrder', () => {
+  it('con ?pedido= además de :mesa, también llama a store.selectOrder tras resolver init()', async () => {
     const { fixture, store } = createComponent({ mesa: 't1', queryPedido: 'o1' });
     vi.spyOn(store, 'init').mockResolvedValue(undefined);
     const selectOrderSpy = vi.spyOn(store, 'selectOrder');
 
     fixture.detectChanges();
+    await Promise.resolve();
 
     expect(selectOrderSpy).toHaveBeenCalledWith('o1');
   });
 });
 
 describe('TableOrderDetailComponent — ruta mesas-sesiones/pedido/:pedido (sin mesa)', () => {
-  it('llama a store.init({ orderId }) y store.selectStandaloneOrder(pedido), sin tocar selectTable', () => {
+  it('llama a store.init({ orderId }) y, tras resolver, a store.selectStandaloneOrder(pedido), sin tocar selectTable', async () => {
     const { fixture, store } = createComponent({ pedido: 'o1' });
     const initSpy = vi.spyOn(store, 'init').mockResolvedValue(undefined);
     const selectStandaloneSpy = vi.spyOn(store, 'selectStandaloneOrder');
     const selectTableSpy = vi.spyOn(store, 'selectTable');
 
     fixture.detectChanges();
+    await Promise.resolve();
 
     expect(initSpy).toHaveBeenCalledWith({ orderId: 'o1' });
     expect(selectStandaloneSpy).toHaveBeenCalledWith('o1');
@@ -122,12 +130,17 @@ describe('TableOrderDetailComponent — botón "← Volver"', () => {
  * pedido sin mesa resuelto) tenga que saber nada de rutas.
  */
 describe('TableOrderDetailComponent — vuelve a la grilla si la selección se pierde', () => {
-  it('cancelSelection() (p. ej. tras liberar la mesa) dispara la navegación de vuelta', () => {
+  it('cancelSelection() (p. ej. tras liberar la mesa) dispara la navegación de vuelta', async () => {
     const { fixture, store, router } = createComponent({ mesa: 't1' });
     vi.spyOn(store, 'init').mockResolvedValue(undefined);
     const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
     fixture.detectChanges();
-    navigateSpy.mockClear(); // descarta cualquier navegación disparada por el montaje inicial
+    // Deja resolver la selección inicial (selectedOnce) antes de limpiar el
+    // spy -- si no, el `effect()` todavía no distingue "cargando" de
+    // "selección perdida de verdad" y el aserto de abajo quedaría contaminado.
+    await Promise.resolve();
+    fixture.detectChanges();
+    navigateSpy.mockClear();
 
     store.cancelSelection();
     fixture.detectChanges();
@@ -137,14 +150,19 @@ describe('TableOrderDetailComponent — vuelve a la grilla si la selección se p
 });
 
 describe('TableOrderDetailComponent — CTA "Crear pedido nuevo" solo para pedidos sin mesa', () => {
+  // Acotado a `data-testid` (no a cualquier botón con ese texto en la
+  // pantalla): `app-pos-order-panel` tiene su propio "Crear pedido nuevo"
+  // para su estado vacío, que no es el que este describe ejercita.
   const findCta = (fixture: ComponentFixture<TableOrderDetailComponent>): HTMLButtonElement | undefined =>
-    Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
-      (b as HTMLButtonElement).textContent?.includes('Crear pedido nuevo'),
-    ) as HTMLButtonElement | undefined;
+    (fixture.nativeElement.querySelector('[data-testid="standalone-new-order-cta"]') ?? undefined) as
+      | HTMLButtonElement
+      | undefined;
 
-  it('no aparece en el detalle de una mesa -- "Nueva cuenta" (pos-order-panel.component.ts) ofrece la misma capacidad ahí', () => {
+  it('no aparece en el detalle de una mesa -- "Nueva cuenta" (pos-order-panel.component.ts) ofrece la misma capacidad ahí', async () => {
     const { fixture, store } = createComponent({ mesa: 't1' });
     vi.spyOn(store, 'init').mockResolvedValue(undefined);
+    fixture.detectChanges();
+    await Promise.resolve();
     fixture.detectChanges();
 
     expect(findCta(fixture)).toBeUndefined();

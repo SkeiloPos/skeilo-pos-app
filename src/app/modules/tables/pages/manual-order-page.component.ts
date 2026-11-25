@@ -14,7 +14,6 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { CartOptionLine, PosTerminalStore } from '../services/pos-terminal.store';
 import { ProductSelectPosComponent } from '../components/product-select-pos.component';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
-import { PosTerminalHeaderComponent } from '../components/pos-terminal-header.component';
 import { BillSummaryComponent } from '../components/bill-summary.component';
 import { splitVariantLabel } from '../services/menu-lookup';
 import {
@@ -91,20 +90,11 @@ import { isProductSoldOut } from '../../../core/availability/availability.util';
     ProductSelectPosComponent,
     IconMiComponent,
     SearchableSelectComponent,
-    PosTerminalHeaderComponent,
     BillSummaryComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="terminal-theme flex flex-col -m-4 md:-m-6 overflow-x-hidden bg-[var(--terminal-color-canvas,#f4f6f9)]">
-      <!-- Oculto en móvil (mismo criterio que table-sessions.component.ts):
-           en pantallas angostas no aporta nada aquí y resta alto útil al
-           catálogo/carrito -- el encabezado "Nueva orden" de la columna
-           izquierda ya trae el botón de volver. -->
-      <div class="hidden sm:contents">
-        <app-pos-terminal-header />
-      </div>
-
       <!-- Catálogo (izquierda, siempre visible) + carrito (derecha): barra
            lateral fija desde lg (grid 12 columnas, 8/4 -- a pedido del
            usuario, el resumen de la orden se veía muy angosto con el ancho
@@ -1016,11 +1006,20 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
    * cajero no debe poder reasignar este segundo pedido a otra mesa ni a
    * Para llevar/Domicilio a mitad de armado -- solo puede volver al catálogo
    * y agregar productos, o volver a la Terminal sin guardar nada.
+   *
+   * Ya NO sale de `store.orders()` -- esta pantalla no necesita pedir el
+   * negocio completo de pedidos solo para saberlo: quien navega aquí (`+
+   * Nueva cuenta`/`Crear pedido nuevo` desde una mesa ocupada) ya sabe que la
+   * mesa tiene pedido y lo avisa por `?existente=1` (ver
+   * `pos-order-panel.component.ts::createNewOrderForTable()` y
+   * `table-sessions.component.ts::goToNewOrder()`). Además, el selector de
+   * mesas (`mesaOptions()`) ya solo deja elegir mesas libres -- así que, fuera
+   * de la mesa precargada por la URL, este valor nunca podría volverse `true`
+   * por una selección manual en el formulario. Un `signal` fijado una sola
+   * vez en `ngOnInit` basta: no hay forma de que cambie durante la vida de
+   * esta pantalla.
    */
-  readonly mesaConPedidoExistente = computed(() => {
-    const t = this.store.selectedTableId();
-    return !!t && this.store.orders().some((o) => o.dining_table_id === t);
-  });
+  readonly mesaConPedidoExistente = signal(false);
 
   /** Opciones del select buscable de mesas (spec 053, corrección posterior:
    *  el número de mesa es siempre parte de la etiqueta, no se reemplaza por
@@ -1088,11 +1087,28 @@ export class ManualOrderPageComponent implements OnInit, OnDestroy {
     // nombre de la anterior (FR-011).
     this.store.customerName.set('');
     const tableId = this.route.snapshot.paramMap.get('tableId');
-    // Carga acotada a esta mesa sola cuando ya se sabe cuál es (viene con
-    // `:tableId` en la ruta) -- sin mesa (flujo "elegir en el formulario",
-    // o Domicilios/Para-llevar) sigue pidiendo el negocio completo, porque
-    // ahí sí hace falta el picker de mesas completo.
-    await this.store.init(tableId ? { tableId } : undefined);
+    // `?existente=1`: quien navegó aquí ya sabe si la mesa tenía un pedido
+    // vivo (ver doc de `mesaConPedidoExistente` arriba) -- se fija una sola
+    // vez, antes de `store.init()`, porque el bloqueo debe regir desde el
+    // primer render, no después de que resuelva la carga.
+    this.mesaConPedidoExistente.set(
+      !!tableId && this.route.snapshot.queryParamMap.get('existente') === '1',
+    );
+    // Siempre sin `tableId` de scope (negocio completo: mesas), venga o no
+    // una mesa ya elegida por la URL -- esta pantalla arma SIEMPRE un pedido
+    // nuevo, nunca sigue uno existente, así que no hay nada que justifique
+    // el endpoint agregado de detalle de mesa (trae también la sesión
+    // activa, que acá no se usa para nada) ni, con `live: false`, el
+    // sondeo/tiempo real detrás de él -- re-sincronizar en vivo solo tiene
+    // sentido en pantallas que seguían un pedido/sesión ya en curso
+    // (`table-order-detail.component.ts`), y aquí hasta podía
+    // deshabilitarle al cajero a mitad de llenado los campos de mesa/tipo de
+    // orden si otra mesa cambiaba de estado mientras tanto. `skipOrders`:
+    // tampoco hace falta pedir el negocio completo de pedidos -- lo único que
+    // los necesitaba (`mesaConPedidoExistente`) ya se resolvió arriba sin
+    // red. La mesa de la URL simplemente se preselecciona abajo con
+    // `selectTable()`, una vez que `tables()` ya está cargado.
+    await this.store.init({ live: false, skipOrders: true });
     if (tableId) this.selectTable(tableId);
     // spec 078 (US2, research.md D3): tipo preseleccionado desde la pestaña de
     // origen de la Terminal. Valor ausente / `'mesas'` / inválido → no hace
