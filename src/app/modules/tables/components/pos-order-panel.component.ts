@@ -712,7 +712,15 @@ export class PosOrderPanelComponent {
   createNewOrderForTable(): void {
     const tableId = this.store.newOrderTableId();
     if (!tableId) return;
-    this.router.navigate(['/dashboard/mesas-sesiones', tableId, 'orden-manual']);
+    // `existente: '1'` -- este botón solo se pinta cuando la mesa ya tiene un
+    // pedido vivo (ver `@if` que envuelve esta barra). Se lo avisamos a
+    // `orden-manual` por la URL para que bloquee ahí mismo mesa/tipo de
+    // orden, en vez de que esa pantalla tenga que volver a preguntárselo al
+    // backend con un fetch de pedidos que, viniendo de aquí, es información
+    // que ya tenemos.
+    this.router.navigate(['/dashboard/mesas-sesiones', tableId, 'orden-manual'], {
+      queryParams: { existente: '1' },
+    });
   }
 
   /** Spec 147 (FR-001/FR-002a) + spec 151 (ajuste post-implementación): ¿puede

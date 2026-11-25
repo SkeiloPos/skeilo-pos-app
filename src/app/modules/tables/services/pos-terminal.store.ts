@@ -20,14 +20,12 @@ import {
 import { AvailabilitySyncService } from '../../../core/availability/availability-sync.service';
 import { SoldOutConflict } from '../../../core/availability/availability.model';
 import { Promotion } from '../../promotions/interfaces/promotion.interface';
-import { PromotionService } from '../../promotions/services/promotion.service';
 import { PlanSummaryService } from '../../plan/services/plan-summary.service';
 import { effectivePrice, hasPromotion, packagePrice } from '../../promotions/services/promotion-pricing.util';
 import { PaymentMethodService } from '../../sales/services/payment-method.service';
 import { CashService } from '../../cash-register/services/cash.service';
 import { ToastService } from '../../../shared/feedback/toast.service';
 import { ConfirmService } from '../../../shared/feedback/confirm.service';
-import { SoundService } from '../../../shared/feedback/sound.service';
 import { PrinterSettingsStore } from '../../../core/printing/printer-settings.store';
 import { VisibleInterval, startVisibleInterval } from '../../../core/realtime/visible-interval';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
@@ -264,17 +262,6 @@ const RELOAD_DEBOUNCE_MS = 250;
 const DEFAULT_CUSTOMER_NAME = 'Consumidor final';
 
 /**
- * Ids de pedidos por confirmar que aún no se habían visto.
- *
- * Se comparan **ids y no cantidades**: si un pedido entra y el personal lo
- * confirma dentro de la misma ventana de sondeo, el contador vuelve a su sitio
- * pero el aviso sí debe haber sonado.
- */
-export function newPendingIds(seen: ReadonlySet<string>, orders: DiningOrder[]): string[] {
-  return orders.filter((o) => o.status === 'pendiente' && !seen.has(o.id)).map((o) => o.id);
-}
-
-/**
  * Estado que se pinta en la tarjeta de la mesa, por orden de urgencia.
  *
  * `orders` son los pedidos vivos de la mesa **incluidos los `pendiente`**: un
@@ -334,18 +321,6 @@ export function deriveTableStatus(
   return 'libre';
 }
 
-/**
- * Hora a usar para evaluar vigencia de promociones en el POS de staff (A-09):
- * la del servidor, sincronizada por `PromotionService`, nunca el reloj del
- * dispositivo. Devuelve `null` mientras no haya sync (arranque en frío, corte
- * de red) — los cuatro puntos de invocación deben degradar explícito en ese
- * caso (sin insignias/descuento de previsualización), no usar `new Date()`
- * como fallback: eso reintroduciría exactamente el defecto que A-09 corrige.
- */
-export function currentNow(promotionService: { ready(): boolean; now(): Date }): Date | null {
-  return promotionService.ready() ? promotionService.now() : null;
-}
-
 /** Normaliza para comparar nombres de producto sin distinguir mayúsculas ni
  *  acentos (spec 036, FR-007: buscador por nombre del catálogo embebido). */
 export function normalizeSearchTerm(value: string): string {
@@ -371,7 +346,6 @@ export class PosTerminalStore {
   private readonly tableService = inject(TableService);
   private readonly api = inject(DiningSessionService);
   private readonly menuService = inject(MenuService);
-  private readonly promotionService = inject(PromotionService);
   private readonly planSummary = inject(PlanSummaryService);
   private readonly tableSessions = inject(TableSessionService);
   private readonly paymentMethodService = inject(PaymentMethodService);
@@ -383,23 +357,9 @@ export class PosTerminalStore {
   private readonly printer = inject(PrinterSettingsStore);
   private readonly realtime = inject(RealtimeService);
   private readonly availabilitySync = inject(AvailabilitySyncService);
-  readonly sound = inject(SoundService);
   private readonly updateGate = inject(UpdateGateService);
 
-  /** `true` desde que `init()` arrancó; hasta entonces el efecto de promociones no hace nada. */
-  private readonly initStarted = signal(false);
-  private promotionsRequested = false;
-
   constructor() {
-    // Spec 141 (FR-011/FR-014, research H1): las promociones activas son del módulo Promociones. Un negocio
-    // sin él abre y cobra en la terminal sin esa petición (y sin descuentos de promoción, como hoy). Si el
-    // resumen del plan llega después de `init()` (recarga directa), la carga sale al llegar — una sola vez.
-    effect(() => {
-      if (this.initStarted() && this.planSummary.includes('promociones')) {
-        untracked(() => this.ensurePromotionsLoaded());
-      }
-    });
-
     // El sondeo se relaja con el stream sano y vuelve al ritmo de antes al caerse.
     effect(() => {
       const abierto = this.realtime.status() === 'open';
@@ -681,17 +641,37 @@ export class PosTerminalStore {
   private pollHandle: VisibleInterval | null = null;
   private rtOff: (() => void)[] = [];
   private reloadHandle: ReturnType<typeof setTimeout> | null = null;
-  /** Pedidos por confirmar ya conocidos: lo que llegue de más suena. */
-  private seenPending = new Set<string>();
-  /** La primera carga no avisa; solo deja constancia de lo que ya había. */
-  private pendingSeeded = false;
+
+  /**
+   * La Terminal de Mesas separa grilla y detalle por ruta: `TableSessionsComponent`
+   * (la grilla, `mesas-sesiones`) nunca pasa esto, así que su instancia de
+   * `PosTerminalStore` siempre queda `null` aquí y carga el negocio completo,
+   * de por vida. `TableOrderDetailComponent` (`mesas-sesiones/:mesa` o
+   * `mesas-sesiones/pedido/:pedido`) sí lo pasa en `init()`, y su instancia
+   * queda acotada a esa mesa/pedido de por vida -- cada ruta instancia su
+   * propio store (`providers: [PosTerminalStore]` a nivel de componente), así
+   * que no hace falta "actualizar a completo más tarde" dentro de la misma
+   * instancia (a diferencia de un intento anterior de resolver esto sin
+   * separar rutas).
+   */
+  private readonly scope = signal<{ tableId: string } | { orderId: string } | null>(null);
+  /**
+   * Sesión activa de la mesa acotada -- la puebla `reloadOrders()` junto con
+   * `tables()`/`orders()`, de la misma respuesta agregada
+   * (`TableService.getTableDetail`), en vez de pedir `/table-sessions` sin
+   * filtro para buscarla. Asume una instancia acotada a una mesa de verdad:
+   * la instancia de la grilla nunca selecciona ninguna mesa, así que nunca
+   * ejercita `loadSessionBill()` con un `tableId` real y este signal se queda
+   * en su default `null` sin que nadie lo note.
+   *
+   * Público (no `private`) a propósito, mismo criterio que `orders`/
+   * `selectedTableId`: los tests de este store simulan escenarios fijando
+   * signals directo, sin pasar por `reloadOrders()`/HTTP real.
+   */
+  readonly activeSessionId = signal<string | null>(null);
 
   // ─── Derivados ───────────────────────────────────────────────────────────────
   readonly tables = this.tableService.tables;
-  /** Listado completo (todos los estados) — usado por `methodName()` para
-   * resolver el nombre de un método ya usado en una venta, aunque ya no esté
-   * disponible para cobros nuevos (Principio VII: el histórico no cambia). */
-  readonly paymentMethods = this.paymentMethodService.methods;
   /** Solo los disponibles para cobrar ahora mismo (activos, completos, con el
    * catálogo activo) y sin datos de integración — lo que consume el panel de
    * cobro (spec 032, FR-012/FR-012a). */
@@ -1442,12 +1422,6 @@ export class PosTerminalStore {
    */
   private persistedItemsView(order: DiningOrder | null) {
     const lk = this.lookup();
-    const syncedNow = currentNow(this.promotionService);
-    // A-09: sin hora sincronizada aún, sin descuento de previsualización —
-    // `promos` vacío hace que discountedUnitPrice devuelva el precio normal
-    // sin tocar `now` (el placeholder nunca se evalúa contra ninguna promo).
-    const now = syncedNow ?? new Date(0);
-    const promos = syncedNow === null ? [] : this.promotionService.activePromotions();
     const items = (order?.items ?? []).filter((i) => i.estado_cocina !== 'cancelado');
 
     // spec 118 (research.md D4, FR-005): varias filas de la misma
@@ -1573,9 +1547,6 @@ export class PosTerminalStore {
    */
   readonly cartView = computed(() => {
     const lk = this.lookup();
-    const syncedNow = currentNow(this.promotionService);
-    const now = syncedNow ?? new Date(0);
-    const promos = syncedNow === null ? [] : this.promotionService.activePromotions();
     const persistedRaw = this.persistedItemsView(this.selectedOrder());
     const persisted = this.selectedOrderPending()
       ? persistedRaw.map((it) => ({ ...it, kind: 'pending-review' as const }))
@@ -1802,18 +1773,49 @@ export class PosTerminalStore {
    * pedido real seleccionado (`ensureCheckoutDataLoaded()`, invocado desde
    * `selectTable()`/`selectStandaloneOrder()`). Diferirlos evita una
    * petición HTTP que, en este punto, el cajero todavía no va a usar.
+   *
+   * `live` (default `true`): arranca el sondeo y la suscripción en tiempo
+   * real tras la carga inicial. `ManualOrderPageComponent` pasa `false` --
+   * esa pantalla siempre arma un pedido NUEVO desde cero, nunca sigue uno ya
+   * creado, así que no hay nada vivo que sincronizar; mantener el sondeo ahí
+   * solo gastaba red y, peor, podía deshabilitarle al cajero a mitad de
+   * llenado los campos de mesa/tipo de orden si otra mesa cambiaba de estado
+   * (`mesaConPedidoExistente()`, ver manual-order-page.component.ts).
+   *
+   * `skipOrders` (default `false`): no pide `reloadOrders()` -- `orders()`
+   * queda tal cual estaba (vacío, normalmente). `ManualOrderPageComponent`
+   * también pasa `true`: esta pantalla arma siempre un pedido nuevo, nunca
+   * lee el negocio de pedidos para nada propio -- lo único que lo
+   * necesitaba (si la mesa de la URL ya tenía otro pedido) ya se lo dice
+   * quien navegó aquí por `?existente=1` (ver doc de
+   * `mesaConPedidoExistente` en ese componente), así que pedirlo de nuevo acá
+   * sería puro sobre-fetch.
    */
-  async init(): Promise<void> {
-    this.initStarted.set(true);
+  async init(opts?: {
+    tableId?: string;
+    orderId?: string;
+    live?: boolean;
+    skipOrders?: boolean;
+  }): Promise<void> {
+    const live = opts?.live ?? true;
     this.timer ??= startVisibleInterval(() => this.nowTick.set(Date.now()), 30000);
     this.loading.set(true);
     this.error.set(null);
+    const scope: { tableId: string } | { orderId: string } | null = opts?.tableId
+      ? { tableId: opts.tableId }
+      : opts?.orderId
+        ? { orderId: opts.orderId }
+        : null;
+    this.scope.set(scope);
+    // Con `tableId`, la mesa llega junto con los pedidos y la sesión en la
+    // misma respuesta agregada -- ver `reloadOrders()`. Sin eso no hace falta
+    // ningún fetch aparte de `tableService` acá.
+    const loadTables = scope === null ? this.tableService.loadTables() : Promise.resolve();
     try {
       await Promise.all([
-        this.tableService.loadTables(),
-        this.reloadOrders(),
+        loadTables,
+        opts?.skipOrders ? Promise.resolve() : this.reloadOrders(),
         this.menuService.categories().length === 0 ? this.menuService.loadMenu() : null,
-        this.ensurePromotionsLoaded(),
       ]);
       const cats = this.menuService.categories();
       if (cats.length && !this.catalogCategoryId()) this.catalogCategoryId.set(cats[0].id);
@@ -1822,17 +1824,10 @@ export class PosTerminalStore {
     } finally {
       this.loading.set(false);
     }
-    this.startPolling();
-    // Después de la carga REST a propósito: `pendingSeeded` ya es `true`, así
-    // que la primera ráfaga de eventos no hace sonar la campana.
-    this.connectRealtime();
-  }
-
-  /** Pide las promociones activas solo si el plan incluye Promociones, y solo una vez (spec 141). */
-  private ensurePromotionsLoaded(): void {
-    if (this.promotionsRequested || !this.planSummary.includes('promociones')) return;
-    this.promotionsRequested = true;
-    this.promotionService.loadActive();
+    if (live) {
+      this.startPolling();
+      this.connectRealtime();
+    }
   }
 
   /**
@@ -1847,7 +1842,6 @@ export class PosTerminalStore {
    */
   private async ensureCheckoutDataLoaded(): Promise<void> {
     await Promise.all([
-      this.paymentMethodService.methods().length === 0 ? this.paymentMethodService.load() : null,
       this.paymentMethodService.checkoutOptions().length === 0
         ? this.paymentMethodService.loadAvailableForCheckout()
         : null,
@@ -1883,10 +1877,20 @@ export class PosTerminalStore {
         void this.reloadOrders().catch(() => undefined);
         // También las mesas: su `status` es lo que delata a un comensal que
         // escaneó el QR y todavía no ha pedido nada.
-        void this.tableService.loadTables().catch(() => undefined);
+        void this.reloadTables().catch(() => undefined);
       },
       this.realtime.status() === 'open' ? ORDERS_POLL_SSE_MS : ORDERS_POLL_MS,
     );
+  }
+
+  /** Recarga `tables()` completa cuando `scope()` es `null` (grilla). Con
+   *  `tableId` no hace nada a propósito: `reloadOrders()` ya trae la mesa (y
+   *  la sesión) en la misma respuesta agregada -- ver su doc. Con `orderId`
+   *  (pedido sin mesa) tampoco hay nada que traer de `tableService`. */
+  private async reloadTables(): Promise<void> {
+    if (this.scope() === null) {
+      await this.tableService.loadTables();
+    }
   }
 
   private stopPolling(): void {
@@ -1905,14 +1909,10 @@ export class PosTerminalStore {
    * store solo se suscribe/desuscribe a los tipos de evento que le importan,
    * usando la conexión que el shell ya mantiene abierta.
    *
-   * **Los eventos nunca tocan la campana directamente**: `order.created` dispara
-   * una recarga, y es `reloadOrders()` → `announcePending()` quien decide si
-   * suena, comparando ids contra `seenPending`. Alimentar la campana desde el
-   * evento haría que el replay tras reconectar volviera a sonar por pedidos que
-   * el cajero ya vio.
-   *
-   * Por eso `init()` se suscribe **después** de la primera carga REST: así
-   * `pendingSeeded` ya es `true` y la primera ráfaga no suena.
+   * La campanita de "pedido nuevo" ya NO vive acá -- también se movió al
+   * shell (reacciona directo a `order.created`, sin REST de por medio). Este
+   * store solo usa los eventos para decidir cuándo recargar sus propios
+   * datos (`scheduleReload()`).
    */
   private connectRealtime(): void {
     const recargar = () => this.scheduleReload();
@@ -1982,7 +1982,7 @@ export class PosTerminalStore {
     this.reloadHandle = setTimeout(() => {
       this.reloadHandle = null;
       void this.reloadOrders().catch(() => undefined);
-      void this.tableService.loadTables().catch(() => undefined);
+      void this.reloadTables().catch(() => undefined);
     }, RELOAD_DEBOUNCE_MS);
   }
 
@@ -1991,13 +1991,32 @@ export class PosTerminalStore {
     await this.loadSessionBill(this.selectedTableId());
   }
 
+  /**
+   * Acota por `scope()`: la instancia de la grilla (`scope() === null`) trae
+   * todos los pedidos activos del negocio, igual que siempre. La del detalle
+   * de una mesa trae mesa + sesión activa + pedidos en una sola petición
+   * agregada (`TableService.getTableDetail`, reemplaza 3 peticiones sueltas
+   * que siempre se pedían juntas) -- de ahí sale también `activeSessionId`,
+   * que `loadSessionBill()` usa en vez de pedir `/table-sessions` sin filtro
+   * para buscarla. Para un pedido sin mesa, solo ese pedido
+   * (`DiningSessionService.getOrder`, ya existe para la reimpresión/detalle
+   * puntual).
+   */
   private async reloadOrders(): Promise<void> {
-    // Spec 029, hotfix: `activeSessionsOnly` evita que un pedido ya cobrado
-    // de una visita anterior (mesa ya liberada y reabierta por QR) vuelva a
-    // mezclarse con la sesión activa de la misma mesa física.
-    const orders = await this.api.listOrders(undefined, true);
-    this.orders.set(orders);
-    this.announcePending(orders);
+    const scope = this.scope();
+    if (scope === null) {
+      // Spec 029, hotfix: `activeSessionsOnly` evita que un pedido ya cobrado
+      // de una visita anterior (mesa ya liberada y reabierta por QR) vuelva
+      // a mezclarse con la sesión activa de la misma mesa física.
+      this.orders.set(await this.api.listOrders(undefined, true));
+    } else if ('tableId' in scope) {
+      const detail = await this.tableService.getTableDetail(scope.tableId);
+      this.tableService.upsertTable(detail.table);
+      this.activeSessionId.set(detail.session?.id ?? null);
+      this.orders.set(detail.orders);
+    } else {
+      this.orders.set([await this.api.getOrder(scope.orderId)]);
+    }
     // spec 072 (FR-005 a FR-007): el pedido puede llegar por esta misma
     // recarga (sondeo o tiempo real) a una mesa que el cajero ya tenía
     // seleccionada vacía — sin esto, el chequeo de turno de caja solo se
@@ -2005,19 +2024,6 @@ export class PosTerminalStore {
     if (this.hasChargeableOrderNow()) {
       void this.ensureCheckoutDataLoaded();
     }
-  }
-
-  /**
-   * Suena la campana si hay pedidos por confirmar que no se habían visto.
-   *
-   * La primera carga solo siembra el conjunto: al abrir la pantalla con pedidos
-   * viejos esperando, avisar sería ruido, no información.
-   */
-  private announcePending(orders: DiningOrder[]): void {
-    const nuevos = newPendingIds(this.seenPending, orders);
-    this.seenPending = new Set(orders.filter((o) => o.status === 'pendiente').map((o) => o.id));
-    if (nuevos.length > 0 && this.pendingSeeded) this.sound.bell();
-    this.pendingSeeded = true;
   }
 
   /**
@@ -2029,7 +2035,7 @@ export class PosTerminalStore {
    * "El pago no cubre el total".
    */
   async reload(): Promise<void> {
-    await Promise.all([this.tableService.loadTables(), this.reloadOrders()]);
+    await Promise.all([this.reloadTables(), this.reloadOrders()]);
     this.resyncSelectedOrder();
     await this.loadSessionBill(this.selectedTableId());
   }
@@ -2939,6 +2945,16 @@ export class PosTerminalStore {
     this.submitting.set(true);
     try {
       await this.tableService.splitOrder(orderId);
+      // Bugfix A-156 (mismo patrón que `onCharged()`): limpia la selección de
+      // cobro ANTES de `reload()` -- si no, `loadSessionBill()` (dentro de
+      // `reload()`) puede leer `chargeOrderIdsParam()` todavía con el id de la
+      // orden que este split acaba de borrar (el `effect()` que resincroniza
+      // `selectedChargeOrderIds` con `chargeableOrderIds()` corre async, no
+      // antes de que `reload()` siga). El backend la rechaza con 409
+      // ("Algunos pedidos seleccionados no se pueden cobrar.") aunque no haya
+      // ningún problema real -- vaciar el set hace que `chargeOrderIdsParam()`
+      // caiga a `undefined` (= cobrar todos los facturables actuales).
+      this.selectedChargeOrderIds.set(new Set());
       await this.reload();
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo dividir la cuenta.'));
@@ -2959,6 +2975,10 @@ export class PosTerminalStore {
     this.submitting.set(true);
     try {
       await this.tableService.moveItem(orderId, itemId, targetOrderId, quantity);
+      // Bugfix A-156 (ver comentario igual en `splitOrder()`): evita el 409
+      // de "Algunos pedidos seleccionados no se pueden cobrar." cuando la
+      // orden origen queda vacía y se borra.
+      this.selectedChargeOrderIds.set(new Set());
       await this.reload();
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo mover el ítem.'));
@@ -2975,6 +2995,8 @@ export class PosTerminalStore {
     this.submitting.set(true);
     try {
       await this.tableService.splitItemToNewOrder(orderId, itemId, quantity);
+      // Bugfix A-156 (ver comentario igual en `splitOrder()`).
+      this.selectedChargeOrderIds.set(new Set());
       await this.reload();
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo crear la cuenta nueva.'));
@@ -3298,13 +3320,15 @@ export class PosTerminalStore {
     }
     this.billLoading.set(true);
     try {
-      const sessions = await this.tableSessions.list();
-      const session = sessions.find((s) => s.dining_table_id === tableId);
+      // `activeSessionId` ya viene poblado por `reloadOrders()` (parte de la
+      // misma respuesta agregada de `TableService.getTableDetail`) -- ya no
+      // hace falta pedir `/table-sessions` sin filtro para buscarla acá.
+      const sessionId = this.activeSessionId();
       // Spec 156 (D5 de research.md): acota el preview al subconjunto que el
       // cajero tenga seleccionado -- `undefined` (selección = "todos") deja
       // el comportamiento actual sin cambios.
       this.sessionBill.set(
-        session ? await this.tableSessions.bill(session.id, this.chargeOrderIdsParam()) : null,
+        sessionId ? await this.tableSessions.bill(sessionId, this.chargeOrderIdsParam()) : null,
       );
       // Sin sesión pero con pedidos vivos SIN PAGAR: la mesa no se puede
       // cobrar y hay que decirlo, no dejar el panel como si estuviera vacía.
@@ -3312,7 +3336,7 @@ export class PosTerminalStore {
       // mirar `paid` — un pedido QR/mostrador ya pagado nunca llega a
       // `status === 'pagada'` (research.md D2), así que se marcaba huérfano
       // aunque ya estuviera resuelto.
-      this.billOrphan.set(!session && this.tableOrders(tableId).some((o) => !o.paid));
+      this.billOrphan.set(!sessionId && this.tableOrders(tableId).some((o) => !o.paid));
     } catch (err) {
       this.sessionBill.set(null);
       // Spec 156 (bugfix A-156): antes fijo en `false` sin condición -- un
@@ -3556,7 +3580,6 @@ export class PosTerminalStore {
       businessName: this.tenantInfo.businessName(),
       logoUrl: this.tenantInfo.logoUrl(),
       message: this.tenantInfo.receiptMessage(),
-      methodName: (id) => this.methodName(id),
     };
   }
 
@@ -3835,16 +3858,8 @@ export class PosTerminalStore {
     return receipt.payments.map((p) => p.name).join(' + ');
   }
 
-  private methodName(id: string): string {
-    return this.paymentMethods().find((m) => m.id === id)?.name ?? 'Pago';
-  }
-
   private orderSubtotal(o: DiningOrder): number {
     const lk = this.lookup();
-    const syncedNow = currentNow(this.promotionService);
-    // A-09: mismo criterio que cartView — sin sync, sin descuento de previsualización.
-    const now = syncedNow ?? new Date(0);
-    const promos = syncedNow === null ? [] : this.promotionService.activePromotions();
     const items = (o.items ?? []).filter((i) => i.estado_cocina !== 'cancelado');
     const plain = items.filter((i) => !i.combo_id);
     // spec 078 (US1, research.md D1 riesgo 3): cuando el backend persiste el

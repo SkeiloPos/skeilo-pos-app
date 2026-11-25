@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
+import { Page } from '../../../core/interfaces/page.interface';
 import {
   AddAdditionPayload,
   AddToppingPayload,
@@ -48,6 +49,22 @@ export class DiningSessionService {
     return firstValueFrom(
       this.http.get<DiningOrder[]>(`${this.api}/orders`, { params }),
     );
+  }
+
+  /**
+   * Cuenta las órdenes `entregada`+`UNPAID` (el KPI "Órdenes activas" del
+   * Dashboard) sin traer el listado completo con items/options/toppings de
+   * TODO el negocio -- reusa la rama paginada de `GET /orders`
+   * (`entregadas_sin_cobrar`, spec 147 FR-014/SC-003) con `size=1` y lee
+   * `total` del `Page`, en vez de `listOrders()` + filtrar en el cliente.
+   */
+  async countEntregadasSinCobrar(): Promise<number> {
+    const result = await firstValueFrom(
+      this.http.get<Page<DiningOrder>>(`${this.api}/orders`, {
+        params: { entregadas_sin_cobrar: 'true', page: 1, size: 1 },
+      }),
+    );
+    return result.total;
   }
 
   /** Fetch a single comanda by id (staff). Throws `HttpErrorResponse` (e.g. 404). */
@@ -107,21 +124,21 @@ export class DiningSessionService {
    * Busca la venta ya facturada de un pedido (feature 028, T033) para poder
    * "Reimprimir Factura POS" sin depender de una caché local: sirve tanto
    * para un pedido de mostrador cobrado en otra pestaña/sesión como para uno
-   * de origen QR, que nunca pasa por `checkoutAndSend`. `GET /invoices` ya
-   * filtra por `order_id` y trae el `sale_id`; de ahí se pide la venta
-   * completa (con `items`/`payments`) que espera `saleToReceipt`.
+   * de origen QR, que nunca pasa por `checkoutAndSend`. `GET /sales` filtra
+   * directo por `customer_order_id` y ya trae `items`/`payments` completos
+   * (que espera `saleToReceipt`) en una sola petición -- antes rodeaba por
+   * `GET /invoices?order_id=` solo para leer `sale_id` y recién ahí pedía
+   * `GET /sales/{id}`.
    *
-   * Devuelve `null` si el pedido todavía no tiene ninguna factura emitida.
+   * Devuelve `null` si el pedido todavía no tiene ninguna venta emitida.
    */
   async findSaleForOrder(orderId: string): Promise<Sale | null> {
-    const invoices = await firstValueFrom(
-      this.http.get<Array<{ sale_id: string }>>(`${this.api}/invoices`, {
-        params: { order_id: orderId },
+    const page = await firstValueFrom(
+      this.http.get<Page<Sale>>(`${this.api}/sales`, {
+        params: { customer_order_id: orderId, size: 1 },
       }),
     );
-    const invoice = invoices[0];
-    if (!invoice) return null;
-    return firstValueFrom(this.http.get<Sale>(`${this.api}/sales/${invoice.sale_id}`));
+    return page.items[0] ?? null;
   }
 
   /**

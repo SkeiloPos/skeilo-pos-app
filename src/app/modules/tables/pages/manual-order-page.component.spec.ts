@@ -1038,7 +1038,7 @@ describe('ManualOrderPageComponent', () => {
   // spec 111 (FR-001/FR-002, RN1): tras crear el pedido, vuelve a la terminal con ese pedido ya
   // seleccionado (`pedido`) y la pestaña correcta activa (`pestana`) — ya no a la pestaña Mesas
   // por defecto sin nada seleccionado.
-  it('"Crear pedido" (Mesa) crea el pedido y vuelve a la terminal con pestana "mesas", la mesa y el pedido seleccionados', async () => {
+  it('"Crear pedido" (Mesa) crea el pedido y navega al detalle de esa mesa con el pedido recién creado', async () => {
     createComponent('t1');
     tableService.tables.set([table({ id: 't1', number: 3 })]);
     fixture.detectChanges();
@@ -1068,12 +1068,12 @@ describe('ManualOrderPageComponent', () => {
     await Promise.resolve();
 
     expect(createSpy).toHaveBeenCalled();
-    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones'], {
-      queryParams: { pestana: 'mesas', pedido: 'o-mesa-1', mesa: 't1' },
+    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones', 't1'], {
+      queryParams: { pedido: 'o-mesa-1' },
     });
   });
 
-  it('"Crear pedido" (Para llevar) vuelve a la terminal con pestana "para-llevar" y el pedido seleccionado', async () => {
+  it('"Crear pedido" (Para llevar) navega al detalle del pedido recién creado, sin mesa', async () => {
     createComponent(null, 'para-llevar');
     fixture.detectChanges();
     await Promise.resolve();
@@ -1100,12 +1100,10 @@ describe('ManualOrderPageComponent', () => {
     confirmButton.click();
     await Promise.resolve();
 
-    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones'], {
-      queryParams: { pestana: 'para-llevar', pedido: 'o-llevar-1' },
-    });
+    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones', 'pedido', 'o-llevar-1']);
   });
 
-  it('"Crear pedido" (Domicilio) vuelve a la terminal con pestana "domicilios" y el pedido seleccionado', async () => {
+  it('"Crear pedido" (Domicilio) navega al detalle del pedido recién creado, sin mesa', async () => {
     createComponent(null, 'domicilio');
     fixture.detectChanges();
     await Promise.resolve();
@@ -1135,9 +1133,7 @@ describe('ManualOrderPageComponent', () => {
     confirmButton.click();
     await Promise.resolve();
 
-    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones'], {
-      queryParams: { pestana: 'domicilios', pedido: 'o-domicilio-1' },
-    });
+    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones', 'pedido', 'o-domicilio-1']);
   });
 
   // spec 111 (FR-003, RN2): si falla, se queda en "Nueva orden" con el carrito intacto.

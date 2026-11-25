@@ -4,7 +4,6 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { SalesPageComponent } from './sales-page.component';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
-import { PaymentMethodService } from '../services/payment-method.service';
 import { Sale } from '../interfaces/sales.interface';
 
 /**
@@ -169,7 +168,9 @@ describe('SalesPageComponent — Cambio en el detalle (spec 087, FR-013)', () =>
       status: 'paid',
       sold_at: '2026-09-03T01:05:00Z',
       items: [],
-      payments: [{ id: 'p1', payment_method_id: 'pm-efectivo', amount: '10000' }],
+      payments: [
+        { id: 'p1', payment_method_id: 'pm-efectivo', payment_method_name: 'Efectivo', is_cash: true, amount: '10000' },
+      ],
       ...over,
     } as Sale;
   }
@@ -194,9 +195,6 @@ describe('SalesPageComponent — Cambio en el detalle (spec 087, FR-013)', () =>
   it('pago 100% efectivo muestra "Cambio: $X"', () => {
     const fixture = TestBed.createComponent(SalesPageComponent);
     fixture.detectChanges();
-    TestBed.inject(PaymentMethodService).methods.set([
-      { id: 'pm-efectivo', catalog_id: null, name: 'Efectivo', type: 'cash', is_cash: true, active: true, is_complete: true } as never,
-    ]);
 
     fixture.componentInstance.selected.set(saleBase());
     fixture.detectChanges();
@@ -209,15 +207,14 @@ describe('SalesPageComponent — Cambio en el detalle (spec 087, FR-013)', () =>
   it('pago 100% no-efectivo no muestra "Cambio"', () => {
     const fixture = TestBed.createComponent(SalesPageComponent);
     fixture.detectChanges();
-    TestBed.inject(PaymentMethodService).methods.set([
-      { id: 'pm-tarjeta', catalog_id: null, name: 'Tarjeta', type: 'card', is_cash: false, active: true, is_complete: true } as never,
-    ]);
 
     fixture.componentInstance.selected.set(
       saleBase({
         paid_amount: '8000',
         change_given: '0',
-        payments: [{ id: 'p1', payment_method_id: 'pm-tarjeta', amount: '8000' }],
+        payments: [
+          { id: 'p1', payment_method_id: 'pm-tarjeta', payment_method_name: 'Tarjeta', is_cash: false, amount: '8000' },
+        ],
       }),
     );
     fixture.detectChanges();

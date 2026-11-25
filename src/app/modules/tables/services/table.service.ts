@@ -14,12 +14,22 @@ import {
   TableUpdatePayload,
 } from '../interfaces/table.interface';
 import {
+  DiningOrder,
   MoveItemRequest,
   MoveItemResponse,
   SplitItemToNewRequest,
   SplitItemToNewResponse,
   SplitOrderResponse,
 } from '../interfaces/dining.interface';
+
+/** `TableDetailResponse` -- detalle agregado de una mesa (mesa + sesión activa
+ *  + pedidos) para el detalle de un pedido en la Terminal, en una sola
+ *  petición en vez de tres sueltas. */
+export interface TableDetail {
+  table: Table | null;
+  session: { id: string } | null;
+  orders: DiningOrder[];
+}
 
 @Injectable({ providedIn: 'root' })
 export class TableService {
@@ -94,6 +104,35 @@ export class TableService {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  /**
+   * Detalle agregado de una mesa (mesa + sesión activa + pedidos) -- usado al
+   * entrar directo al detalle de un pedido por URL, donde la grilla queda
+   * oculta y no hace falta el negocio completo. Reemplaza lo que antes eran 3
+   * peticiones sueltas (esta mesa en `/orders/tables`, `/table-sessions` sin
+   * filtro + buscar la propia, `/orders` de esta mesa) que siempre se pedían
+   * juntas al abrir el detalle -- `bill`/`checkout-preview` quedan afuera a
+   * propósito, tienen su propio ciclo de invalidación (ver
+   * `pos-terminal.store.ts::loadSessionBill`).
+   */
+  async getTableDetail(tableId: string): Promise<TableDetail> {
+    return firstValueFrom(this.http.get<TableDetail>(`${this.baseUrl}/${tableId}/detail`));
+  }
+
+  /** Upsert -- nunca reemplazo total de `tables()`. `tables` es
+   *  `providedIn: 'root'` y otras pantallas (detalle de orden, listado de
+   *  órdenes, hoja de QR) lo consumen completo; si alguna ya lo cargó entero
+   *  en esta pestaña, acotar una mesa no debe borrarle el resto. */
+  upsertTable(row: Table | null): void {
+    if (!row) return;
+    this.tables.update((list) => {
+      const idx = list.findIndex((t) => t.id === row.id);
+      if (idx === -1) return [...list, row].sort((a, b) => a.number - b.number);
+      const copy = [...list];
+      copy[idx] = row;
+      return copy;
+    });
   }
 
   async createTable(data: TableForm): Promise<void> {

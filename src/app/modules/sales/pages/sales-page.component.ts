@@ -2,7 +2,6 @@ import { DecimalPipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { SalesService } from '../services/sales.service';
-import { PaymentMethodService } from '../services/payment-method.service';
 import { Sale, SaleStatus } from '../interfaces/sales.interface';
 import { TenantInfoService } from '../../../core/tenant/tenant-info.service';
 import { PrinterSettingsStore } from '../../../core/printing/printer-settings.store';
@@ -185,7 +184,7 @@ const STATUS_CHIP_CLASSES: Record<SaleStatus, string> = {
                 <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Pagos</p>
                 @for (p of r.payments; track p.id) {
                   <div class="flex justify-between text-gray-600">
-                    <span>{{ methodName(p.payment_method_id) }}</span>
+                    <span>{{ p.payment_method_name }}</span>
                     <span>$ {{ +p.amount | number: '1.2-2' }}</span>
                   </div>
                 }
@@ -199,7 +198,6 @@ const STATUS_CHIP_CLASSES: Record<SaleStatus, string> = {
 })
 export class SalesPageComponent implements OnInit, OnDestroy {
   readonly svc = inject(SalesService);
-  private readonly methods = inject(PaymentMethodService);
   private readonly tenantInfo = inject(TenantInfoService);
   private readonly printer = inject(PrinterSettingsStore);
   readonly selected = signal<Sale | null>(null);
@@ -210,7 +208,6 @@ export class SalesPageComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.svc.list();
-    this.methods.load();
     // Para el ticket: nombre del negocio, logo y mensaje de cierre.
     if (!this.tenantInfo.info()) void this.tenantInfo.load();
   }
@@ -245,18 +242,11 @@ export class SalesPageComponent implements OnInit, OnDestroy {
     return STATUS_CHIP_CLASSES[status];
   }
 
-  methodName(id: string): string {
-    return this.methods.methods().find((m) => m.id === id)?.name ?? 'Pago';
-  }
-
   /** spec 087 (FR-013): ¿el pago de esta venta incluyó algún método en
    *  efectivo? -- gobierna si se muestra "Cambio: $X" (backend ya serializa
    *  `change_given`, sin cambios de esquema). */
   hasCashComponent(sale: Sale): boolean {
-    const cashIds = new Set(
-      this.methods.methods().filter((m) => m.is_cash).map((m) => m.id),
-    );
-    return (sale.payments ?? []).some((p) => cashIds.has(p.payment_method_id));
+    return (sale.payments ?? []).some((p) => p.is_cash);
   }
 
   /** Cómo se identifica la venta: por su factura, o por el id si no tiene. */
@@ -273,7 +263,6 @@ export class SalesPageComponent implements OnInit, OnDestroy {
             businessName: this.tenantInfo.businessName(),
             logoUrl: this.tenantInfo.logoUrl(),
             message: this.tenantInfo.receiptMessage(),
-            methodName: (id) => this.methodName(id),
           }),
         ],
         { paperWidthMm: this.printer.paperWidthMm(), timezone: this.tenantInfo.timezone() },

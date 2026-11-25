@@ -66,7 +66,7 @@ describe('ModuleAccessLostService (spec 141)', () => {
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(toastError).toHaveBeenCalledWith(MODULE_NOT_IN_PLAN_MESSAGE);
     expect(navigateByUrl).toHaveBeenCalledTimes(1);
-    expect(navigateByUrl).toHaveBeenCalledWith('/dashboard');
+    expect(navigateByUrl).toHaveBeenCalledWith('/dashboard/modulo-no-disponible');
     expect(load).toHaveBeenCalledTimes(1);
     expect(load).toHaveBeenCalledWith({ force: true });
   });
@@ -164,7 +164,7 @@ describe('ModuleAccessLostService (spec 141)', () => {
       await service.handle(modulo);
 
       expect(toastError).toHaveBeenCalledTimes(1);
-      expect(navigateByUrl).toHaveBeenCalledWith('/dashboard');
+      expect(navigateByUrl).toHaveBeenCalledWith('/dashboard/modulo-no-disponible');
       expect(load).toHaveBeenCalledWith({ force: true });
       expect(summary()!.modules).toEqual({ inventario: true, promociones: true, cocina: false });
       expect(Object.keys(summary()!.modules)).toEqual(['inventario', 'promociones', 'cocina']);

@@ -48,6 +48,48 @@ describe('TableService', () => {
     expect(service.tables().map((t) => t.number)).toEqual([1, 3]);
   });
 
+  it('getTableDetail pide el endpoint agregado de la mesa', async () => {
+    const promise = service.getTableDetail('t1');
+    const req = http.expectOne(`${base}/t1/detail`);
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      table: table({ id: 't1', number: 3, status: 'ocupada' }),
+      session: { id: 'ts1' },
+      orders: [],
+    });
+    const detail = await promise;
+    expect(detail.table?.id).toBe('t1');
+    expect(detail.session?.id).toBe('ts1');
+    expect(detail.orders).toEqual([]);
+  });
+
+  describe('upsertTable', () => {
+    it('agrega la mesa si no estaba en tables()', () => {
+      service.tables.set([table({ id: 'a', number: 1 })]);
+
+      service.upsertTable(table({ id: 'b', number: 2 }));
+
+      expect(service.tables().map((t) => t.id)).toEqual(['a', 'b']);
+    });
+
+    it('actualiza la fila existente sin tocar el resto de tables()', () => {
+      service.tables.set([table({ id: 'a', number: 1, status: 'libre' }), table({ id: 'b', number: 2 })]);
+
+      service.upsertTable(table({ id: 'a', number: 1, status: 'ocupada' }));
+
+      expect(service.tables().find((t) => t.id === 'a')?.status).toBe('ocupada');
+      expect(service.tables().map((t) => t.id)).toEqual(['a', 'b']);
+    });
+
+    it('con null, no hace nada (mesa libre sin fila -- nunca pasa hoy, pero no debe romper)', () => {
+      service.tables.set([table({ id: 'a', number: 1 })]);
+
+      service.upsertTable(null);
+
+      expect(service.tables().map((t) => t.id)).toEqual(['a']);
+    });
+  });
+
   it('creates a table sending number + name (no client qr_token)', async () => {
     const promise = service.createTable({ number: 5, name: 'Terraza' });
     const req = http.expectOne(base);

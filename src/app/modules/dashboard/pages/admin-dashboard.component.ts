@@ -1,7 +1,6 @@
 import { Component, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DiningSessionService } from '../../tables/services/dining-session.service';
-import { DiningOrder } from '../../tables/interfaces/dining.interface';
 import { TenantDatePipe } from '../../../shared/pipes/tenant-date.pipe';
 import { IconMiComponent } from '../../../shared/icon-mi/icon-mi.component';
 import { CashService } from '../../cash-register/services/cash.service';
@@ -339,16 +338,12 @@ export class AdminDashboardComponent implements OnInit {
     });
   }
 
-  /** Solo alimenta `activeOrdersCount` (el 4º KPI) -- la lista de "Órdenes
-   *  recientes" que antes la consumía se retiró del Dashboard a pedido del
-   *  negocio. */
-  readonly orders = signal<DiningOrder[]>([]);
-
-  /** Spec 147: ya no existen 'abierta'/'bloqueada' -- el equivalente de
+  /** El 4º KPI -- antes se derivaba de `listOrders()` completo (todas las
+   *  órdenes del negocio con items/options/toppings) filtrado en el cliente;
+   *  ahora viene ya contado del backend (`countEntregadasSinCobrar()`). Spec
+   *  147: ya no existen 'abierta'/'bloqueada' -- el equivalente de
    *  "comprometida, todavía sin cerrar" es entregada y sin cobrar (FR-006). */
-  readonly activeOrdersCount = computed(
-    () => this.orders().filter((o) => o.status === 'entregada' && o.payment_status === 'UNPAID').length,
-  );
+  readonly activeOrdersCount = signal(0);
 
   // ── Saludo (spec 122, FR-001/FR-010) ────────────────────────────────────
 
@@ -608,7 +603,7 @@ export class AdminDashboardComponent implements OnInit {
   /** Única razón de esta llamada: `activeOrdersCount` (el 4º KPI). */
   private async loadOrders(): Promise<void> {
     try {
-      this.orders.set(await this.api.listOrders());
+      this.activeOrdersCount.set(await this.api.countEntregadasSinCobrar());
     } catch {
       // El KPI simplemente se queda en 0 -- no hay dónde mostrar un error
       // propio para este dato (research.md: no es una sección con su propio estado).

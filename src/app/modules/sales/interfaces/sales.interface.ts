@@ -140,6 +140,12 @@ export interface SaleItem {
 export interface SalePayment {
   id: string;
   payment_method_id: string;
+  /** Nombre del método al momento de leer la venta -- no una copia congelada
+   *  (el backend lo resuelve del `PaymentMethod` vigente, pueda o no seguir
+   *  activo hoy). Evita un segundo fetch a `/sales/payment-methods` solo para
+   *  mapear id -> nombre en el recibo. */
+  payment_method_name: string;
+  is_cash: boolean;
   amount: string;
   reference?: string | null;
 }

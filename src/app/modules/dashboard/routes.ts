@@ -27,6 +27,18 @@ export const dashboardRoutes: Routes = [
         canActivate: [roleGuard([UserRole.ADMIN, UserRole.CASHIER])],
       },
       {
+        // Destino seguro sin `roleGuard`/`planModuleGuard` a propósito --
+        // tiene que ser alcanzable por cualquier rol sin ninguna condición,
+        // para poder cortar cualquier bucle de redirección (ver el
+        // comentario del componente: bug real de un rol KITCHEN sin el
+        // módulo "cocina" en su plan).
+        path: 'modulo-no-disponible',
+        loadComponent: () =>
+          import('./pages/module-unavailable-page.component').then(
+            (m) => m.ModuleUnavailablePageComponent,
+          ),
+      },
+      {
         // Ajustes de cuenta personal (spec 031) — a diferencia de 'ajustes'
         // (configuración del negocio, solo ADMIN), accesible a cualquier
         // usuario autenticado del dashboard, sin roleGuard.
@@ -216,6 +228,29 @@ export const dashboardRoutes: Routes = [
         path: 'mesas-sesiones/orden-manual',
         loadComponent: () =>
           import('../tables/pages/manual-order-page.component').then((m) => m.ManualOrderPageComponent),
+        canActivate: [roleGuard([UserRole.ADMIN, UserRole.CASHIER, UserRole.MESERO])],
+      },
+      {
+        // Pedido de mostrador/domicilio sin mesa, en su propia ruta -- mismo
+        // componente de detalle que `mesas-sesiones/:mesa`, sin mesa. Debe
+        // quedar ANTES de `mesas-sesiones/:mesa` en este arreglo: dos
+        // segmentos literales ("pedido" + id) no compiten con esa ruta de un
+        // solo segmento, pero el orden de las rutas de abajo (`orden-manual`)
+        // sí importa frente a `:mesa` -- Angular usa la primera que matchee.
+        path: 'mesas-sesiones/pedido/:pedido',
+        loadComponent: () =>
+          import('../tables/pages/table-order-detail.component').then((m) => m.TableOrderDetailComponent),
+        canActivate: [roleGuard([UserRole.ADMIN, UserRole.CASHIER, UserRole.MESERO])],
+      },
+      {
+        // Detalle de un pedido de mesa, en su propia ruta (ya no es la misma
+        // grilla con la columna oculta por CSS) -- DEBE ir después de
+        // `mesas-sesiones/orden-manual` y `mesas-sesiones/pedido/:pedido`:
+        // `:mesa` matchea cualquier segmento único, así que si fuera antes
+        // "capturaría" esas rutas literales también.
+        path: 'mesas-sesiones/:mesa',
+        loadComponent: () =>
+          import('../tables/pages/table-order-detail.component').then((m) => m.TableOrderDetailComponent),
         canActivate: [roleGuard([UserRole.ADMIN, UserRole.CASHIER, UserRole.MESERO])],
       },
       {

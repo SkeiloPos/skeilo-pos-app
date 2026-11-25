@@ -189,23 +189,26 @@ describe('PosTablesPanelComponent', () => {
       (b as HTMLButtonElement).textContent?.includes(label),
     ) as HTMLButtonElement | undefined;
 
-  // La selección de mesa se reactivó a pedido del usuario: tocar una mesa
-  // (libre u ocupada) selecciona su detalle en el panel derecho, mismo
-  // mecanismo (select) que ya usan las tarjetas de Para Llevar/Domicilio.
-  it('tocar una mesa libre la selecciona', () => {
+  // A pedido del usuario: una mesa libre (sin ningún pedido) no tiene ningún
+  // detalle al que navegar -- tocarla solo la selecciona en esta misma
+  // instancia de store (resalta la tarjeta), igual que antes del refactor
+  // por rutas. El CTA "Crear pedido nuevo" de la sub-barra (fuera de este
+  // componente) es el que usa esa selección para llevar la mesa
+  // preseleccionada al formulario de orden manual.
+  it('tocar una mesa libre (sin pedidos) solo la selecciona, sin navegar', () => {
     tableService.tables.set([table({ id: 't1', number: 3, status: 'libre' })]);
     fixture.detectChanges();
-    const selectSpy = vi.spyOn(store, 'selectTable');
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    const selectTableSpy = vi.spyOn(store, 'selectTable');
 
     tableCard('Mesa 3')!.click();
 
-    expect(selectSpy).toHaveBeenCalledWith('t1');
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(selectTableSpy).toHaveBeenCalledWith('t1');
     expect(store.selectedTableId()).toBe('t1');
-    // selectTable() dispara loadSessionBill() en segundo plano.
-    http.expectOne(`${API}/table-sessions`).flush([]);
   });
 
-  it('tocar una mesa ocupada también la selecciona', () => {
+  it('tocar una mesa ocupada también navega a su detalle', () => {
     tableService.tables.set([table({ id: 't1', number: 3, status: 'ocupada' })]);
     store.orders.set([
       {
@@ -218,14 +221,11 @@ describe('PosTablesPanelComponent', () => {
       } as unknown as ReturnType<PosTerminalStore['orders']>[number],
     ]);
     fixture.detectChanges();
-    const selectSpy = vi.spyOn(store, 'selectTable');
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     tableCard('Mesa 3')!.click();
 
-    expect(selectSpy).toHaveBeenCalledWith('t1');
-    expect(store.selectedTableId()).toBe('t1');
-    // selectTable() dispara loadSessionBill() en segundo plano.
-    http.expectOne(`${API}/table-sessions`).flush([]);
+    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones', 't1']);
   });
 
   function standaloneOrder(
@@ -271,16 +271,16 @@ describe('PosTablesPanelComponent', () => {
     expect(text.toLowerCase()).toContain('domicilio');
   });
 
-  it('seleccionar una tarjeta de pedido "Para llevar" llama a store.selectStandaloneOrder() (spec 059, Historia 3)', () => {
+  it('seleccionar una tarjeta de pedido "Para llevar" navega a su detalle sin mesa (spec 059, Historia 3)', () => {
     store.orders.set([standaloneOrder('o1', 'TAKEAWAY', 'María G.')]);
     fixture.detectChanges();
     store.setOrderTypeTab('para-llevar');
     fixture.detectChanges();
-    const selectSpy = vi.spyOn(store, 'selectStandaloneOrder');
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     tableCard('María G.')!.click();
 
-    expect(selectSpy).toHaveBeenCalledWith('o1');
+    expect(navigateSpy).toHaveBeenCalledWith(['/dashboard/mesas-sesiones', 'pedido', 'o1']);
   });
 
   // Reescrito para el rediseño visual (spec 131, FR-002/FR-003): el ícono del

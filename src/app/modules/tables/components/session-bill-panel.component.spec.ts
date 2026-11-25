@@ -1,9 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import {
-  HttpTestingController,
-  provideHttpClientTesting,
-} from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { environment } from '../../../../environments/environment';
 import { SessionBillPanelComponent } from './session-bill-panel.component';
 import { CloseSessionPayload, SessionBill } from '../interfaces/dining.interface';
@@ -20,7 +17,9 @@ const bill: SessionBill = {
   dining_table_id: 't1',
   total: '12000',
   order_ids: ['o1'],
-  split: [{ participant_id: 'p1', display_label: 'Ana', subtotal: '12000', items: [], discount: '0' }],
+  split: [
+    { participant_id: 'p1', display_label: 'Ana', subtotal: '12000', items: [], discount: '0' },
+  ],
 };
 
 /** Dos comensales con consumo: habilita el modo dividido. */
@@ -295,8 +294,8 @@ describe('SessionBillPanelComponent', () => {
 
   // ── A pedido del usuario: total del pedido enfocado por su pestaña "Pedido N" ──
   describe('selectedOrderTotal (total del pedido enfocado)', () => {
-    it('sin selectedOrderTotal no muestra "Total de este pedido" (mesa con un único pedido, sin pestañas)', () => {
-      expect(fixture.nativeElement.textContent).not.toContain('Total de este pedido');
+    it('sin selectedOrderTotal no muestra "Total pedido" (mesa con un único pedido, sin pestañas)', () => {
+      expect(fixture.nativeElement.textContent).not.toContain('Total pedido');
     });
 
     it('con selectedOrderTotal, lo muestra aparte del resto del desglose de la mesa', () => {
@@ -304,7 +303,7 @@ describe('SessionBillPanelComponent', () => {
       fixture.detectChanges();
 
       const texto = fixture.nativeElement.textContent as string;
-      expect(texto).toContain('Total de este pedido');
+      expect(texto).toContain('Total pedido');
       expect(texto).toContain('12.000');
     });
   });
@@ -337,9 +336,7 @@ describe('SessionBillPanelComponent', () => {
 
     expect(chargeButton().disabled).toBe(false);
     // El backend deriva `paid_amount` y `change_given` de este importe.
-    expect((await charge()).payments).toEqual([
-      { payment_method_id: 'pm1', amount: 50000 },
-    ]);
+    expect((await charge()).payments).toEqual([{ payment_method_id: 'pm1', amount: 50000 }]);
   });
 
   it('no deja cobrar si el pago no cubre la cuenta', async () => {
@@ -403,7 +400,10 @@ describe('SessionBillPanelComponent', () => {
 
     const done = panel.charge();
     const req = http.expectOne(`${API}/table-sessions/ts1/close`);
-    req.flush({ detail: 'Hay ítems sin terminar en cocina' }, { status: 409, statusText: 'Conflict' });
+    req.flush(
+      { detail: 'Hay ítems sin terminar en cocina' },
+      { status: 409, statusText: 'Conflict' },
+    );
     await done;
     fixture.detectChanges();
 
@@ -459,4 +459,3 @@ describe('SessionBillPanelComponent', () => {
     });
   });
 });
-

@@ -7,6 +7,7 @@ import {
   Output,
   SimpleChanges,
   computed,
+  inject,
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -24,6 +25,7 @@ import {
 } from '../services/payment-draft.util';
 import { formatMoney } from '../services/receipt.util';
 import { MoneyInputComponent } from '../../../shared/money-input/money-input.component';
+import { ConfirmService } from '../../../shared/feedback/confirm.service';
 
 /**
  * Cómo paga el cliente un cobro: de 1 a 3 líneas de pago (spec 112, RN3) --
@@ -154,6 +156,8 @@ import { MoneyInputComponent } from '../../../shared/money-input/money-input.com
   `,
 })
 export class PaymentInputComponent implements OnChanges {
+  private readonly confirm = inject(ConfirmService);
+
   /** Lo que hay que cubrir con este cobro. */
   @Input() total = 0;
   @Input() methods: PaymentMethodCheckoutOption[] = [];
@@ -271,8 +275,16 @@ export class PaymentInputComponent implements OnChanges {
 
   /** FR-010: elimina la línea y el saldo pendiente se recalcula de
    * inmediato (es derivado de `draft()`, no hay nada más que tocar). Nunca
-   * deja el borrador sin ninguna línea. */
-  removeLine(index: number): void {
+   * deja el borrador sin ninguna línea. Pide confirmación antes de borrar
+   * para no perder por error un monto ya digitado. */
+  async removeLine(index: number): Promise<void> {
+    const ok = await this.confirm.ask({
+      title: 'Eliminar método de pago',
+      message: '¿Eliminar este método de pago? Se perderá el monto ingresado en esta línea.',
+      confirmText: 'Eliminar',
+      tone: 'danger',
+    });
+    if (!ok) return;
     this.draft.update((d) => (d.length > 1 ? d.filter((_line, i) => i !== index) : d));
     this.changed.emit(this.draft());
   }
