@@ -510,19 +510,16 @@ describe('PosTerminalStore.resolveSaleForOrder', () => {
     const found = await store.resolveSaleForOrder('o1');
 
     expect(found?.id).toBe('s1');
-    http.expectNone(`${API}/invoices?order_id=o1`);
+    http.expectNone((r) => r.url === `${API}/sales` && r.params.get('customer_order_id') === 'o1');
   });
 
-  it('si no está en caché, la busca por order_id → factura → venta completa', async () => {
+  it('si no está en caché, la busca por customer_order_id en una sola petición', async () => {
     const promise = store.resolveSaleForOrder('o1');
 
-    const invoiceReq = http.expectOne((r) => r.url === `${API}/invoices` && r.params.get('order_id') === 'o1');
-    invoiceReq.flush([{ id: 'inv1', sale_id: 's1' }]);
-    // La segunda petición sale de un `await` dentro de `findSaleForOrder`:
-    // hace falta ceder el microtask antes de que `expectOne` la vea.
-    await Promise.resolve();
-    const saleReq = http.expectOne(`${API}/sales/s1`);
-    saleReq.flush(sale());
+    const saleReq = http.expectOne(
+      (r) => r.url === `${API}/sales` && r.params.get('customer_order_id') === 'o1',
+    );
+    saleReq.flush({ items: [sale()], total: 1, page: 1, size: 1, pages: 1 });
 
     const found = await promise;
     expect(found?.id).toBe('s1');
@@ -530,11 +527,13 @@ describe('PosTerminalStore.resolveSaleForOrder', () => {
     expect(store.checkoutSaleByOrderId()['o1']?.id).toBe('s1');
   });
 
-  it('si el pedido no tiene ninguna factura emitida, avisa por toast y no revienta', async () => {
+  it('si el pedido no tiene ninguna venta emitida, avisa por toast y no revienta', async () => {
     const promise = store.resolveSaleForOrder('o1');
 
-    const invoiceReq = http.expectOne((r) => r.url === `${API}/invoices` && r.params.get('order_id') === 'o1');
-    invoiceReq.flush([]);
+    const saleReq = http.expectOne(
+      (r) => r.url === `${API}/sales` && r.params.get('customer_order_id') === 'o1',
+    );
+    saleReq.flush({ items: [], total: 0, page: 1, size: 1, pages: 0 });
 
     const found = await promise;
     expect(found).toBeNull();
@@ -1333,7 +1332,7 @@ describe('PosTerminalStore.deliverOrder — pedido entregado sigue seleccionado 
     // `selectTable()` de una mesa con un pedido `paid` precarga su venta real
     // (bugfix "Ya pagado" en Cuenta de la mesa) — sin sale encontrada aquí,
     // que es justo lo que este test no necesita.
-    http.expectOne((r) => r.url === `${API}/invoices`).flush([]);
+    http.expectOne((r) => r.url === `${API}/sales`).flush({ items: [], total: 0, page: 1, size: 1, pages: 0 });
     expect(store.selectedOrderId()).toBe('o1');
 
     const promise = store.deliverOrder();
@@ -3060,12 +3059,11 @@ describe('PosTerminalStore.selectedTablePaidSummary — "Ya pagado" (bugfix spec
     expect(store.selectedTablePaidSummary()).toBeNull(); // aún sin cargar
 
     http
-      .expectOne((r) => r.url === `${API}/invoices`)
-      .flush([{ sale_id: 's1' }]);
-    await tick();
-    http
-      .expectOne(`${API}/sales/s1`)
-      .flush({ id: 's1', subtotal: '8000', discount: '1000', total: '7000' });
+      .expectOne((r) => r.url === `${API}/sales`)
+      .flush({
+        items: [{ id: 's1', subtotal: '8000', discount: '1000', total: '7000' }],
+        total: 1, page: 1, size: 1, pages: 1,
+      });
     await tick();
 
     expect(store.selectedTablePaidSummary()).toEqual({ subtotal: 8000, discount: 1000, total: 7000 });
@@ -3078,14 +3076,15 @@ describe('PosTerminalStore.selectedTablePaidSummary — "Ya pagado" (bugfix spec
 
     store.selectTable('t1');
     http.expectOne(`${API}/table-sessions`).flush([]);
-    http.expectOne((r) => r.url === `${API}/invoices`).flush([{ sale_id: 's1' }]);
-    await tick();
-    http.expectOne(`${API}/sales/s1`).flush({ id: 's1', subtotal: '8000', discount: '0', total: '8000' });
+    http.expectOne((r) => r.url === `${API}/sales`).flush({
+      items: [{ id: 's1', subtotal: '8000', discount: '0', total: '8000' }],
+      total: 1, page: 1, size: 1, pages: 1,
+    });
     await tick();
 
     store.selectTable('t1');
     http.expectOne(`${API}/table-sessions`).flush([]);
-    // Sin una segunda petición a /invoices — ya se intentó para ese pedido.
+    // Sin una segunda petición a /sales — ya se intentó para ese pedido.
 
     expect(store.selectedTablePaidSummary()).toEqual({ subtotal: 8000, discount: 0, total: 8000 });
   });
