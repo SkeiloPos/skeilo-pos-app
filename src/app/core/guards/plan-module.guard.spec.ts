@@ -52,7 +52,7 @@ describe('planModuleGuard (spec 141)', () => {
 
     const result = await run('inventario');
 
-    expect(result).toEqual({ commands: ['/dashboard'] });
+    expect(result).toEqual({ commands: ['/dashboard/modulo-no-disponible'] });
     expect(toast.error).toHaveBeenCalledTimes(1);
     expect(toast.error).toHaveBeenCalledWith(MODULE_NOT_IN_PLAN_MESSAGE);
     expect(MODULE_NOT_IN_PLAN_MESSAGE).toBe('Esta funcionalidad no está incluida en tu plan');
@@ -63,7 +63,7 @@ describe('planModuleGuard (spec 141)', () => {
 
     const result = await run('promociones');
 
-    expect(result).toEqual({ commands: ['/dashboard'] });
+    expect(result).toEqual({ commands: ['/dashboard/modulo-no-disponible'] });
     expect(toast.error).toHaveBeenCalledWith(MODULE_NOT_IN_PLAN_MESSAGE);
   });
 
@@ -72,7 +72,7 @@ describe('planModuleGuard (spec 141)', () => {
 
     const result = await run('inventario');
 
-    expect(result).toEqual({ commands: ['/dashboard'] });
+    expect(result).toEqual({ commands: ['/dashboard/modulo-no-disponible'] });
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -81,7 +81,7 @@ describe('planModuleGuard (spec 141)', () => {
 
     const result = await run('inventario');
 
-    expect(result).toEqual({ commands: ['/dashboard'] });
+    expect(result).toEqual({ commands: ['/dashboard/modulo-no-disponible'] });
     expect(toast.error).not.toHaveBeenCalled();
   });
 

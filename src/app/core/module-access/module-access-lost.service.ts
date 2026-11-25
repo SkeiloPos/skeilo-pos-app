@@ -42,8 +42,12 @@ export class ModuleAccessLostService {
       // El menú se corrige en el acto (síncrono), antes de esperar al servidor.
       if (key !== null) this.planSummary.markModuleMissing(key);
       this.toast.error(MODULE_NOT_IN_PLAN_MESSAGE);
+      // Bugfix: `/dashboard` (= `/dashboard/admin`, solo ADMIN) no es un
+      // destino seguro para cualquier rol -- un KITCHEN cuyo módulo "cocina"
+      // se acaba de perder quedaría rebotando entre acá y `/dashboard/cocina`
+      // (mismo bucle real que ya se corrigió en `plan-module.guard.ts`).
       await Promise.allSettled([
-        this.router.navigateByUrl('/dashboard'),
+        this.router.navigateByUrl('/dashboard/modulo-no-disponible'),
         this.planSummary.load({ force: true }),
       ]);
     } finally {

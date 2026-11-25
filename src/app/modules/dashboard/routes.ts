@@ -27,6 +27,18 @@ export const dashboardRoutes: Routes = [
         canActivate: [roleGuard([UserRole.ADMIN, UserRole.CASHIER])],
       },
       {
+        // Destino seguro sin `roleGuard`/`planModuleGuard` a propósito --
+        // tiene que ser alcanzable por cualquier rol sin ninguna condición,
+        // para poder cortar cualquier bucle de redirección (ver el
+        // comentario del componente: bug real de un rol KITCHEN sin el
+        // módulo "cocina" en su plan).
+        path: 'modulo-no-disponible',
+        loadComponent: () =>
+          import('./pages/module-unavailable-page.component').then(
+            (m) => m.ModuleUnavailablePageComponent,
+          ),
+      },
+      {
         // Ajustes de cuenta personal (spec 031) — a diferencia de 'ajustes'
         // (configuración del negocio, solo ADMIN), accesible a cualquier
         // usuario autenticado del dashboard, sin roleGuard.

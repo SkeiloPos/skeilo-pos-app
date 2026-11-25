@@ -51,12 +51,18 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
         Cuenta de la mesa
       </h2>
 
-      @if (selectedOrderTotal !== null) {
+      @if (selectedOrderTotal !== null && !chargeOrderIds?.length) {
         <!-- A pedido del usuario: al navegar entre pestañas "Pedido N" (a la
              izquierda), este total acompaña -- antes solo se veía el de toda
-             la mesa, sin pista de cuánto sumaba el pedido enfocado. -->
+             la mesa, sin pista de cuánto sumaba el pedido enfocado.
+             Bugfix: con chargeOrderIds acotado a un único pedido, el bloque de
+             abajo ("Subtotal de este pedido"/"Total a cobrar (este pedido)")
+             ya muestra ese mismo pedido -- repetirlo aquí arriba era el mismo
+             número tres veces en pantalla. Esta fila solo aporta algo cuando
+             se está cobrando la mesa entera (chargeOrderIds vacío) y el
+             cajero tiene otra pestaña enfocada para mirar su detalle. -->
         <div class="mb-3 pb-3 border-b" style="border-color:var(--terminal-color-border,#e5e7eb)">
-          <app-bill-summary [total]="selectedOrderTotal" totalLabel="Total de este pedido" size="sm" />
+          <app-bill-summary [total]="selectedOrderTotal" totalLabel="Total pedido" size="sm" />
         </div>
       }
 
@@ -66,9 +72,16 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
              el consumo completo de la mesa -- esta línea de solo lectura
              mantiene esa referencia a la vista, sin mezclarla con lo que
              realmente se va a cobrar en esta transacción. -->
-        <div class="mb-3 pb-3 border-b flex items-center justify-between" style="border-color:var(--terminal-color-border,#e5e7eb)">
-          <span class="text-[12px]" style="color:var(--terminal-color-text-muted,#6b7280)">Consumo total de la mesa (referencia)</span>
-          <span class="text-[13px] font-semibold" style="color:var(--terminal-color-text-secondary,#374151)">{{ fmt(tableSubtotalAllOrders) }}</span>
+        <div
+          class="rounded-[8px] px-3 py-2.5 mb-3 flex items-center justify-between text-[13px]"
+          style="background:var(--terminal-color-surface-elevated,#f3f4f6);color:var(--terminal-color-text-secondary,#6b7280)"
+        >
+          <span>Consumo total de la mesa</span>
+          <span
+            class="font-mono font-medium tabular-nums"
+            style="color:var(--terminal-color-text-primary,#111827)"
+            >{{ fmt(tableSubtotalAllOrders) }}</span
+          >
         </div>
       }
 
@@ -79,7 +92,12 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
              bloque se ve incluso sin bill (mesa ya toda pagada, nada
              pendiente que desglosar). -->
         <div class="mb-3 pb-3 space-y-1">
-          <p class="text-[11px] font-semibold uppercase tracking-wide" style="color:var(--terminal-color-text-muted,#6b7280)">Ya pagado</p>
+          <p
+            class="text-[11px] font-semibold uppercase tracking-wide"
+            style="color:var(--terminal-color-text-muted,#6b7280)"
+          >
+            Ya pagado
+          </p>
           <!-- spec 115 (A-132): sin la fila "Descuento" -- "Subtotal" ya se muestra neto, igual
                que A-125/A-127/A-131. -->
           <app-bill-summary
@@ -98,13 +116,23 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
             class="rounded-[8px] border px-3 py-3 space-y-1"
             style="background:var(--terminal-color-warning-soft,#fffbeb);border-color:var(--terminal-color-warning-soft,#fde68a)"
           >
-            <p class="text-[14px] font-semibold" style="color:var(--terminal-color-warning,#92400e)">No se puede cobrar esta mesa</p>
+            <p
+              class="text-[14px] font-semibold"
+              style="color:var(--terminal-color-warning,#92400e)"
+            >
+              No se puede cobrar esta mesa
+            </p>
             <p class="text-[13px]" style="color:var(--terminal-color-warning,#b45309)">
               Tiene pedidos sin cobrar, pero su sesión está cerrada. Avisa al administrador.
             </p>
           </div>
         } @else {
-          <p class="text-[14px] py-6 text-center" style="color:var(--terminal-color-text-muted,#9ca3af)">Selecciona una mesa con consumo.</p>
+          <p
+            class="text-[14px] py-6 text-center"
+            style="color:var(--terminal-color-text-muted,#9ca3af)"
+          >
+            Selecciona una mesa con consumo.
+          </p>
         }
       } @else {
         <!-- Total de la transacción que realmente cobra el botón de abajo --
@@ -119,15 +147,24 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
              bloque y el aviso de solo-lectura de abajo se omiten: repetir
              un $0 no aporta nada. -->
         @if (+bill.total > 0) {
-          <div class="mb-4">
+          <div
+            class="rounded-[8px] px-3 py-2.5 mb-4 space-y-1.5"
+            style="background:var(--terminal-color-surface-elevated,#f3f4f6)"
+          >
             @let summary = billSummary();
             <!-- spec 115 (A-132): sin la fila "Descuento" -- el subtotal ya se muestra neto,
-                 igual que A-125/A-127/A-131. -->
+                 igual que A-125/A-127/A-131.
+                 Bugfix: billSummary().subtotal suma bill.split[].subtotal, que el backend
+                 ya entrega neto (compute_bill: subtotal = raw_subtotal - promo_discount) --
+                 restarle discount otra vez aquí descontaba la promoción dos veces.
+                 Misma caja (rounded-[8px] + surface-elevated) que ya usa
+                 pos-checkout-panel.component.ts para este mismo desglose -- antes
+                 era el único sin caja, se veía distinto al resto de la Terminal. -->
             <app-bill-summary
-              [subtotal]="summary ? summary.subtotal - summary.discount : undefined"
-              [subtotalLabel]="chargeOrderIds?.length ? 'Subtotal de este pedido' : 'Subtotal mesa'"
+              [subtotal]="summary?.subtotal"
+              [subtotalLabel]="chargeOrderIds?.length ? 'Subtotal' : 'Subtotal mesa'"
               [total]="+bill.total"
-              [totalLabel]="chargeOrderIds?.length ? 'Total a cobrar (este pedido)' : 'Total a cobrar'"
+              [totalLabel]="chargeOrderIds?.length ? 'Total' : 'Total a cobrar'"
               size="sm"
             />
           </div>
@@ -152,29 +189,34 @@ import { RealtimeService } from '../../../core/realtime/realtime.service';
             Ya está cobrado. Usa "Liberar Mesa" cuando el cliente se vaya.
           </p>
         } @else {
-        <!-- Pago -->
-        <div class="flex-1 overflow-y-auto space-y-2 mb-3">
-          <app-payment-input
-            [total]="total()"
-            [methods]="methods"
-            [initialDraft]="prefillPayment"
-            (changed)="unifiedPayment.set($event)"
-          />
-        </div>
-
-        @if (error()) {
-          <div class="rounded-[8px] border px-3 py-2 mb-3" style="border-color:var(--terminal-color-error-soft,#fecaca);background:var(--terminal-color-error-soft,#fef2f2)">
-            <p class="text-[13px]" style="color:var(--terminal-color-error,#b91c1c)">{{ error() }}</p>
+          <!-- Pago -->
+          <div class="flex-1 overflow-y-auto space-y-2 mb-3">
+            <app-payment-input
+              [total]="total()"
+              [methods]="methods"
+              [initialDraft]="prefillPayment"
+              (changed)="unifiedPayment.set($event)"
+            />
           </div>
-        }
 
-        <button
-          (click)="charge()"
-          [disabled]="submitting() || !ready()"
-          class="w-full min-h-11 py-2.5 bg-[#15803d] hover:bg-[#166534] text-white text-[14px] font-semibold rounded-[8px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {{ submitting() ? 'Cobrando...' : keepTableOpen ? 'Cobrar' : 'Cobrar y cerrar mesa' }}
-        </button>
+          @if (error()) {
+            <div
+              class="rounded-[8px] border px-3 py-2 mb-3"
+              style="border-color:var(--terminal-color-error-soft,#fecaca);background:var(--terminal-color-error-soft,#fef2f2)"
+            >
+              <p class="text-[13px]" style="color:var(--terminal-color-error,#b91c1c)">
+                {{ error() }}
+              </p>
+            </div>
+          }
+
+          <button
+            (click)="charge()"
+            [disabled]="submitting() || !ready()"
+            class="w-full min-h-11 py-2.5 bg-[#15803d] hover:bg-[#166534] text-white text-[14px] font-semibold rounded-[8px] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {{ submitting() ? 'Cobrando...' : keepTableOpen ? 'Cobrar' : 'Cobrar y cerrar mesa' }}
+          </button>
         }
       }
     </div>

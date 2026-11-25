@@ -2945,6 +2945,16 @@ export class PosTerminalStore {
     this.submitting.set(true);
     try {
       await this.tableService.splitOrder(orderId);
+      // Bugfix A-156 (mismo patrón que `onCharged()`): limpia la selección de
+      // cobro ANTES de `reload()` -- si no, `loadSessionBill()` (dentro de
+      // `reload()`) puede leer `chargeOrderIdsParam()` todavía con el id de la
+      // orden que este split acaba de borrar (el `effect()` que resincroniza
+      // `selectedChargeOrderIds` con `chargeableOrderIds()` corre async, no
+      // antes de que `reload()` siga). El backend la rechaza con 409
+      // ("Algunos pedidos seleccionados no se pueden cobrar.") aunque no haya
+      // ningún problema real -- vaciar el set hace que `chargeOrderIdsParam()`
+      // caiga a `undefined` (= cobrar todos los facturables actuales).
+      this.selectedChargeOrderIds.set(new Set());
       await this.reload();
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo dividir la cuenta.'));
@@ -2965,6 +2975,10 @@ export class PosTerminalStore {
     this.submitting.set(true);
     try {
       await this.tableService.moveItem(orderId, itemId, targetOrderId, quantity);
+      // Bugfix A-156 (ver comentario igual en `splitOrder()`): evita el 409
+      // de "Algunos pedidos seleccionados no se pueden cobrar." cuando la
+      // orden origen queda vacía y se borra.
+      this.selectedChargeOrderIds.set(new Set());
       await this.reload();
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo mover el ítem.'));
@@ -2981,6 +2995,8 @@ export class PosTerminalStore {
     this.submitting.set(true);
     try {
       await this.tableService.splitItemToNewOrder(orderId, itemId, quantity);
+      // Bugfix A-156 (ver comentario igual en `splitOrder()`).
+      this.selectedChargeOrderIds.set(new Set());
       await this.reload();
     } catch (err) {
       this.toast.error(this.api.extractError(err, 'No se pudo crear la cuenta nueva.'));

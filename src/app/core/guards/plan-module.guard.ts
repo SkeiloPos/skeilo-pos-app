@@ -17,7 +17,16 @@ import { MODULE_NOT_IN_PLAN_MESSAGE } from '../module-access/module-access.messa
  * deduplicado del `ToastService` que usa el aviso global de módulo perdido);
  * al bloquear **por plan vencido** vuelve al inicio sin ese aviso. Además hidrata
  * `PlanSummaryService` con el resumen que de todos modos acaba de pedir, así el
- * menú y las demás pantallas ven el mismo plan sin otra petición. */
+ * menú y las demás pantallas ven el mismo plan sin otra petición.
+ *
+ * Bugfix (bucle de redirección real, confirmado en vivo): antes redirigía
+ * siempre a `/dashboard` (= `/dashboard/admin`, solo ADMIN) — un rol KITCHEN
+ * sin el módulo "cocina" en su plan quedaba rebotando para siempre entre acá
+ * y `/dashboard/cocina` (su home por rol, `role.guard.ts`), disparando un
+ * `GET /plan` nuevo en cada vuelta (`fetch()` no tiene caché, a diferencia de
+ * `load()`). `/dashboard/modulo-no-disponible` no lleva ningún guard: es
+ * alcanzable por cualquier rol sin condición, así que corta el bucle para
+ * siempre, sin importar qué rol sea ni qué otra ruta tenga bloqueada. */
 export const planModuleGuard = (moduleKey: keyof ModuleAccess): CanActivateFn => {
   const guard: CanActivateFn = () => {
     const planSummaryService = inject(PlanSummaryService);
@@ -27,10 +36,10 @@ export const planModuleGuard = (moduleKey: keyof ModuleAccess): CanActivateFn =>
     return planSummaryService.fetch().pipe(
       map((summary) => {
         planSummaryService.hydrate(summary);
-        if (summary.vencido) return router.createUrlTree(['/dashboard']);
+        if (summary.vencido) return router.createUrlTree(['/dashboard/modulo-no-disponible']);
         if (!summary.modules[moduleKey]) {
           toast.error(MODULE_NOT_IN_PLAN_MESSAGE);
-          return router.createUrlTree(['/dashboard']);
+          return router.createUrlTree(['/dashboard/modulo-no-disponible']);
         }
         return true;
       }),
