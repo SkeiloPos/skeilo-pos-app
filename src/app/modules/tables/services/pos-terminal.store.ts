@@ -249,8 +249,6 @@ function leastAdvanced(items: DiningOrderItem[]): KitchenStatus | null {
 
 /** Sondeo de respaldo cuando el stream de tiempo real está caído. */
 const ORDERS_POLL_MS = 10_000;
-/** Con el stream sano basta un latido lento: es red de seguridad, no la fuente. */
-const ORDERS_POLL_SSE_MS = 60_000;
 /** Agrupa la ráfaga de una misma acción (y el replay al reconectar). */
 const RELOAD_DEBOUNCE_MS = 250;
 
@@ -360,10 +358,17 @@ export class PosTerminalStore {
   private readonly updateGate = inject(UpdateGateService);
 
   constructor() {
-    // El sondeo se relaja con el stream sano y vuelve al ritmo de antes al caerse.
+    // El sondeo es puro respaldo: solo corre mientras hay sesión de terminal
+    // viva y el stream de tiempo real está caído; se apaga del todo en
+    // cuanto el stream está sano, y vuelve a los 10s en cuanto se cae.
     effect(() => {
+      const live = this.sessionLive();
       const abierto = this.realtime.status() === 'open';
-      this.pollHandle?.setPeriod(abierto ? ORDERS_POLL_SSE_MS : ORDERS_POLL_MS);
+      if (!live || abierto) {
+        this.stopPolling();
+      } else if (!this.pollHandle) {
+        this.startPolling();
+      }
     });
 
     // Spec 156 (D7 de research.md), redefinido a pedido del usuario: la
@@ -639,6 +644,8 @@ export class PosTerminalStore {
   private readonly nowTick = signal(Date.now());
   private timer?: VisibleInterval;
   private pollHandle: VisibleInterval | null = null;
+  /** Si hay una sesión de terminal activa (entre `init({ live: true })` y `stop()`). */
+  private readonly sessionLive = signal(false);
   private rtOff: (() => void)[] = [];
   private reloadHandle: ReturnType<typeof setTimeout> | null = null;
 
@@ -1825,7 +1832,9 @@ export class PosTerminalStore {
       this.loading.set(false);
     }
     if (live) {
-      this.startPolling();
+      // El `effect` del constructor decide si hace falta arrancar el sondeo
+      // según el estado actual del stream de tiempo real.
+      this.sessionLive.set(true);
       this.connectRealtime();
     }
   }
@@ -1852,6 +1861,7 @@ export class PosTerminalStore {
   stop(): void {
     this.timer?.stop();
     this.timer = undefined;
+    this.sessionLive.set(false);
     this.stopPolling();
     this.disconnectRealtime();
   }
@@ -1859,6 +1869,9 @@ export class PosTerminalStore {
   /**
    * Sondea los pedidos: sin esto la terminal no se entera de que un comensal
    * envió algo desde el QR hasta que el cajero toca cualquier otra cosa.
+   * Solo corre con el stream de tiempo real caído (ver el `effect` del
+   * constructor, que lo apaga del todo en cuanto `realtime.status()` vuelve
+   * a `'open'`): con el stream sano, los eventos ya hacen ese trabajo.
    *
    * Recarga **solo los pedidos**, no la cuenta: `SessionBillPanelComponent`
    * resetea el método de pago y el efectivo recibido cada vez que cambia el
@@ -1871,16 +1884,13 @@ export class PosTerminalStore {
    */
   private startPolling(): void {
     this.stopPolling();
-    this.pollHandle = startVisibleInterval(
-      () => {
-        // Un fallo de red pasajero no debe pintar un error sobre la terminal.
-        void this.reloadOrders().catch(() => undefined);
-        // También las mesas: su `status` es lo que delata a un comensal que
-        // escaneó el QR y todavía no ha pedido nada.
-        void this.reloadTables().catch(() => undefined);
-      },
-      this.realtime.status() === 'open' ? ORDERS_POLL_SSE_MS : ORDERS_POLL_MS,
-    );
+    this.pollHandle = startVisibleInterval(() => {
+      // Un fallo de red pasajero no debe pintar un error sobre la terminal.
+      void this.reloadOrders().catch(() => undefined);
+      // También las mesas: su `status` es lo que delata a un comensal que
+      // escaneó el QR y todavía no ha pedido nada.
+      void this.reloadTables().catch(() => undefined);
+    }, ORDERS_POLL_MS);
   }
 
   /** Recarga `tables()` completa cuando `scope()` es `null` (grilla). Con
